@@ -8,6 +8,7 @@ import type { AgentEvent, AgentSession, AgentSpec } from './runtime';
 
 const model = { model: 'codex-test', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'high' }], inputModalities: ['text', 'image'] };
 class Wire implements CodexConnection {
+  readonly pid = 12345;
   calls: { method: string; params: Record<string, unknown> }[] = [];
   notifications: string[] = [];
   closed = false;
@@ -165,6 +166,26 @@ test('permission defaults to deny; unsupported grants and native questions fail 
   expect(await wire.server('item/permissions/requestApproval')).toEqual({ permissions: {}, scope: 'turn' });
   await expect(wire.server('item/tool/requestUserInput')).rejects.toThrow('use the Obeya tools');
   expect(events.filter((e) => e.type === 'denied')).toHaveLength(3);
+  expect(events.filter((e) => e.type === 'denied').every((e) => e.by === 'mode')).toBe(true);
+});
+
+test('permission identity survives new turn/item ids but keeps command and permission scope', async () => {
+  const requests: Record<string, unknown>[] = [];
+  const { wire } = fixture({ askOwner: async (r) => { requests.push(r.input); return { allow: false, message: 'Denied for the test' }; } });
+  await until(() => wire.n === 1);
+  await wire.server('item/commandExecution/requestApproval', { itemId: 'old', command: 'preview', cwd: '/repo', additionalPermissions: { network: true } });
+  wire.complete();
+  wire.n = 2; wire.handlers.notification('turn/started', { threadId: 'thread-1', turn: { id: 'turn-2', status: 'inProgress' } });
+  await wire.server('item/commandExecution/requestApproval', { itemId: 'new', command: 'preview', cwd: '/repo', additionalPermissions: { network: true }, reason: 'new reason' });
+  expect(requests[0]).toEqual(requests[1]);
+  expect(requests[1]).toEqual({ command: 'preview', cwd: '/repo', additionalPermissions: { network: true } });
+});
+
+test('owner denial is attributed to the owner, not the foreground sleep hook', async () => {
+  const { wire, events } = fixture({ askOwner: async () => ({ allow: false, message: 'No server' }) });
+  await until(() => wire.n === 1);
+  expect(await wire.server('item/commandExecution/requestApproval')).toEqual({ decision: 'decline' });
+  expect(events).toContainEqual(expect.objectContaining({ type: 'denied', by: 'owner', reason: 'No server' }));
 });
 
 test('owner permits only the individual action and a pending permission aborts on close', async () => {
@@ -225,9 +246,22 @@ test('unknown model, unsupported effort and substitution fail explicitly before 
 test('unsupported safety contracts fail before spawning a subprocess', () => {
   const variants: Partial<AgentSpec>[] = [
     { cwd: 'ssh://host/repo' }, { readOnly: true }, { untrusted: true }, { plugins: ['/plugin'] },
-    { dirs: ['/elsewhere'] }, { env: { PATH: '/session-programs' } }, { env: { Path: 'C:\\session-programs' } }, { contextUpdate: () => 'update' }, { watch: { before: async () => {}, after: async () => {} } }, { permissionMode: 'auto' },
+    { dirs: ['relative-root'] }, { env: { PATH: '/session-programs' } }, { env: { Path: 'C:\\session-programs' } }, { watch: { before: async () => {}, after: async () => {} } }, { permissionMode: 'auto' },
   ];
   for (const variant of variants) expect(() => fixture(variant)).toThrow('does not support');
+});
+
+test('portable roots, resolved model pinning and context updates use native protocol boundaries', async () => {
+  let update = 'Owner changed the requirements';
+  const { wire, events } = fixture({ dirs: ['/plans'], setting: { model: 'opus', effort: 'high', harness: 'codex' }, contextUpdate: () => { const text = update; update = ''; return text; }, tools: [{ name: 'report', description: '', schema: {}, run: () => 'recorded' }] });
+  await until(() => wire.n === 1);
+  expect(wire.calls.find((c) => c.method === 'thread/start')?.params.config).toEqual({ 'sandbox_workspace_write.writable_roots': ['/plans'], 'shell_environment_policy.set': { OBEYA_AGENT_PID: '12345' } });
+  expect(events[0]).toMatchObject({ type: 'session', setting: { harness: 'codex', codex: { model: 'codex-test', effort: 'high' } } });
+  expect(await wire.server('item/tool/call', { callId: 'ctx', namespace: null, tool: 'obeya_report', arguments: {} })).toMatchObject({ contentItems: [{ type: 'inputText', text: 'recorded\n\nOwner changed the requirements' }] });
+  update = 'Pause requested';
+  wire.handlers.notification('item/completed', { threadId: 'thread-1', turnId: 'turn-1', item: { type: 'commandExecution' } });
+  await until(() => wire.calls.some((c) => c.method === 'turn/steer'));
+  expect(wire.calls.find((c) => c.method === 'turn/steer')?.params.input).toEqual([{ type: 'text', text: 'Pause requested', text_elements: [] }]);
 });
 
 test('closing during initialization does not start a thread or emit a late event', async () => {

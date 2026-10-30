@@ -33,6 +33,7 @@ import icon180 from '../ui/logo/apple-touch-icon.png' with { type: 'file' };
 import icon512 from '../ui/logo/icon-512.png' with { type: 'file' };
 import { servePdfjs } from './pdfjs';
 import { Tailscale } from './tailscale';
+import { codexModels } from './codex-runtime';
 import { agentsView, languageView, saveAgents, saveLanguage, saveTheme, saveUsageMeter, themeView, usageMeterView } from './settings';
 import type { UsageMeter } from './usage';
 import { VERSION } from './resources';
@@ -494,6 +495,7 @@ export function serve(
         GET: needs(config, (c) => agentsView(c.home)),
         PUT: needs(config, async (c, req) => saveAgents(c.home, await req.json())),
       },
+      '/api/agents/codex-models': { GET: needs(config, async () => codexModels()) },
       // the owner's personal demo site: set up at a host, connected with another machine's code, removed
       // from this machine; the private repositories ticked for it, and those that share there with the approval
       '/api/personal-site': {

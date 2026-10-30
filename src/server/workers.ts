@@ -12,7 +12,7 @@ import { basename, isAbsolute } from 'node:path';
 import { type CardFile, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
 import { DEFAULT_DEMO_DIRECTORY } from '../../plugin/skills/demo/lib/settings.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
-import { answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, ownWords, pickedAnswer, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, SNOOZE_LIMIT, type Spot, type Superseded, type SpotInput, started } from '../core/types';
+import { AGENT_DEFAULTS, type AgentSetting, answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, ownWords, pickedAnswer, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, SNOOZE_LIMIT, type Spot, type Superseded, type SpotInput, started } from '../core/types';
 import { BadRequest, type Board, replyNote, type Retracted, type StoredDemo, titleKey } from './board';
 import { type Asked, decisionLog, toQuestion, withPick } from './advisor';
 import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters } from './demo';
@@ -40,6 +40,7 @@ import { holdsNotes } from '../core/queue';
 export interface WorkerOptions {
   board: Board;
   runtime: AgentRuntime;
+  agentSetting?: () => AgentSetting;
   workspaces: CardWorkspaces;
   adapter: RepoAdapter;
   /**
@@ -657,7 +658,7 @@ export class Workers {
     const contribution = contributionOf(row);
     const pr = contribution ? JSON.stringify({ url: contribution.url, number: contribution.number, seen: [], reported: [] } satisfies PrState) : null;
     // a fresh session knows of no app that was stopped
-    this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, pr, approved_at: null, parked: null, paused: null, pausing: null, snoozed: null, app: null });
+    this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, agent_setting: null, pr, approved_at: null, parked: null, paused: null, pausing: null, snoozed: null, app: null });
     const t = this.o.board.t.worker;
     this.o.board.log(card.id, 'state', 'obeya', this.folder ? t.startedInFolder : contribution ? t.reviewStarted(contribution.number, contribution.author) : t.started(branch));
     const launch = (headProblem?: string | null) => this.launch(card.id, this.briefing(card, branch, !!row.branch, headProblem), undefined, this.taskImages(card));
@@ -2603,6 +2604,10 @@ export class Workers {
   private launch(cardId: string, message: string, resume?: string, images: string[] = []) {
     const row = this.o.board.row(cardId);
     if (!row.workspace) throw new Error(`card ${cardId} has no workspace to work in`);
+    // A legacy unqualified session belongs to Claude regardless of today's worker default.
+    const chosen = this.o.agentSetting?.() ?? AGENT_DEFAULTS.worker;
+    const setting: AgentSetting = row.agent_setting ? JSON.parse(row.agent_setting) : resume ? { model: chosen.model, effort: chosen.effort } : chosen;
+    this.o.board.work(cardId, { agent_setting: JSON.stringify(setting) });
     const preferences = this.o.preferences?.() ?? '';
     const live: Live = { session: undefined!, host: hostName(row.workspace), handedOver: false, acted: false, nudged: false, lastText: '', busy: true, background: 0, tasks: new Map(), stalled: false, preferences };
     const project = this.o.board.item(cardId)?.parent;
@@ -2623,6 +2628,7 @@ export class Workers {
       {
         cwd: row.workspace,
         role: 'worker',
+        setting,
         ...(plans ? { dirs: [plans] } : {}),
         ...(review ? { untrusted: true } : {}),
         system: `${this.system(preferences, !!row.prototype_of, this.o.board.item(cardId))}${notes ? `\n\nThe repository's CLAUDE.md, as its default branch has it:\n\n${notes}` : ''}`,
@@ -2908,7 +2914,7 @@ export class Workers {
         // a session that replaces another (none resumed, say) keeps the one before for the Arbeitsrückschau
         const before = this.o.board.row(cardId).session_id;
         if (before && before !== e.id) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.newSession(this.o.board.t.worker.earlierRun(before)));
-        this.o.board.work(cardId, { session_id: e.id });
+        this.o.board.work(cardId, { session_id: e.id, ...(e.setting ? { agent_setting: JSON.stringify(e.setting) } : {}) });
         break;
       }
       case 'text':

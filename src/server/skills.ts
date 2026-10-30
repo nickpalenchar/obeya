@@ -4,8 +4,24 @@
 // (no message, no tokens): a process starts, answers, and ends.
 
 import { query, type SlashCommand } from '@anthropic-ai/claude-agent-sdk';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Skill } from '../core/types';
+import { OBEYA_PLUGIN } from './demo';
 import { claudeExecutable, cleanEnv, spawnHere } from './runtime';
+
+/** The portable Obeya skills shipped with this app, without starting a Claude process. */
+export function bundledSkills(): (Skill & { file: string })[] {
+  return readdirSync(join(OBEYA_PLUGIN, 'skills'), { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => {
+      const file = join(OBEYA_PLUGIN, 'skills', e.name, 'SKILL.md');
+      const header = readFileSync(file, 'utf8').match(/^---\r?\n([\s\S]*?)\r?\n---/);
+      const meta = header ? Bun.YAML.parse(header[1]!) as { description?: string; 'argument-hint'?: string } : {};
+      return { name: `obeya:${e.name}`, description: firstLine(meta.description ?? ''), ...(meta['argument-hint'] ? { hint: meta['argument-hint'] } : {}), file };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
 
 /** Where an agent works, as far as its skills go. */
 export interface SkillPlace {

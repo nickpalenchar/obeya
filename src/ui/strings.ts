@@ -1098,7 +1098,7 @@ const de = {
       `Obeya läuft gerade mit den Repositories von der Kommandozeile. Speichern legt ${file} an; Obeya startet dann daraus, auch künftig, wenn es ohne Repositories gestartet wird.`,
     koordinator: 'Du kannst Obeya auch nach der Konfiguration fragen oder ihm sagen, was sich ändern soll.',
     askObeya: 'Obeya fragen',
-    sections: { canvases: 'Leinwände', agents: 'Modelle und Effort', voice: 'Spracheingabe', demos: 'Demos', devices: 'Von anderen Geräten', general: 'Allgemein' },
+    sections: { canvases: 'Leinwände', agents: 'Agenten und Modelle', voice: 'Spracheingabe', demos: 'Demos', devices: 'Von anderen Geräten', general: 'Allgemein' },
     unsaved: 'Nicht gespeichert',
     language: {
       heading: 'Sprachen',
@@ -1119,8 +1119,14 @@ const de = {
       names: { light: 'Hell', dark: 'Dunkel' } satisfies Record<Theme, string>,
     },
     agents: {
-      title: 'Modelle und Effort',
-      hint: 'Welches Modell jede Gruppe von Agenten nimmt und wie viel es nachdenkt (Effort). Voreingestellt ist überall Opus, mit hohem Effort für Agenten an Aufgaben und Explorations-Agenten, sonst mittlerem. Gilt sofort für jeden Agenten, der danach startet; einer, der gerade arbeitet, bleibt bei dem, womit er begann.',
+      title: 'Agenten, Modelle und Effort',
+      harness: 'Harness',
+      harnesses: { claude: 'Claude Code', codex: 'Codex' },
+      codexDefault: 'Codex-Kontostandard',
+      loadingModels: 'Codex-Modelle werden geladen …',
+      reloadModels: 'Modelle erneut laden',
+      codexScope: 'Vorschau: Codex arbeitet in lokalen Git-Workspaces mit seinem eigenen Login. SSH, Ordner ohne Git, Beitrags-Reviews und Repository-Konfiguration unter .codex sind noch nicht unterstützt. Arbeitsrückschauen bleiben für Codex aus. Die Nutzungsanzeige und die übrigen Rollen bleiben bei Claude Code.',
+      hint: 'Harness, Modell und Effort gelten für neue Sitzungen. Laufende und nach einem Neustart fortgesetzte Aufgaben behalten ihre Auswahl. Voreingestellt ist Claude Code mit Opus.',
       model: 'Modell',
       effort: 'Effort',
       roles: {
@@ -2946,7 +2952,7 @@ const en: Strings = {
       `Obeya is running with the repositories from the command line. Saving creates ${file}; Obeya then starts from it, also in future when it is started without repositories.`,
     koordinator: 'You can also ask Obeya about the configuration or tell it what should change.',
     askObeya: 'Ask Obeya',
-    sections: { canvases: 'Canvases', agents: 'Models and effort', voice: 'Voice input', demos: 'Demos', devices: 'Other devices', general: 'General' },
+    sections: { canvases: 'Canvases', agents: 'Agents and models', voice: 'Voice input', demos: 'Demos', devices: 'Other devices', general: 'General' },
     unsaved: 'Not saved',
     language: {
       heading: 'Languages',
@@ -2966,8 +2972,14 @@ const en: Strings = {
       names: { light: 'Light', dark: 'Dark' },
     },
     agents: {
-      title: 'Models and effort',
-      hint: 'Which model each group of agents uses and how much it thinks (effort). Preset is Opus throughout, with high effort for agents on tasks and exploration agents, medium for the rest. Applies at once to every agent that starts afterwards; one at work keeps what it started with.',
+      title: 'Agents, models and effort',
+      harness: 'Harness',
+      harnesses: { claude: 'Claude Code', codex: 'Codex' },
+      codexDefault: 'Codex account default',
+      loadingModels: 'Loading Codex models…',
+      reloadModels: 'Reload models',
+      codexScope: 'Preview: Codex uses its own login in local Git workspaces. SSH, folders without Git, contribution reviews and repository .codex configuration are not supported yet. Work retrospectives stay off for Codex. The usage meter and other roles remain Claude-based.',
+      hint: 'Harness, model and effort apply to new sessions. Running tasks and tasks resumed after a restart keep their selection. The default is Claude Code with Opus.',
       model: 'Model',
       effort: 'Effort',
       roles: {

@@ -6,6 +6,7 @@
 // language, takes the new look at once, and the server reads the file whenever it needs the
 // language or starts an agent.
 
+import { z } from 'zod';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chosenConversationLanguage, chosenLanguage, conversationLanguageIn, OWNER_SETTINGS_FILE as SETTINGS_FILE, ownerLanguageIn, systemLanguage } from '../../plugin/skills/demo/lib/language.ts';
@@ -101,14 +102,18 @@ function write(home: string, settings: Settings) {
   writeFileSync(join(home, SETTINGS_FILE), `${JSON.stringify(agents && Object.keys(agents).length ? { ...rest, agents } : rest, null, 2)}\n`);
 }
 
+const codexChoice = z.object({ model: z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9_.:/-]+$/), effort: z.enum(AGENT_EFFORTS) }).strict();
+
 /** The known choices in a file's `agents` that differ from the defaults; anything else in it is left out. */
 function agentsOf(input: unknown): Partial<Record<AgentRole, Partial<AgentSetting>>> {
-  const o = (input && typeof input === 'object' ? input : {}) as Record<string, { model?: unknown; effort?: unknown } | undefined>;
+  const o = (input && typeof input === 'object' ? input : {}) as Record<string, { model?: unknown; effort?: unknown; harness?: unknown; codex?: unknown } | undefined>;
   const agents: Partial<Record<AgentRole, Partial<AgentSetting>>> = {};
   for (const role of AGENT_ROLES) {
     const model = AGENT_MODELS.find((m) => m === o[role]?.model && m !== AGENT_DEFAULTS[role].model);
     const effort = AGENT_EFFORTS.find((e) => e === o[role]?.effort && e !== AGENT_DEFAULTS[role].effort);
-    if (model || effort) agents[role] = { ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
+    const harness = role === 'worker' && o[role]?.harness === 'codex' ? 'codex' as const : undefined;
+    const codex = role === 'worker' ? codexChoice.safeParse(o[role]?.codex) : undefined;
+    if (model || effort || harness || codex?.success) agents[role] = { ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(harness ? { harness } : {}), ...(codex?.success ? { codex: codex.data } : {}) };
   }
   return agents;
 }
@@ -127,11 +132,13 @@ export function saveAgents(home: string, input: unknown): AgentsView {
   const agents: Record<string, unknown> = { ...settings.agents };
   for (const [role, choice] of Object.entries(given)) {
     if (!AGENT_ROLES.some((r) => r === role)) throw new BadRequest('invalid', `agents are one of ${AGENT_ROLES.join(', ')}`);
-    const { model, effort, ...other } = (choice && typeof choice === 'object' ? choice : {}) as Record<string, unknown>;
-    if (Object.keys(other).length) throw new BadRequest('invalid', 'a choice has a model and an effort');
+    const { model, effort, harness, codex, ...other } = (choice && typeof choice === 'object' ? choice : {}) as Record<string, unknown>;
+    if (Object.keys(other).length) throw new BadRequest('invalid', 'unknown agent setting');
+    if (harness !== undefined && (role !== 'worker' || !['claude', 'codex'].includes(String(harness)))) throw new BadRequest('invalid', 'only workers can select claude or codex');
+    if (codex !== undefined && (role !== 'worker' || !codexChoice.safeParse(codex).success)) throw new BadRequest('invalid', 'codex needs a model id and a supported effort (low, medium, high, xhigh, max)');
     if (model !== undefined && !AGENT_MODELS.some((m) => m === model)) throw new BadRequest('invalid', `model must be one of ${AGENT_MODELS.join(', ')}`);
     if (effort !== undefined && !AGENT_EFFORTS.some((e) => e === effort)) throw new BadRequest('invalid', `effort must be one of ${AGENT_EFFORTS.join(', ')}`);
-    agents[role] = { ...agents[role]!, ...(model !== undefined ? { model } : {}), ...(effort !== undefined ? { effort } : {}) };
+    agents[role] = { ...agents[role]!, ...(model !== undefined ? { model } : {}), ...(effort !== undefined ? { effort } : {}), ...(harness !== undefined ? { harness } : {}), ...(codex !== undefined ? { codex: codexChoice.parse(codex) } : {}) };
   }
   write(home, { ...settings, agents: agentsOf(agents) });
   console.log(`Obeya: models and effort of the agents saved to ${join(home, SETTINGS_FILE)}`);

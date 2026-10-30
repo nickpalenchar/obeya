@@ -15,6 +15,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk';
 import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { endCodexHere } from './codex-rpc';
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { LOST, remote, sessionFiles, type SshHost } from './hosts';
@@ -38,7 +39,7 @@ export interface AgentTool {
 }
 
 export type AgentEvent =
-  | { type: 'session'; id: string }
+  | { type: 'session'; id: string; setting?: AgentSetting }
   | { type: 'text'; text: string }
   | { type: 'tool'; name: string; input: Record<string, unknown> }
   /**
@@ -71,7 +72,7 @@ export type AgentEvent =
   | { type: 'error'; message: string; limit?: { resetsAt?: number } };
 
 /** Who refused a tool call (`SDKPermissionDeniedMessage.decision_reason_type`, sorted). */
-export type DeniedBy = 'rule' | 'classifier' | 'mode' | 'hook' | 'obeya' | 'other';
+export type DeniedBy = 'rule' | 'classifier' | 'mode' | 'hook' | 'obeya' | 'owner' | 'other';
 
 /** A tool call the settings want a person to confirm (an `ask` rule, a safety check). */
 export interface PermissionRequest {
@@ -112,6 +113,8 @@ export interface AgentSpec {
   model?: string;
   /** The group the agent belongs to, whose model and effort the owner chooses (`withAgentSetting`). */
   role?: AgentRole;
+  /** Pinned to a card's run; changing defaults must not switch its harness or model on resume. */
+  setting?: AgentSetting;
   /**
    * Asked after every tool step of the agent's own (not a subagent's): what changed since the
    * session's instructions were built, or what waited for its next step, for the agent to read with
@@ -159,9 +162,10 @@ export function withAgentSetting(runtime: AgentRuntime, setting: (role: AgentRol
   return {
     start(spec, firstMessage, images) {
       if (!spec.role) return runtime.start(spec, firstMessage, images);
-      const { model, effort } = setting(spec.role);
+      const chosen = spec.setting ?? setting(spec.role);
+      const { model, effort } = chosen.harness === 'codex' ? (chosen.codex ?? { model: 'default', effort: 'high' as const }) : chosen;
       const { model: _, ...rest } = spec;
-      return runtime.start({ ...rest, effort, ...(model === 'default' ? {} : { model }) }, firstMessage, images);
+      return runtime.start({ ...rest, setting: chosen, effort, ...(model === 'default' ? {} : { model }) }, firstMessage, images);
     },
   };
 }
@@ -435,6 +439,7 @@ export function withStderr(message: string, stderr: string): string {
  * there they end as before, with their stdin.
  */
 export function endAgentsHere() {
+  endCodexHere();
   if (!OWN_GROUP) return;
   for (const p of here) {
     try {

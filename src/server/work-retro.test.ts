@@ -75,6 +75,14 @@ describe('Arbeitsrückschau', () => {
     expect(board.events(a.id).at(-1)).toMatchObject({ author: 'koordinator', text: 'Arbeitsrückschau, Reibung notiert:\n– bun run dev has no --port flag Kosten: a few steps Verhindert hätte es: a script\n– the demo script failed and was rewritten Kosten: a few steps Verhindert hätte es: a script' });
   });
 
+  test('Codex runs are not interpreted as Claude transcripts or counted toward Claude retrospectives', async () => {
+    files = { 'codex:thread': SAMPLE };
+    ran('Codex card', 'codex:thread');
+    await settle();
+    expect(noteSessions()).toHaveLength(0);
+    expect(board.setting('work_retro_cards:home')).toBeNull();
+  });
+
   test('a run without a transcript, or without anything gone wrong, gets no session; a card that never ran does not count', async () => {
     ran('Never ran');
     ran('No transcript', 's9');

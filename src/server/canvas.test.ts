@@ -1505,6 +1505,9 @@ describe("the skills of a card's agent", () => {
         // an idea's agent loads no plugins
         { cwd: read, plugins: [], untrusted: false },
       ]);
+      c.board.work(task.id, { agent_setting: JSON.stringify({ model: 'opus', effort: 'high', harness: 'codex' }) });
+      expect((await c.skillsOf(task.id)).map((s) => s.name)).toEqual(['obeya:browser', 'obeya:demo', 'obeya:settings']);
+      expect(asked).toHaveLength(2); // Codex discovery never starts a Claude SDK session
       expect(await c.skillsOf('nope').catch(() => 'refused')).toEqual([]);
     } finally {
       c.shutdown();

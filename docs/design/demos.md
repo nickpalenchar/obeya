@@ -30,14 +30,16 @@ the video with its chapters, the open question if any, and the provenance (branc
 Under Obeya the card shows the video and the handover summary instead, and a problem outside the
 change is a proposal.
 
-Obeya loads the plugin into every worker session (the Agent SDK's `plugins` option), so a worker has
+Obeya loads the plugin into every Claude worker session (the Agent SDK's `plugins` option), so a worker has
 `obeya:demo`, which its brief names, and `obeya:settings` (see Writing the settings). The skill also
 runs without Obeya, as the plugin or as a user skill linking to `plugin/skills/demo`. Claude Code
 lists a skill file once: when Obeya's plugin is the very directory such a user skill links to, the
 session knows the skill as `demo`, not `obeya:demo` (Claude Code 2.1.299, 2026-10-14). So the brief
 and the demand for a demo at `ready_for_review` name the skill as the session lists it, with the path
 of its `SKILL.md` for a session that does not know it. At start, Obeya logs a warning when the
-plugin's manifest or the demo skill is missing.
+plugin's manifest or the demo skill is missing. Codex workers receive the same bundled skill files
+by their paths, without Claude's plugin loader; the handover still requires the same video or HTML
+artifact.
 
 ### The demo settings and voices
 
@@ -441,12 +443,12 @@ earlier video.
 Workers check web UIs with the plugin's skill `browser` (`obeya:browser`): a headless browser driven
 over CDP from the shell (open, nav, tabs, eval, text, screenshot, pdf, and `input` with trusted
 clicks, drags, wheel, held keys, typing, waits and `@selector` targets), with the names and syntax
-of the owner's earlier private skill `chrome-headless`, so workers' habits carried over. Each Claude
-Code session has its own browser, muted and with the silent `speechSynthesis` (see The demo skill),
-keyed by the session's process (`CLAUDE_PID`); the silencing must be in place before a page's first
+of the owner's earlier private skill `chrome-headless`, so workers' habits carried over. Each agent
+session has its own browser, muted and with the silent `speechSynthesis` (see The demo skill),
+keyed by the session's process (`OBEYA_AGENT_PID`, with `CLAUDE_PID` as a fallback); the silencing must be in place before a page's first
 script, in every out-of-process frame and every later document. The browser closes when the session
 ends, at `stop` (through CDP, since on Windows killing its holder leaves it behind) or on a signal.
-Without `CLAUDE_PID` (a terminal) there is one browser per user. `--fake-mic` plays a WAV as the
+Without either process identity (a terminal) there is one browser per user. `--fake-mic` plays a WAV as the
 microphone.
 
 The commands drive Chromium only. For WebKit (Safari's engine, and the macOS app's window), Firefox

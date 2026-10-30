@@ -99,6 +99,24 @@ test("an agent of a group starts with the group's model and effort, asked at eve
   expect(fake.last.spec.model).toBeUndefined();
 });
 
+test('worker harness choices retain separate Claude and Codex options and reject unsupported roles', () => {
+  const home = scratchHome();
+  const codex = { model: 'codex-test', effort: 'low' as const };
+  saveAgents(home, { worker: { harness: 'codex', codex } });
+  expect(agentSetting(home, 'worker')).toEqual({ model: 'opus', effort: 'high', harness: 'codex', codex });
+  saveAgents(home, { worker: { harness: 'claude', model: 'sonnet' } });
+  expect(agentSetting(home, 'worker')).toEqual({ model: 'sonnet', effort: 'high', codex });
+  saveAgents(home, { worker: { harness: 'codex' } });
+  const fake = new FakeRuntime();
+  const runtime = withAgentSetting(fake, (r) => agentSetting(home, r));
+  const spec = { cwd: '/r', system: '', tools: [], onEvent() {}, role: 'worker' as const };
+  runtime.start(spec);
+  expect(fake.last.spec).toMatchObject({ model: 'codex-test', effort: 'low' });
+  runtime.start({ ...spec, setting: AGENT_DEFAULTS.worker });
+  expect(fake.last.spec).toMatchObject({ model: 'opus', effort: 'high' });
+  for (const bad of [{ worker: { harness: 'pi' } }, { koordinator: { harness: 'codex' } }, { explorer: { codex } }, { worker: { codex: { ...codex, effort: 'ultra' } } }, { worker: { codex: { ...codex, model: '' } } }]) expect(() => saveAgents(home, bad)).toThrow();
+});
+
 test('light or dark: as the system until chosen, beside the other settings, and back to the system with null', () => {
   const home = scratchHome();
   expect(themeView(home).chosen).toBeNull();

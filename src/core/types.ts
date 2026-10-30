@@ -2343,6 +2343,18 @@ export type AgentEffort = (typeof AGENT_EFFORTS)[number];
 export interface AgentSetting {
   model: AgentModel;
   effort: AgentEffort;
+  /** Absent means Claude. Only local Git workers currently offer another harness. */
+  harness?: 'claude' | 'codex';
+  /** Codex choices are separate from Claude aliases, which survive switching back. */
+  codex?: { model: string; effort: AgentEffort };
+}
+
+/** Discovered from the installed Codex account, never a hardcoded model alias. */
+export interface CodexModel {
+  model: string;
+  isDefault: boolean;
+  supportedReasoningEfforts: { reasoningEffort: string }[];
+  inputModalities: string[];
 }
 /** What applies until the owner chooses otherwise: Opus throughout, high effort for workers and exploration agents. */
 export const AGENT_DEFAULTS: Record<AgentRole, AgentSetting> = {

@@ -1,5 +1,7 @@
-// Isolated protocol spike: intentionally NOT wired into main.ts or the owner's runtime settings.
+// Native installed Codex app-server adapter. Worker routing and portability live separately.
 import { isAbsolute } from 'node:path';
+import { homedir } from 'node:os';
+import type { CodexModel } from '../core/types';
 import { z } from 'zod';
 import { messageOf } from '../core/text';
 import { codexConnection, CodexRpcError, type CodexConnection, type CodexHandlers } from './codex-rpc';
@@ -40,21 +42,19 @@ function supported(spec: AgentSpec) {
     spec.readOnly ? 'read-only tool restrictions' : '',
     spec.untrusted ? 'untrusted repository configuration' : '',
     spec.plugins?.length ? 'Claude plugins' : '',
-    spec.dirs?.length ? 'additional workspace roots' : '',
+    spec.dirs?.some((d) => !isAbsolute(d)) ? 'non-local additional workspace roots' : '',
     spec.watch ? 'before/after mutation hooks' : '',
-    spec.contextUpdate ? 'per-step context updates' : '',
     spec.permissionMode && spec.permissionMode !== 'default' ? `permission mode ${spec.permissionMode}` : '',
     // Also covers interpreters selected by a CLI shim's /usr/bin/env shebang.
     Object.keys(spec.env ?? {}).some((key) => key.toLowerCase() === 'path') ? 'per-session executable search path' : '',
   ].filter(Boolean);
-  if (unsupported.length) throw new Error(`Codex spike does not support: ${unsupported.join(', ')}`);
+  if (unsupported.length) throw new Error(`Codex does not support: ${unsupported.join(', ')}`);
   if (spec.resume && !/^codex:[A-Za-z0-9_-]+$/.test(spec.resume)) throw new Error('Codex can only resume a codex: session, not a Claude or Pi session');
 }
 
 /**
  * Native installed Codex, not a Codex model inside another harness. The injectable connection is
- * only the wire boundary for contract tests. Production routing waits for harness-aware settings,
- * session ownership, repository trust, portable skills and the full card lifecycle tests.
+ * only the wire boundary for contract tests. Harness routing pins the setting to each card.
  */
 export function createCodexRuntime(connect: Connect = connectInstalled): AgentRuntime {
   return {
@@ -79,7 +79,7 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
       const emit = (event: AgentEvent) => { if (!closing) spec.onEvent(event); };
       const connection = connect(spec, { notification, request: serverRequest });
       const done = connection.done.catch((error: unknown) => {
-        if (!closing) emit({ type: 'error', message: messageOf(error) });
+        if (!closing) { emit({ type: 'error', message: messageOf(error) }); emit({ type: 'idle' }); }
       }).finally(() => {
         closing = true;
         permissionAbort.abort();
@@ -89,6 +89,7 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
       function fail(error: unknown) {
         if (closing) return;
         emit({ type: 'error', message: messageOf(error) });
+        emit({ type: 'idle' });
         close();
       }
       function close() {
@@ -199,6 +200,13 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
             else if (item.type === 'fileChange') emit({ type: 'tool', name: 'Edit', input: { changes: item.changes } });
             // Obeya tools are emitted at dispatch, not twice (here and item/tool/call).
           }
+          if (method === 'item/completed' && params.turnId === turn) {
+            const item = jsonObject.parse(params.item);
+            if (item.type === 'commandExecution' || item.type === 'fileChange') {
+              const update = spec.contextUpdate?.();
+              if (update) send(update);
+            }
+          }
           // Error notifications with willRetry belong to Codex's retry loop. Only turn/completed
           // establishes an idle/error boundary; individual items and transient errors never do.
         } catch (error) { fail(error); }
@@ -217,7 +225,8 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
               const args = entry.schema.parse(call.arguments);
               emit({ type: 'tool', name: `mcp__obeya__${entry.tool.name}`, input: args });
               const text = await entry.tool.run(args);
-              return { contentItems: [{ type: 'inputText', text }], success: true };
+              const update = spec.contextUpdate?.();
+              return { contentItems: [{ type: 'inputText', text: update ? `${text}\n\n${update}` : text }], success: true };
             } catch (error) { return { contentItems: [{ type: 'inputText', text: messageOf(error) }], success: false }; }
           })();
           toolResults.set(key, result);
@@ -226,17 +235,21 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
         if (method === 'item/commandExecution/requestApproval' || method === 'item/fileChange/requestApproval') {
           const name = method.includes('commandExecution') ? 'Bash' : 'Edit';
           const reason = typeof params.reason === 'string' ? params.reason : undefined;
+          // Persist the action and its authority, not ephemeral RPC identities. A restarted
+          // thread reissues the same approval with new turn/item ids; a one-use owner grant
+          // must still match, but a changed command or permission scope must not.
+          const { threadId: _, turnId: __, itemId: ___, reason: ____, availableDecisions: _____, ...input } = params;
           // Codex's availableDecisions may restrict a proposed amendment to a choice this spike
           // doesn't understand. Never approve amendments, broad grants, or session-wide authority.
           const decisions = params.availableDecisions;
           const canAccept = !Array.isArray(decisions) || decisions.includes('accept');
-          const answer = spec.askOwner && canAccept ? await spec.askOwner({ name, input: params, reason }, permissionAbort.signal) : { allow: false, message: 'No owner approval available' };
+          const answer = spec.askOwner && canAccept ? await spec.askOwner({ name, input, reason }, permissionAbort.signal) : { allow: false, message: 'No owner approval available' };
           if (!closing && answer.allow && params.turnId === turn) return { decision: 'accept' };
-          emit({ type: 'denied', name, input: params, by: 'obeya', reason: answer.allow ? 'Turn ended before permission was granted' : answer.message });
+          emit({ type: 'denied', name, input, by: spec.askOwner && canAccept && !answer.allow ? 'owner' : 'mode', reason: answer.allow ? 'Turn ended before permission was granted' : answer.message });
           return { decision: 'decline' };
         }
         if (method === 'item/permissions/requestApproval') {
-          emit({ type: 'denied', name: 'permissions', input: params, by: 'obeya', reason: 'Extended permission profiles are not supported by the Codex spike' });
+          emit({ type: 'denied', name: 'permissions', input: params, by: 'mode', reason: 'Extended permission profiles are not supported by the Codex worker' });
           return { permissions: {}, scope: 'turn' };
         }
         // Native requestUserInput isn't Obeya's shared question workflow. Agents must use ask.
@@ -244,28 +257,23 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
       }
       void (async () => {
         try {
-          await connection.request('initialize', { clientInfo: { name: 'obeya', title: 'Obeya', version: '0.1.0' }, capabilities: { experimentalApi: true } });
-          if (closing) return;
-          connection.notify('initialized', {});
-          const models: z.infer<typeof modelPage>['data'] = [];
-          let cursor: string | null = null;
-          do {
-            const page = modelPage.parse(await connection.request('model/list', { cursor, limit: 100 }));
-            models.push(...page.data);
-            cursor = page.nextCursor;
-          } while (cursor && !closing);
+          const models = await discover(connection, () => closing);
           if (closing) return;
           const model = spec.model ? models.find((m) => m.model === spec.model) : models.find((m) => m.isDefault);
           if (!model) throw new Error(`Codex model unavailable: ${spec.model ?? '(account default)'}`);
           if (spec.effort && !model.supportedReasoningEfforts.some((e) => e.reasoningEffort === spec.effort)) throw new Error(`Codex model ${model.model} does not support effort ${spec.effort}`);
           imageSupport = model.inputModalities.includes('image');
-          const params = { cwd: spec.cwd, model: model.model, developerInstructions: spec.system, approvalPolicy: 'on-request', sandbox: 'workspace-write' };
+          const config = {
+            ...(spec.dirs?.length ? { 'sandbox_workspace_write.writable_roots': spec.dirs } : {}),
+            ...(connection.pid ? { 'shell_environment_policy.set': { OBEYA_AGENT_PID: String(connection.pid) } } : {}),
+          };
+          const params = { cwd: spec.cwd, model: model.model, developerInstructions: spec.system, approvalPolicy: 'on-request', sandbox: 'workspace-write', config };
           const result = threadResult.parse(await connection.request(spec.resume ? 'thread/resume' : 'thread/start', spec.resume ? { ...params, threadId: spec.resume.slice('codex:'.length) } : { ...params, dynamicTools }));
           if (closing) return;
           if (result.model !== model.model) throw new Error(`Codex substituted model ${result.model} for ${model.model}`);
           thread = result.thread.id;
           if (spec.resume && `codex:${thread}` !== spec.resume) throw new Error('Codex resumed an unexpected thread');
-          emit({ type: 'session', id: `codex:${thread}` });
+          emit({ type: 'session', id: `codex:${thread}`, ...(spec.setting ? { setting: { ...spec.setting, codex: { model: model.model, effort: spec.effort ?? 'high' } } } : {}) });
           ready = true;
           void pump();
         } catch (error) { fail(error); }
@@ -274,6 +282,32 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
       return { send, close, done };
     },
   };
+}
+
+async function discover(connection: CodexConnection, closing: () => boolean): Promise<CodexModel[]> {
+  await connection.request('initialize', { clientInfo: { name: 'obeya', title: 'Obeya', version: '0.1.0' }, capabilities: { experimentalApi: true } });
+  if (closing()) return [];
+  connection.notify('initialized', {});
+  const models: CodexModel[] = [];
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    const page = modelPage.parse(await connection.request('model/list', { cursor, limit: 100 }));
+    models.push(...page.data);
+    cursor = page.nextCursor;
+    if (cursor && seen.has(cursor)) throw new Error('Codex returned a repeated model-list cursor');
+    if (cursor) seen.add(cursor);
+  } while (cursor && !closing());
+  return models;
+}
+
+/** Account catalog only: does not create a thread or spend a model turn. */
+export async function codexModels(): Promise<CodexModel[]> {
+  const connection = connectInstalled({ cwd: homedir(), system: '', tools: [], onEvent() {} }, {
+    notification() {}, request: async () => { throw new CodexRpcError(-32601, 'No active worker'); },
+  });
+  try { return await discover(connection, () => false); }
+  finally { connection.close(); await connection.done.catch(() => {}); }
 }
 
 export const codexRuntime = createCodexRuntime();

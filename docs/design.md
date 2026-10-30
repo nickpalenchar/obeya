@@ -180,10 +180,10 @@ on the walls and decisions are made in front of the wall.
   repositories). Its social preview (the wordmark and the site's headline beside the screenshot of
   the canvas) is made by `bun scripts/social-preview.ts`; GitHub's API cannot set it, so the owner
   uploads it when the canvas has changed enough.
-- **Agents run only through the user's own installation of Claude Code and its login**: Obeya starts
-  that installation and never uses the subscription's token itself. Tools that used the token
-  against the API themselves were blocked; tools that start the official installation appear to be
-  tolerated (T3 Code, Conductor).
+- **Agents run through official harnesses and their own logins**, not subscription tokens reused
+  against a model API. Claude Code is the default; local Git task workers can select the installed
+  Codex CLI (preview). Roles and harnesses are separate: keeping the Koordinator on Claude during
+  this rollout does not make Claude a required supervisor of other harnesses (2026-10-30).
 - **No business and no cloud service for now** (2026-10-06): being known comes first. Considered and
   parked: hosting demos for sharing, remote access from the phone through a relay, voice as a
   service, a team canvas, a subscription covering the costs. Hosted agents were ruled out.

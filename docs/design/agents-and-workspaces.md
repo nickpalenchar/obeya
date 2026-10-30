@@ -4,14 +4,14 @@ A chapter of the [design doc](../design.md), whose header says how it is written
 
 ### Agents
 
-Agents are Claude through the Agent SDK on the machine's Claude Code login (the owner's
+By default, agents are Claude through the Agent SDK on the machine's Claude Code login (the owner's
 subscription, no API key). The checkout runs the Claude Code binary the SDK brings; the compiled app
 runs the machine's own (`claude` on the `PATH`, else `~/.local/bin`, or `OBEYA_CLAUDE`). Agents get
 Obeya's environment without the marks of a Claude Code session that may have started Obeya
 (`CLAUDE_CODE_*`, `CLAUDECODE`, `CLAUDE_PID`) or of what started it (`OBEYA_SUPERVISED`, `OBEYA_FROM_APP`,
 `BUN_BE_BUN`), but with `CLAUDE_CODE_OAUTH_TOKEN`, the login of a machine without a keychain.
 
-A worker is one session per card with streaming input, permission mode `auto`, and the repository's
+A Claude worker is one session per card with streaming input, permission mode `auto`, and the repository's
 Claude Code settings and CLAUDE.md (only once the owner trusted them, see Trusting a repository's
 commands); after a restart it resumes by session id. A project agent is one session per project in
 the Lesestand, resumed for each of the owner's questions about the project, one at a time. Project agents, ideas'
@@ -19,12 +19,31 @@ exploration agents and the Koordinator's look-ups have a worker's tools and mode
 questions); agents that only judge from text (reading commands, estimates, the learner) are
 read-only: Read, Grep, Glob, mode `dontAsk`.
 
-Every session refuses long foreground sleeps in Bash (see Waiting without blocking). What changed
+Claude sessions refuse long foreground sleeps in Bash (see Waiting without blocking). What changed
 since a session's instructions were built reaches the agent once, with its next tool call's result
 (not a subagent's), without a message or turn: a preference of the owner learned meanwhile; for a
 workstream's worker also its project's new decisions and the owner's notes that came during its turn
 (see Reading order). A call the settings want confirmed becomes the question the card waits on (see
 Refused and confirmed tool calls); Obeya's own tools are allowed by a `PreToolUse` hook.
+
+#### Native Codex workers (preview)
+
+Task workers can instead use the installed Codex CLI's app-server, with its own login. Obeya finds
+`codex` on the server process's PATH, or the native executable named by `OBEYA_CODEX`; a repository
+or per-session environment cannot select a different executable. Only local Git workspaces are
+supported: no SSH, folders without Git, contributor reviews, or record/replay. A project `.codex`
+directory in the workspace or its ancestors is refused rather than silently loading configuration
+not covered by Obeya's repository-trust dialog. The user's global Codex configuration is trusted.
+Other roles, setup and the usage meter remain Claude-based; Codex transcript-based work retrospectives
+are not available. An unsupported capability fails visibly, never by substituting Claude.
+
+Codex keeps its native workspace-write sandbox and on-request approvals, not Claude's `auto`
+classifier or pre-command hooks. Approvals use the same owner question as Claude (see Refused and
+confirmed tool calls); extended permission profiles are refused. Obeya's tools and their card
+scope are shared. Bundled skills are supplied as readable skill files, not Claude plugins.
+Context changes reach Codex in Obeya tool results or by steering after native command/file-change
+completion; there is no equivalent of Claude's pre-command foreground-wait hook. Background
+terminals keep the worker active and are cleaned up when its session closes.
 
 ### Models and effort
 
@@ -37,6 +56,16 @@ workers and exploration agents, medium otherwise. Stored in `settings.json` unde
 where it differs from the preset. Saving restarts nothing; agents starting afterwards take it, a
 running session keeps its own, except the voice commands' session, which reopens when the
 Koordinator's setting changes (as for another language).
+
+Each group's row puts harness before model and effort. Harness selection is enabled only for task
+workers (Claude Code or Codex); the other groups show Claude Code disabled, while their model and
+effort remain editable. Claude choices remain saved when Codex is selected and vice versa. Codex models and supported effort levels come from the
+installed CLI's account catalog; loading failures can be retried, and an unavailable saved model
+is shown, not replaced. An account-default choice is resolved to an actual model at first start.
+The card persists its harness, model and effort before starting and retains them across parking,
+restart, replies and changes to defaults. A deliberate fresh start takes the current selection.
+Unqualified old session ids mean Claude; Codex locators carry `codex:` and cannot resume in Claude
+or the other way round. A locator alone is not authorization to attach it to another card.
 
 ### Workspaces
 

@@ -5,12 +5,18 @@ import { z } from 'zod';
 import { messageOf } from '../core/text';
 import { OWN_GROUP } from './spawn';
 
+const running = new Set<() => void>();
+/** Process shutdown must also end Codex subprocesses (including those still initializing). */
+export function endCodexHere() { for (const close of running) close(); }
+
 export interface CodexHandlers {
   notification(method: string, params: Record<string, unknown>): void;
   request(method: string, params: Record<string, unknown>): Promise<unknown>;
 }
 
 export interface CodexConnection {
+  /** Local app-server process, for session-scoped browser lifetime. */
+  readonly pid?: number;
   request<T = unknown>(method: string, params: Record<string, unknown>): Promise<T>;
   notify(method: string, params: Record<string, unknown>): void;
   close(): void;
@@ -129,7 +135,9 @@ export function codexConnection(
     // Do not wait for `close`: a child command may still hold the dead parent's pipes open.
     if (OWN_GROUP) signal('SIGKILL');
   });
+  running.add(close);
   child.on('close', (code, exitSignal) => {
+    running.delete(close);
     // The parent can exit while commands with redirected stdio remain in its process group.
     // They must not outlive the transport merely because no pipe still holds `close` open.
     if (OWN_GROUP) signal('SIGKILL');
@@ -142,6 +150,7 @@ export function codexConnection(
     else resolveDone();
   });
   return {
+    pid: child.pid,
     request<T>(method: string, params: Record<string, unknown>): Promise<T> {
       return new Promise<T>((resolve, reject) => {
         if (closing) return reject(failure ?? new Error('Codex app-server connection closed'));

@@ -23,6 +23,8 @@ export interface CardRow {
   deleted_at: string | null;
   /** Agent session of the card's worker, or of a project's project agent. */
   session_id: string | null;
+  /** JSON AgentSetting pinned before a worker starts; null on legacy Claude sessions. */
+  agent_setting: string | null;
   /** Leased clone and branch while a worker has the card. */
   workspace: string | null;
   branch: string | null;
@@ -448,6 +450,8 @@ export const MIGRATIONS = [
   // a question looked up for an action that needs its answer: the step the Koordinator takes then, and
   // the exchange of no one's it took that step up in (the id of the exchange whose answer came in)
   'ALTER TABLE talk ADD COLUMN then_step TEXT; ALTER TABLE talk ADD COLUMN after_answer INTEGER;',
+  // harness, model and effort of a worker run; old unqualified session ids belong to Claude
+  'ALTER TABLE cards ADD COLUMN agent_setting TEXT;',
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded';
