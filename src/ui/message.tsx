@@ -3,7 +3,7 @@
 // above its words, as chat apps do.
 
 import { createContext, type ReactNode, type RefObject, useContext, useEffect, useRef, useState } from 'react';
-import type { AnswerFile, CardEvent, Item } from '../core/types';
+import type { AgentIdentity, AnswerFile, CardEvent, Item } from '../core/types';
 import { answerFile, api } from './api';
 import { type Block, blocks, Inline, ListTree, plain, Table } from './markdown';
 import { clock as time, t } from './strings';
@@ -21,6 +21,7 @@ import { copyOrSelect } from './copy';
 export function Msg({
   by,
   who,
+  agent,
   at,
   className,
   ev,
@@ -32,6 +33,7 @@ export function Msg({
 }: {
   by: string;
   who: ReactNode;
+  agent?: AgentIdentity;
   at?: string;
   className?: string;
   ev?: number | string;
@@ -45,6 +47,7 @@ export function Msg({
     <div className={['msg', `by-${by}`, onReply && 'replies', className].filter(Boolean).join(' ')} data-ev={ev}>
       <div className="who">
         {who}
+        {agent && <span className="agent-model">{t.config.agents.harnesses[agent.harness]}{agent.model ? ` · ${agent.model}` : ''}</span>}
         {at && <span className="t">{time(at)}</span>}
         {head}
       </div>

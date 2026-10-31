@@ -35,8 +35,9 @@ the key: the legend says so, and once the key has been used the button is gone f
 browser).
 
 The buttons always fit: when the contents outgrow the bar (a wide sheet, a narrow window), it gives
-up in steps the wordmark and branch, then labels a few at a time, then the workspace pool, the usage limits and `?`,
-then all but the sheets' buttons. The step is measured from the actual contents, since the same
+up in steps the wordmark and branch, then labels a few at a time, then the workspace pool and `?`.
+Claude usage stays as compact percentages at that stage; only the smallest bar drops it along
+with all but the sheets' buttons. The step is measured from the actual contents, since the same
 width may hold a short or a long branch, one clone or three.
 
 The logo (three cards in the inks of working, waiting and approved, "obeya" in Newsreader) opens

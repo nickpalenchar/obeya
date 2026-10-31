@@ -3999,13 +3999,21 @@ export class Workers {
     this.o.board.work(cardId, { state: 'waiting', need: 'question', detail: JSON.stringify({ question: q, permission: asked }) });
     this.setBusy(live, false);
     return new Promise((resolve) => {
-      live.permission = (answer) => {
-        live.permission = undefined;
-        this.setBusy(live, true);
-        resolve(answer);
+      const answer = (value: PermissionAnswer) => {
+        signal.removeEventListener('abort', abort);
+        if (live.permission === answer) live.permission = undefined;
+        if (this.live.get(cardId) === live) this.setBusy(live, true);
+        resolve(value);
       };
-      // the session ended (stopped, Obeya restarting): the question stays on the card for the next one
-      signal.addEventListener('abort', () => (live.permission = undefined), { once: true });
+      const abort = () => {
+        // Closing a session preserves the question for a restart. Resolving/interruption of just
+        // this request invalidates it, so it must not block a later permission or appear open.
+        if (signal.reason === 'permission-obsolete' && this.live.get(cardId) === live && live.permission === answer) this.backToWork(cardId);
+        answer({ allow: false, message: 'This permission request has ended.' });
+      };
+      live.permission = answer;
+      signal.addEventListener('abort', abort, { once: true });
+      if (signal.aborted) abort();
     });
   }
 

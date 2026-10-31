@@ -13,32 +13,70 @@ Installed Codex CLI 0.162.0, on macOS, in scratch repositories and a scratch Obe
 - Selecting Codex through the real settings UI and discovering account models without a model turn.
 - A real canvas card asking Blue/Green, restarting Obeya and changing the future default to Claude,
   then answering Blue and resuming the same Codex thread and resolved model.
-- Owner permission denial and subsequent allow decisions through the existing question UI. Approval
-  identity preserves the command and permission scope, not ephemeral turn/item identifiers.
+- Owner permission denial and subsequent allow decisions through the existing question UI.
 - Separate headless browser sessions for Codex and the test driver, desktop/mobile artifact checks,
   serving the actual HTML artifact in the card, approval and landing on the scratch repository's main.
-- Contract tests for routing, pinning, legacy Claude sessions, unsupported capabilities, arguments,
-  thread/turn scope, message races, permission cancellation, background accounting and bounded shutdown.
-- Codex second review: record/replay cannot fall through to Claude; bare non-Git folders are refused.
+- A real Codex card receives owner messages after defaults switch to Claude. A paused, undelivered
+  answer survives server restart; resuming retains its thread/model and receives the next message.
 
-The preview is available in the app, not merely in the terminal probe. Unsupported capabilities
-fail explicitly. No silent harness/model fallback; locators alone never authorize another card's
-session. The running owner's instance is not a test target.
+## Focused hardening status
+
+The acceptance pass used three independent read-only reviewers (including Codex), native scratch
+runs and deterministic probes. Its nine findings have corresponding fixes and regression coverage:
+
+| Area | Implemented check |
+| --- | --- |
+| Native PTYs outlive the app-server's process group | Track observed process descendants with creation identities, not arbitrary reported PIDs. A separate-group subprocess test leaves an unrelated PID alone; a real Codex PTY's heartbeat stops after app-server SIGKILL. |
+| Main exits before shutdown escalation | Await transport shutdown before process exit. A subprocess regression awaits shutdown then exits; an EOF/TERM-ignoring server does not survive. |
+| Ephemeral approval identities | Ignore callback ids, turn/item ids and timestamps, retain command and authority; equivalent reissued requests match, changed authority does not. |
+| Broader file-change authority | Refuse `grantRoot` approvals and extended profiles rather than accepting session-wide authority as a one-call decision. |
+| Denial instructions lost | Deliver the owner's explanation through model input after declining the native request; test steering receives the alternative. |
+| Partial background completion | Each ended task wakes result inspection while persistent tasks remain; demonstrated with a native build plus a persistent server. |
+| Polls extend timeout forever | Emit idle only on a transition or authoritative turn completion, not unchanged polling; regression tests cover repeated polls and the existing worker timeout. |
+| Obsolete approval blocks later questions | Request resolution and turn completion abort and settle callbacks; a real Workers regression serializes another question afterwards. Session close preserves restartable questions. |
+| Legacy Claude gets Codex skill menu | Legacy unqualified session ownership wins over changed defaults, tested before an explicit Codex pin selects its bundled skills. |
+
+Process tracking is best-effort cleanup, not race-proof containment. A child that detaches and
+loses its ancestry entirely between snapshots can escape observation. Native failure cleanup on
+Windows/Linux is still unverified; do not expand the preview's platform guarantees on the strength
+of the macOS result alone.
+
+New speaker metadata persists the producing harness/model per utterance, including separate
+Koordinator replies and researched answers. Concurrency/persistence tests keep identities isolated;
+shared UI rendering and desktop/sidebar/phone screenshots cover the labels. Old messages are not
+relabelled from current defaults; active working and reading bubbles do not identify the model.
+Claude usage is independent of the worker harness: a live idle
+Claude SDK fetch and the scratch UI both show it. The compact toolbar keeps percentages after
+hiding the workspace pool; only its smallest stage hides them. No Codex usage is added.
+
+### Verification limits
+
+- Live concurrent Claude/Codex cards were blocked by Claude OAuth expiry during acceptance; a
+  deterministic two-card test with real Git workspaces and fake sessions verifies message, question
+  and permission isolation. A later idle Claude usage fetch succeeds, but is not a repeat of the
+  live mixed-card test.
+- A post-fix Codex review identified attribution losses in card logs and moved answers, since fixed;
+  active working and reading bubbles remain unlabelled rather than guessing from earlier messages.
+- Live rate-limit recovery and cross-platform cleanup remain unverified. Focused regression
+  results are not a full-suite-green claim (the unrelated artifact-copy macro test is known to fail).
+- The running owner's instance is never a test target; all probe jobs and scratch instances used
+  for this pass are stopped after verification.
 
 ## Remaining phase 1 acceptance and parity
 
-- [ ] Live background-terminal accounting, completion wakeup and cleanup, including process death.
-- [ ] Live permission cancellation and shutdown escalation on Windows and Linux as well as macOS.
-- [ ] Concurrent mixed-harness cards, rate-limit recovery and longer-running pause/restart scenarios.
+- [ ] Stronger process containment for descendants that escape between observations; native PTY
+  cancellation and shutdown escalation on Windows/Linux as well as macOS.
+- [ ] Rerun live mixed-harness cards, rate-limit recovery and longer-running pause/restart scenarios.
+- [ ] Expose the active session's own identity if working and reading bubbles should name its model.
 - [ ] Explicit repository Codex configuration trust and configuration-change checks; until then,
   project `.codex` is rejected and the user's global Codex configuration is trusted.
 - [ ] Decide whether native Codex pre-command hooks can provide the foreground-wait guard, rather
   than pretending Claude's hooks apply. Context updates currently use native completion/steering.
 - [ ] Portable transcripts and work retrospectives, or continue showing them as unavailable.
 - [ ] SSH, non-Git folder undo, contributor reviews and record/replay, each with its own parity tests
-  before removing the current refusal. User/repository skill discovery is separate from the bundled
+  before removing the current refusal. User/repository skill discovery is separate from bundled
   file-based skills already supplied to Codex.
-- [ ] Harness selection for other roles, once their permission/read-only/continuation contracts are
+- [ ] Harness selection for other roles once their permission/read-only/continuation contracts are
   implemented. Keeping the coordinator on Claude is a rollout boundary, not an architectural need.
 
 ## Phase 2: Pi
@@ -52,4 +90,4 @@ coordinator can then select Pi once that role's contracts are supported, just li
 
 Estimated difficulty after a sound phase 1: a basic Pi worker is moderate, roughly 3–7 engineering
 days; polished installed-extension/configuration/recovery support likely adds 1–2 weeks. These
-are planning ranges, contingent on the supported extension set and remaining phase 1 findings.
+are planning ranges, contingent on the supported extension set and remaining phase 1 gates.

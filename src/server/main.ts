@@ -319,11 +319,11 @@ const usage = new UsageMeter(() => claudeUsage(home), { on: usageMeterView(home)
 const machine = new MachineSetup({ home, config, voice: voiceSetup });
 // the canvas the assistant created gets a first card that says what to try
 welcome(home, canvases.all());
-const shutdown = (code: number) => {
+const shutdown = async (code: number) => {
   canvases?.shutdown();
   usage.stop();
   demoSpace.stop();
-  endAgentsHere();
+  await endAgentsHere();
   awake.stop();
   // what it counted of a page's stalls, before it goes
   stalls.stop();

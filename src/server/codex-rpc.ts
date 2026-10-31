@@ -4,14 +4,19 @@ import { StringDecoder } from 'node:string_decoder';
 import { z } from 'zod';
 import { messageOf } from '../core/text';
 import { OWN_GROUP } from './spawn';
+import { AgentProcesses } from './agent-processes';
 
-const running = new Set<() => void>();
-/** Process shutdown must also end Codex subprocesses (including those still initializing). */
-export function endCodexHere() { for (const close of running) close(); }
+const running = new Map<() => void, Promise<void>>();
+/** Wait for bounded escalation before the owner process exits and destroys its timers. */
+export async function endCodexHere() {
+  const active = [...running];
+  for (const [close] of active) close();
+  await Promise.allSettled(active.map(([, done]) => done));
+}
 
 export interface CodexHandlers {
   notification(method: string, params: Record<string, unknown>): void;
-  request(method: string, params: Record<string, unknown>): Promise<unknown>;
+  request(method: string, params: Record<string, unknown>, requestId?: string | number): Promise<unknown>;
 }
 
 export interface CodexConnection {
@@ -20,6 +25,8 @@ export interface CodexConnection {
   request<T = unknown>(method: string, params: Record<string, unknown>): Promise<T>;
   notify(method: string, params: Record<string, unknown>): void;
   close(): void;
+  /** Native PTY process ids, while still attributable to this app-server. */
+  trackProcesses?(pids: number[]): void;
   /** Rejects on transport failure; resolves after an intentional close and subprocess exit. */
   done: Promise<void>;
 }
@@ -45,6 +52,7 @@ export function codexConnection(
   handlers: CodexHandlers,
 ): CodexConnection {
   const child = spawn(options.command, options.args, { cwd: options.cwd, env: options.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: OWN_GROUP });
+  const terminals = child.pid ? new AgentProcesses(child.pid) : undefined;
   const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
   let nextId = 0;
   let closing = false;
@@ -72,6 +80,7 @@ export function codexConnection(
   }
   function close() {
     if (closing) return;
+    try { terminals?.track(); } catch (error) { failure ??= new Error(messageOf(error)); }
     closing = true;
     rejectPending(new Error('Codex app-server connection closed'));
     // EOF lets Codex shut down its own terminals, including on Windows. Bound a stuck shutdown.
@@ -96,7 +105,7 @@ export function codexConnection(
       else {
         const id = m.id;
         // Do not block the input stream on an owner question or tool: responses must keep flowing.
-        void handlers.request(m.method, m.params ?? {}).then(
+        void handlers.request(m.method, m.params ?? {}, id).then(
           (result) => { if (!closing) write({ id, result }); },
           (error: unknown) => { if (!closing) write({ id, error: { code: error instanceof CodexRpcError ? error.code : -32603, message: messageOf(error) } }); },
         ).catch((error: unknown) => fail(new Error(messageOf(error))));
@@ -130,13 +139,22 @@ export function codexConnection(
   child.stderr.on('error', (error) => fail(error));
   child.stdin.on('error', (error) => fail(error));
   child.on('error', (error) => fail(error));
+  // Observe while turns are active too: a foreground/native PTY can detach before the first
+  // background-list response. Creation identities keep snapshots from targeting reused PIDs.
+  const observe = setInterval(() => {
+    try { terminals?.track(); } catch (error) { fail(new Error(messageOf(error))); }
+  }, 500);
+  observe.unref?.();
   child.on('exit', (code, exitSignal) => {
+    clearInterval(observe);
     if (!closing) fail(new Error(`Codex app-server exited (${exitSignal ?? code})${stderr.trim() ? `: ${stderr.trim()}` : ''}`));
     // Do not wait for `close`: a child command may still hold the dead parent's pipes open.
+    try { terminals?.kill(); } catch (error) { failure ??= new Error(messageOf(error)); }
     if (OWN_GROUP) signal('SIGKILL');
   });
-  running.add(close);
+  running.set(close, done);
   child.on('close', (code, exitSignal) => {
+    clearInterval(observe);
     running.delete(close);
     // The parent can exit while commands with redirected stdio remain in its process group.
     // They must not outlive the transport merely because no pipe still holds `close` open.
@@ -151,6 +169,7 @@ export function codexConnection(
   });
   return {
     pid: child.pid,
+    trackProcesses: (pids) => terminals?.track(pids),
     request<T>(method: string, params: Record<string, unknown>): Promise<T> {
       return new Promise<T>((resolve, reject) => {
         if (closing) return reject(failure ?? new Error('Codex app-server connection closed'));

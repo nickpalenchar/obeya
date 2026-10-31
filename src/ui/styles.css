@@ -389,8 +389,10 @@ button.pill:hover { box-shadow: var(--lift); }
   #bar[data-fit~="4"] :is(.queue, #attention) .lbl { display: none; }
 #bar[data-fit~="2"] .config .bar-icon, #bar[data-fit~="3"] .archive .bar-icon, #bar[data-fit~="4"] .queue .bar-icon { display: block; }
 #bar[data-fit~="2"] .config, #bar[data-fit~="3"] :is(.archive .kpill, .new-card), #bar[data-fit~="4"] .queue .kpill { padding-inline: 10px; }
-#bar[data-fit~="5"] :is(#workspaces, #usage), #bar[data-fit~="5"] .help { display: none; }
-#bar[data-fit~="6"] .canvas-pill, #bar[data-fit~="6"] .new-card, #bar[data-fit~="6"] .pill.restart .say { display: none; }
+#bar[data-fit~="5"] #workspaces, #bar[data-fit~="5"] .help { display: none; }
+/* Keep Claude's percentages after the pool gives way; only the very smallest bar drops them. */
+#bar[data-fit~="5"] #usage .face .meter { display: none; }
+#bar[data-fit~="6"] #usage, #bar[data-fit~="6"] .canvas-pill, #bar[data-fit~="6"] .new-card, #bar[data-fit~="6"] .pill.restart .say { display: none; }
 /* the bar's buttons are one height, whatever they hold: text, an icon, a count */
 #bar .pill, .pill.talk-pill { height: 34px; box-sizing: border-box; padding-block: 0; }
 #bar button.pill.help { width: 34px; height: 34px; }
@@ -787,6 +789,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .talk .msg :is(.p-table, .p-code-box, .p-quote) { margin-top: 6px; }
 .talk .msg .p-table table { font-size: 13.5px; }
 .talk .msg .who { font-size: 11px; font-weight: 600; color: var(--idea); }
+.talk .msg .who .agent-model { display: inline-block; margin-left: 7px; color: var(--muted); font-weight: 400; overflow-wrap: anywhere; }
 .talk .msg .who .t { color: var(--muted); font-weight: 400; margin-left: 4px; }
 .talk .msg.by-owner { align-self: flex-end; background: color-mix(in srgb, var(--working) 9%, var(--card)); }
 .talk .msg.by-owner .who { color: var(--working); }

@@ -16,6 +16,7 @@ import {
 import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { endCodexHere } from './codex-rpc';
+import { agentIdentity } from './agent-identity';
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { LOST, remote, sessionFiles, type SshHost } from './hosts';
@@ -39,7 +40,7 @@ export interface AgentTool {
 }
 
 export type AgentEvent =
-  | { type: 'session'; id: string; setting?: AgentSetting }
+  | { type: 'session'; id: string; setting?: AgentSetting; model?: string }
   | { type: 'text'; text: string }
   | { type: 'tool'; name: string; input: Record<string, unknown> }
   /**
@@ -165,7 +166,20 @@ export function withAgentSetting(runtime: AgentRuntime, setting: (role: AgentRol
       const chosen = spec.setting ?? setting(spec.role);
       const { model, effort } = chosen.harness === 'codex' ? (chosen.codex ?? { model: 'default', effort: 'high' as const }) : chosen;
       const { model: _, ...rest } = spec;
-      return runtime.start({ ...rest, setting: chosen, effort, ...(model === 'default' ? {} : { model }) }, firstMessage, images);
+      const identity = { harness: chosen.harness ?? 'claude', ...(model === 'default' ? {} : { model }) };
+      const run = <T>(fn: () => T): T => agentIdentity.run(identity, fn);
+      return run(() => runtime.start({
+        ...rest, setting: chosen, effort, ...(model === 'default' ? {} : { model }),
+        tools: spec.tools.map((tool) => ({ ...tool, run: (args) => run(() => tool.run(args)) })),
+        ...(spec.askOwner ? { askOwner: (request, signal) => run(() => spec.askOwner!(request, signal)) } : {}),
+        onEvent: (event) => {
+          if (event.type === 'session') {
+            const resolved = event.model ?? event.setting?.codex?.model;
+            if (resolved && resolved !== 'default') identity.model = resolved;
+          }
+          run(() => spec.onEvent(event));
+        },
+      }, firstMessage, images));
     },
   };
 }
@@ -363,7 +377,7 @@ export const sdkRuntime: AgentRuntime = {
     const done = (async () => {
       try {
         for await (const m of q) {
-          if (m.type === 'system' && m.subtype === 'init') spec.onEvent({ type: 'session', id: m.session_id });
+          if (m.type === 'system' && m.subtype === 'init') spec.onEvent({ type: 'session', id: m.session_id, model: m.model });
           else if (m.type === 'system' && m.subtype === 'background_tasks_changed') {
             const running = backgroundWork(m.tasks);
             if (JSON.stringify(running) !== JSON.stringify(background)) spec.onEvent({ type: 'background', tasks: running });
@@ -439,8 +453,8 @@ export function withStderr(message: string, stderr: string): string {
  * there they end as before, with their stdin.
  */
 export function endAgentsHere() {
-  endCodexHere();
-  if (!OWN_GROUP) return;
+  const codexDone = endCodexHere();
+  if (!OWN_GROUP) return codexDone;
   for (const p of here) {
     try {
       if (p.pid) process.kill(-p.pid, 'SIGTERM');
@@ -448,6 +462,7 @@ export function endAgentsHere() {
       // gone already
     }
   }
+  return codexDone;
 }
 
 /**

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { pagePolicy } from '../core/frame';
 import { type Notice, waitingOn } from '../core/types';
 import { inform } from './advisor';
+import { agentIdentity } from './agent-identity';
 import { answersDir } from './answers';
 import { CanvasRuntime } from './canvas';
 import { serveAnswerFile } from './demo';
@@ -512,6 +513,35 @@ describe('a thread on a Question card', () => {
     await settle();
     expect(board().item(card.id)!.thread).toEqual({ talk: first, answers: 4, files: 1 });
     expect(board().events(card.id).filter((e) => e.kind === 'talk').map((e) => e.text).slice(-4)).toEqual(['und im Oktober?', 'und November?', 'Oktober: 12 ct.', 'November: noch nichts.']);
+  });
+
+  test('explicit speaker identities survive card logging and moving a researched answer', async () => {
+    const first = await lookedUp('question', 'Research?', 'Answer.', 'look-identity');
+    const identity = { harness: 'claude' as const, model: 'research-model' };
+    store.answerTalk(first, 'Answer.', 'koordinator', [], identity);
+    const card = canvas.answers.toCard(first);
+    expect(board().events(card.id).find((e) => e.text === 'Answer.')?.agent).toEqual(identity);
+    const reply = board().log(card.id, 'say', 'koordinator', 'Reply.', { agent: identity });
+    expect(reply.agent).toEqual(identity);
+    expect(board().events(card.id).find((e) => e.text === 'Reply.')?.agent).toEqual(identity);
+  });
+
+  test('explicitly absent reply and answer identities do not inherit an ambient agent', () => {
+    const talk = board().addTalk('Question', '', null);
+    agentIdentity.run({ harness: 'codex', model: 'unrelated' }, () => {
+      board().replyTalk(talk, 'Reply', undefined, undefined, false, undefined);
+      board().answerTalk(talk, 'Answer', 'koordinator', [], undefined);
+    });
+    expect(board().talk().find((x) => x.id === talk)).toMatchObject({ reply: 'Reply', answer: 'Answer' });
+    expect(board().talk().find((x) => x.id === talk)?.replyAgent).toBeUndefined();
+    expect(board().talk().find((x) => x.id === talk)?.answerAgent).toBeUndefined();
+  });
+
+  test('moving a historical answer does not attribute it to the agent moving it', async () => {
+    const first = await lookedUp('old question', 'Old research?', 'Old answer.', 'old-session');
+    store.answerTalk(first, 'Old answer.', 'koordinator');
+    const card = agentIdentity.run({ harness: 'codex', model: 'unrelated' }, () => canvas.answers.toCard(first));
+    expect(board().events(card.id).find((e) => e.text === 'Old answer.')?.agent).toBeUndefined();
   });
 
   test('a follow-up asked in the sheet after the move goes to the card and stands there', async () => {

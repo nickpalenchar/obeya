@@ -16,7 +16,7 @@ const modelPage = z.object({
   data: z.array(z.object({ model: z.string(), isDefault: z.boolean(), supportedReasoningEfforts: z.array(z.object({ reasoningEffort: z.string() })), inputModalities: z.array(z.string()) })),
   nextCursor: z.string().nullable(),
 });
-const backgroundPage = z.object({ data: z.array(z.object({ itemId: z.string(), command: z.string() })), nextCursor: z.string().nullable() });
+const backgroundPage = z.object({ data: z.array(z.object({ itemId: z.string(), command: z.string(), osPid: z.number().int().positive().nullable().optional() })), nextCursor: z.string().nullable() });
 const turnEvent = z.object({ turn: z.object({ id: z.string(), status: z.string(), error: z.object({ message: z.string(), codexErrorInfo: z.unknown() }).nullable().optional() }) });
 const toolCall = z.object({ threadId: z.string(), turnId: z.string(), callId: z.string(), namespace: z.string().nullable(), tool: z.string(), arguments: z.unknown() });
 const jsonObject = z.record(z.string(), z.unknown());
@@ -66,13 +66,18 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
       const queue: { text: string; images: string[] }[] = [];
       const completed = new Set<string>();
       const toolResults = new Map<string, Promise<unknown>>();
-      const permissionAbort = new AbortController();
+      const permissions = new Map<string | number | symbol, AbortController>();
+      const cancelPermissions = (obsolete = false) => {
+        for (const controller of permissions.values()) controller.abort(obsolete ? 'permission-obsolete' : undefined);
+        permissions.clear();
+      };
       let thread: string | undefined;
       let turn: string | undefined;
       let ready = false;
       let closing = false;
       let pumping = false;
       let settle = false;
+      let idlePending = false;
       let imageSupport = false;
       let background: { id: string; description: string }[] = [];
       let poll: ReturnType<typeof setTimeout> | undefined;
@@ -82,7 +87,7 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
         if (!closing) { emit({ type: 'error', message: messageOf(error) }); emit({ type: 'idle' }); }
       }).finally(() => {
         closing = true;
-        permissionAbort.abort();
+        cancelPermissions();
         clearTimeout(poll);
       });
 
@@ -95,7 +100,7 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
       function close() {
         if (closing) return;
         closing = true;
-        permissionAbort.abort();
+        cancelPermissions();
         clearTimeout(poll);
         // Try the semantic cleanup first, but do not wait a full RPC timeout to begin process
         // shutdown. EOF plus the transport's escalation bounds a stuck app-server as well.
@@ -119,21 +124,26 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
       }
       async function backgrounds() {
         const tasks: typeof background = [];
+        const pids: number[] = [];
         let cursor: string | null = null;
         do {
           const page = backgroundPage.parse(await connection.request('thread/backgroundTerminals/list', { threadId: thread, cursor, limit: 100 }));
           tasks.push(...page.data.map((t) => ({ id: t.itemId, description: t.command })));
+          pids.push(...page.data.flatMap((t) => t.osPid ? [t.osPid] : []));
           cursor = page.nextCursor;
         } while (cursor && !closing);
         if (closing) return;
-        const hadTasks = background.length > 0;
-        if (JSON.stringify(tasks) !== JSON.stringify(background)) emit({ type: 'background', tasks });
+        connection.trackProcesses?.(pids);
+        const ended = background.filter((before) => !tasks.some((now) => now.id === before.id));
+        const changed = JSON.stringify(tasks) !== JSON.stringify(background);
+        if (changed) emit({ type: 'background', tasks });
         background = tasks;
         // Codex's shell terminal doesn't itself create a new turn when it exits, unlike Claude's
         // background task. Wake the coding loop to inspect its outcome rather than report success.
-        if (hadTasks && !tasks.length && !queue.length) queue.push({ text: 'The background commands have ended. Inspect their results and continue your task.', images: [] });
+        if (ended.length) queue.push({ text: `Background commands have ended: ${ended.map((t) => t.description).join('; ')}. Inspect their results and continue your task.`, images: [] });
         clearTimeout(poll);
         if (tasks.length) poll = setTimeout(() => { settle = true; void pump(); }, 1000);
+        return changed;
       }
       async function pump() {
         if (!ready || pumping || closing) return;
@@ -142,10 +152,11 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
           while (!closing) {
             if (settle) {
               settle = false;
-              await backgrounds();
+              const changed = await backgrounds();
               if (closing) break;
-              // A poll during a live turn is not an idle event.
-              if (!turn) emit({ type: 'idle', background: background.length, more: queue.length > 0 });
+              // Unchanged polls must not reset the worker's background timeout.
+              if (!turn && (changed || idlePending)) emit({ type: 'idle', background: background.length, more: queue.length > 0 });
+              idlePending = false;
             }
             if (closing) break;
             const next = queue[0];
@@ -174,6 +185,14 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
       }
       function notification(method: string, params: Record<string, unknown>) {
         if (closing || params.threadId !== thread || !thread) return;
+        if (method === 'serverRequest/resolved') {
+          const id = params.requestId;
+          if (typeof id === 'string' || typeof id === 'number') {
+            permissions.get(id)?.abort('permission-obsolete');
+            permissions.delete(id);
+          }
+          return;
+        }
         try {
           if (method === 'turn/started') {
             const result = turnEvent.parse(params);
@@ -182,6 +201,7 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
             const result = turnEvent.parse(params).turn;
             if ((turn && result.id !== turn) || completed.has(result.id)) return;
             completed.add(result.id);
+            cancelPermissions(true);
             toolResults.clear();
             if (completed.size > 100) completed.delete(completed.values().next().value!);
             turn = undefined;
@@ -190,6 +210,7 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
               emit({ type: 'error', message: result.error?.message ?? 'Codex turn failed', ...(['usageLimitExceeded', 'rateLimitExceeded'].includes(String(info)) ? { limit: {} } : {}) });
             }
             settle = true;
+            idlePending = true;
             void pump();
           } else if (method === 'item/agentMessage/delta') {
             if (params.turnId === turn) emit({ type: 'text', text: z.string().parse(params.delta) });
@@ -211,7 +232,7 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
           // establishes an idle/error boundary; individual items and transient errors never do.
         } catch (error) { fail(error); }
       }
-      async function serverRequest(method: string, params: Record<string, unknown>): Promise<unknown> {
+      async function serverRequest(method: string, params: Record<string, unknown>, requestId?: string | number): Promise<unknown> {
         if (closing || !thread || params.threadId !== thread || !turn || params.turnId !== turn) throw new CodexRpcError(-32602, 'Request does not belong to the active Obeya thread and turn');
         if (method === 'item/tool/call') {
           const call = toolCall.parse(params);
@@ -238,15 +259,23 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
           // Persist the action and its authority, not ephemeral RPC identities. A restarted
           // thread reissues the same approval with new turn/item ids; a one-use owner grant
           // must still match, but a changed command or permission scope must not.
-          const { threadId: _, turnId: __, itemId: ___, reason: ____, availableDecisions: _____, ...input } = params;
+          const { threadId: _, turnId: __, itemId: ___, reason: ____, availableDecisions: _____, startedAtMs: ______, approvalId: _______, ...input } = params;
           // Codex's availableDecisions may restrict a proposed amendment to a choice this spike
           // doesn't understand. Never approve amendments, broad grants, or session-wide authority.
           const decisions = params.availableDecisions;
-          const canAccept = !Array.isArray(decisions) || decisions.includes('accept');
-          const answer = spec.askOwner && canAccept ? await spec.askOwner({ name, input, reason }, permissionAbort.signal) : { allow: false, message: 'No owner approval available' };
-          if (!closing && answer.allow && params.turnId === turn) return { decision: 'accept' };
-          emit({ type: 'denied', name, input, by: spec.askOwner && canAccept && !answer.allow ? 'owner' : 'mode', reason: answer.allow ? 'Turn ended before permission was granted' : answer.message });
-          return { decision: 'decline' };
+          const canAccept = params.grantRoot == null && (!Array.isArray(decisions) || decisions.includes('accept'));
+          const key = requestId ?? Symbol();
+          const controller = new AbortController();
+          permissions.set(key, controller);
+          try {
+            const answer = spec.askOwner && canAccept ? await spec.askOwner({ name, input, reason }, controller.signal) : { allow: false, message: 'No one-action owner approval available' };
+            if (closing || controller.signal.aborted || params.turnId !== turn) return { decision: 'decline' };
+            if (answer.allow) return { decision: 'accept' };
+            emit({ type: 'denied', name, input, by: spec.askOwner && canAccept ? 'owner' : 'mode', reason: answer.message });
+            // Codex's decline, unlike Claude's tool result, carries no explanation to the model.
+            if (spec.askOwner && canAccept && answer.message) send(answer.message);
+            return { decision: 'decline' };
+          } finally { permissions.delete(key); }
         }
         if (method === 'item/permissions/requestApproval') {
           emit({ type: 'denied', name: 'permissions', input: params, by: 'mode', reason: 'Extended permission profiles are not supported by the Codex worker' });

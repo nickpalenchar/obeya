@@ -43,7 +43,13 @@ confirmed tool calls); extended permission profiles are refused. Obeya's tools a
 scope are shared. Bundled skills are supplied as readable skill files, not Claude plugins.
 Context changes reach Codex in Obeya tool results or by steering after native command/file-change
 completion; there is no equivalent of Claude's pre-command foreground-wait hook. Background
-terminals keep the worker active and are cleaned up when its session closes.
+terminals keep the worker active. Each completed background task wakes result inspection even
+while another terminal keeps serving the app; unchanged status polls do not extend the worker's
+background timeout. Closing a session cleans its terminals before the server exits. Since native
+PTYs can leave the app-server's process group, Obeya also tracks observed descendants by process
+identity and terminates them on app-server exit, including an unexpected exit. This is cleanup,
+not an OS containment boundary: a process that detaches and loses its ancestry between observations
+may escape tracking. Windows and Linux native-PTY failure cleanup remain preview acceptance gates.
 
 ### Models and effort
 

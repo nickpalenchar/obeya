@@ -23,7 +23,9 @@ Persistent (SQLite):
   proposals waiting for the owner; the new repository a card is to be built in, and that Obeya made
   it; an idea's brief, open questions and picks; a prototype's idea
   and outcome; a project's plan doc as last read and the plan docs its landed work added;
-- card events (the conversation log, with the owner's screenshots and agents' mocks), workspaces
+- card events (the conversation log, with the owner's screenshots and agents' mocks, and the
+  producing agent's harness and model when known); the Koordinator's replies and looked-up answers
+  each retain their own producing identity, never inferred for old messages; workspaces
   and their leases, what a card changed in a folder without git and its undo there;
 - the Koordinator's conversation with the owner and the threads of looked-up questions (the
   question, its answer and files, the card it moved onto, the step to take once the answer is in),

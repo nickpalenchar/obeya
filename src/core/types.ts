@@ -868,7 +868,14 @@ export const MAX_IMAGE_BYTES = 3_750_000;
 /** The largest other file the owner may drop into what they write; its path goes to the agent. */
 export const MAX_FILE_BYTES = 100_000_000;
 
+/** The harness and model of the session that actually spoke; absent on older messages. */
+export interface AgentIdentity {
+  harness: 'claude' | 'codex';
+  model?: string;
+}
+
 export interface CardEvent {
+  agent?: AgentIdentity;
   id: number;
   cardId: string;
   at: string;
@@ -1119,6 +1126,8 @@ export interface Reshare {
 
 /** One exchange between the owner and the Koordinator. */
 export interface Talk {
+  replyAgent?: AgentIdentity;
+  answerAgent?: AgentIdentity;
   id: number;
   at: string;
   /** What the owner said or typed. */

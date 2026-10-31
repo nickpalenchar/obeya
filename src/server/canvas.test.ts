@@ -1489,10 +1489,11 @@ test("a canvas's pause lasts while one of its paused agents cannot go on, its re
 describe("the skills of a card's agent", () => {
   test('are those Claude Code lists in its repository, with the plugins its agent loads', async () => {
     const asked: SkillPlace[] = [];
+    let useCodex = false;
     const web = join(dir, 'web');
     const c = new CanvasRuntime(
       { name: 'Skills', repos: [{ path: web, clones: 1, settings: { land: 'pr' } }] },
-      { store: new Store(':memory:'), home: join(dir, 'skills-home'), runtime: new FakeRuntime(), forge: noForge, skills: new Skills(async (p) => (asked.push(p), [{ name: 'review', description: 'Reviews' }])) },
+      { store: new Store(':memory:'), home: join(dir, 'skills-home'), runtime: new FakeRuntime(), forge: noForge, skills: new Skills(async (p) => (asked.push(p), [{ name: 'review', description: 'Reviews' }])), agents: () => ({ model: 'opus', effort: 'high', ...(useCodex ? { harness: 'codex' as const } : {}) }) },
     );
     try {
       const task = c.board.create({ title: 'Task', x: 0, y: 0 });
@@ -1505,6 +1506,9 @@ describe("the skills of a card's agent", () => {
         // an idea's agent loads no plugins
         { cwd: read, plugins: [], untrusted: false },
       ]);
+      useCodex = true;
+      c.board.work(task.id, { session_id: 'legacy-claude-session' });
+      expect(await c.skillsOf(task.id)).toEqual([{ name: 'review', description: 'Reviews' }]);
       c.board.work(task.id, { agent_setting: JSON.stringify({ model: 'opus', effort: 'high', harness: 'codex' }) });
       expect((await c.skillsOf(task.id)).map((s) => s.name)).toEqual(['obeya:browser', 'obeya:demo', 'obeya:settings']);
       expect(asked).toHaveLength(2); // Codex discovery never starts a Claude SDK session
