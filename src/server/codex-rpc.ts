@@ -167,6 +167,8 @@ export function codexConnection(
     if (failure) rejectDone(failure);
     else resolveDone();
   });
+  // Refuse to proceed if the initial app-server identity could not be established.
+  try { terminals?.track(); } catch (error) { fail(new Error(messageOf(error))); }
   return {
     pid: child.pid,
     trackProcesses: (pids) => terminals?.track(pids),

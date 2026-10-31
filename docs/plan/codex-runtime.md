@@ -38,8 +38,14 @@ runs and deterministic probes. Its nine findings have corresponding fixes and re
 
 Process tracking is best-effort cleanup, not race-proof containment. A child that detaches and
 loses its ancestry entirely between snapshots can escape observation. Native failure cleanup on
-Windows/Linux is still unverified; do not expand the preview's platform guarantees on the strength
-of the macOS result alone.
+Windows/Linux native Codex cleanup is still unverified; do not expand the preview's platform
+guarantees on the strength of the macOS result alone. On Linux, synthetic app-server tests run in an
+ARM64 container without `ps`: an observed separately grouped child is killed after app-server death,
+an unrelated process survives, and shutdown escalates. Linux process snapshots now read `/proc` and
+use kernel start ticks, not `ps`'s second-resolution creation time. The app-server root is checked
+against its recorded creation identity before new descendants are adopted. Numeric PID and process
+group signalling still has a check-to-signal reuse race; start ticks are not a durable process handle.
+This does not close the containment gap.
 
 New speaker metadata persists the producing harness/model per utterance, including separate
 Koordinator replies and researched answers. Concurrency/persistence tests keep identities isolated;
@@ -65,7 +71,13 @@ hiding the workspace pool; only its smallest stage hides them. No Codex usage is
 ## Remaining phase 1 acceptance and parity
 
 - [ ] Stronger process containment for descendants that escape between observations; native PTY
-  cancellation and shutdown escalation on Windows/Linux as well as macOS.
+  cancellation and shutdown escalation on Windows/Linux as well as macOS. Linux cgroup v2 with
+  atomic placement and `cgroup.kill` requires a delegated writable subtree (not available in a
+  normal Docker container with a read-only cgroup mount). Windows job objects need an atomic
+  suspended start and assignment before the process can fork; nested-job and breakaway behavior
+  require testing. macOS process groups do not contain a descendant that creates a new session.
+  No portable containment boundary has yet been chosen or implemented; avoid treating these
+  mechanisms or synthetic tests as a verified replacement for the current best-effort cleanup.
 - [ ] Rerun live mixed-harness cards, rate-limit recovery and longer-running pause/restart scenarios.
 - [ ] Expose the active session's own identity if working and reading bubbles should name its model.
 - [ ] Explicit repository Codex configuration trust and configuration-change checks; until then,

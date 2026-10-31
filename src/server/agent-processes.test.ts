@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { codexConnection } from './codex-rpc';
+import { AgentProcesses, linuxProcessStat } from './agent-processes';
 
 const handlers = { notification() {}, request: async () => ({}) };
 const beat = (file: string) => { try { return Number(readFileSync(file, 'utf8')); } catch { return 0; } };
@@ -12,6 +13,26 @@ async function until(check: () => boolean) {
   while (!check()) { if (Date.now() > end) throw new Error('Process cleanup probe timed out'); await Bun.sleep(10); }
 }
 function kill(pid: number | undefined) { if (pid) try { process.kill(pid, 'SIGKILL'); } catch {} }
+
+test('Linux stat parsing handles nested parentheses and uses exact process start ticks', () => {
+  const stat = '42 (name ) with ( spaces) S 10 42 42 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 987654321 0';
+  expect(linuxProcessStat(stat)).toEqual({ pid: 42, parent: 10, group: 42, born: '987654321' });
+  expect(linuxProcessStat('42 (truncated) S 10')).toBeUndefined();
+});
+
+test('a missing initial root is reported, never trusted later', () => {
+  const tracker = new AgentProcesses(90001, () => []);
+  expect(() => tracker.track()).toThrow('Cannot establish agent process ownership');
+});
+
+test('a reused app-server PID does not make an unrelated process its descendant', () => {
+  const root = { pid: 90001, parent: process.pid, group: 90001, born: 'original' };
+  let rows = [root];
+  const tracker = new AgentProcesses(root.pid, () => rows);
+  rows = [{ ...root, born: 'replacement' }, { pid: 90002, parent: root.pid, group: 90002, born: 'child' }];
+  tracker.track();
+  expect((tracker as unknown as { owned: Map<number, unknown> }).owned.size).toBe(0);
+});
 
 test.skipIf(process.platform === 'win32')('app-server death kills its separately grouped PTY, not an unrelated PID', async () => {
   const root = mkdtempSync(join(tmpdir(), 'obeya-pty-test-'));

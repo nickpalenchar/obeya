@@ -1,8 +1,39 @@
 // Native PTYs can start a new process group: killing the app-server's group is not sufficient.
 import { spawnSync } from 'node:child_process';
+import { readFileSync, readdirSync } from 'node:fs';
 
 interface ProcessInfo { pid: number; parent: number; group: number; born: string }
-function processes(): ProcessInfo[] {
+
+/** /proc/<pid>/stat's command is parenthesized and can itself contain spaces and parentheses. */
+export function linuxProcessStat(stat: string): ProcessInfo | undefined {
+  const open = stat.indexOf(' (');
+  const end = stat.lastIndexOf(')');
+  if (open < 1 || end <= open) return;
+  const pid = Number(stat.slice(0, open));
+  // Fields after comm start with state (3); ppid is 4, pgrp 5, starttime 22.
+  const fields = stat.slice(end + 1).trim().split(/\s+/);
+  const parent = Number(fields[1]), group = Number(fields[2]), born = fields[19];
+  if (!Number.isSafeInteger(pid) || pid <= 0 || !Number.isSafeInteger(parent) || parent < 0 || !Number.isSafeInteger(group) || group <= 0 || !born || !/^\d+$/.test(born)) return;
+  return { pid, parent, group, born };
+}
+
+function processes(required = new Set<number>()): ProcessInfo[] {
+  if (process.platform === 'linux') {
+    // Some procfs configurations omit inaccessible processes from directory listings.
+    const names = new Set([...readdirSync('/proc'), ...[...required].map(String)]);
+    return [...names].flatMap((name) => {
+      if (!/^\d+$/.test(name)) return [];
+      try {
+        const p = linuxProcessStat(readFileSync(`/proc/${name}/stat`, 'utf8'));
+        return p && p.pid === Number(name) ? [p] : [];
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code ?? '';
+        if (['ENOENT', 'ESRCH'].includes(code)) return []; // exited during the snapshot
+        if (['EACCES', 'EPERM'].includes(code) && !required.has(Number(name))) return []; // unrelated or unobservable
+        throw error; // never silently lose a process already known to belong to the agent
+      }
+    });
+  }
   if (process.platform === 'win32') {
     const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CreationDate | ConvertTo-Json -Compress'], { encoding: 'utf8', windowsHide: true, timeout: 3000 });
     if (r.status !== 0) throw new Error('Cannot inspect agent process ownership');
@@ -25,28 +56,41 @@ function processes(): ProcessInfo[] {
 /** Only register descendants while ownership is provable; remember their creation time against PID reuse. */
 export class AgentProcesses {
   private owned = new Map<number, ProcessInfo>();
-  constructor(private parent: number) {}
+  private rootBorn?: string;
+  private snapshotError?: unknown;
+  constructor(private parent: number, private snapshot: (required: Set<number>) => ProcessInfo[] = processes) {
+    try {
+      const root = this.snapshot(new Set([parent])).find((p) => p.pid === parent && p.parent === process.pid);
+      if (!root) throw new Error('Cannot establish agent process ownership');
+      this.rootBorn = root.born;
+    } catch (error) { this.snapshotError = error; }
+  }
+
+  private table() {
+    return new Map(this.snapshot(new Set([this.parent, ...this.owned.keys()])).map((p) => [p.pid, p]));
+  }
 
   track(pids?: number[]) {
-    const table = new Map(processes().map((p) => [p.pid, p]));
+    if (this.snapshotError) throw this.snapshotError;
+    const table = this.table();
     // A snapshot also captures descendants of terminals we already know, before their parent
     // exits and they are reparented. No process is adopted just because Codex supplied its PID.
     for (const pid of pids ?? table.keys()) {
       const info = table.get(pid);
       let p = info;
       const seen = new Set<number>();
-      while (p && p.pid !== this.parent && this.owned.get(p.pid)?.born !== p.born && !seen.has(p.pid)) {
+      while (p && !(p.pid === this.parent && this.rootBorn !== undefined && p.born === this.rootBorn) && this.owned.get(p.pid)?.born !== p.born && !seen.has(p.pid)) {
         seen.add(p.pid);
         p = table.get(p.parent);
       }
-      if (info && p && (p.pid === this.parent || this.owned.get(p.pid)?.born === p.born) && pid !== this.parent) this.owned.set(pid, info);
+      if (info && p && ((p.pid === this.parent && this.rootBorn !== undefined && p.born === this.rootBorn) || this.owned.get(p.pid)?.born === p.born) && pid !== this.parent) this.owned.set(pid, info);
     }
     // Keep registered identities until transport exit, including descendants whose leader ended.
   }
 
   kill() {
     if (!this.owned.size) return;
-    const table = new Map(processes().map((p) => [p.pid, p]));
+    const table = this.table();
     const targets = new Map<number, ProcessInfo>();
     for (const info of this.owned.values()) {
       const current = table.get(info.pid);

@@ -47,7 +47,9 @@ terminals keep the worker active. Each completed background task wakes result in
 while another terminal keeps serving the app; unchanged status polls do not extend the worker's
 background timeout. Closing a session cleans its terminals before the server exits. Since native
 PTYs can leave the app-server's process group, Obeya also tracks observed descendants by process
-identity and terminates them on app-server exit, including an unexpected exit. This is cleanup,
+identity and terminates them on app-server exit, including an unexpected exit. On Linux it reads
+process identities and their creation ticks from `/proc`, without depending on `ps`; it skips
+unreadable unrelated processes but fails if it cannot inspect one it already owns. This is cleanup,
 not an OS containment boundary: a process that detaches and loses its ancestry between observations
 may escape tracking. Windows and Linux native-PTY failure cleanup remain preview acceptance gates.
 
