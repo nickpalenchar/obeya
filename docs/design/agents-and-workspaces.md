@@ -79,6 +79,11 @@ installed CLI's account catalog; loading failures can be retried, and an unavail
 is shown, not replaced. An account-default choice is resolved to an actual model at first start.
 The card persists its harness, model and effort before starting and retains them across parking,
 restart, replies and changes to defaults. A deliberate fresh start takes the current selection.
+On an individual planned task or an immediately accepted task proposal, the chevron beside the
+start button shows the worker default and lets the owner choose a harness, model and effort for that
+start alone. The ordinary button uses the configured default. The choice is kept while the task is
+scheduled or waits for a workspace, and does not alter the configuration. Unavailable choices and
+catalog errors are visible; a selected unavailable model is not silently replaced.
 Unqualified old session ids mean Claude; Codex locators carry `codex:` and cannot resume in Claude
 or the other way round. A locator alone is not authorization to attach it to another card.
 
