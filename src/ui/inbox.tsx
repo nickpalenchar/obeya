@@ -2,10 +2,10 @@
 // Each entry names its canvas small, its card large and what it waits for lighter; the buttons
 // answer it in one click, and „Zur Karte“ is always there, never the primary one.
 
-import { type RefObject, useEffect, useRef } from 'react';
 import { answerText } from './answer';
 import type { InboxEntry } from '../core/inbox';
 import type { CardAction } from '../core/types';
+import { Docked } from './docked';
 import { Inline, plain } from './markdown';
 import { clock, shortDay, t } from './strings';
 
@@ -70,38 +70,17 @@ const CanvasIcon = () => (
 export function Inbox({
   entries,
   on,
-  button,
-  onClose,
   onGo,
   onReply,
 }: {
   entries: InboxEntry[];
   on: boolean;
-  /** The bar's button, which toggles the inbox itself: a click on it is not one outside. */
-  button: RefObject<HTMLElement | null>;
-  onClose: () => void;
   onGo: (e: InboxEntry) => void;
   onReply: (e: InboxEntry, r: QuickReply) => void;
 }) {
-  const box = useRef<HTMLElement>(null);
-  // a click anywhere else closes it, the bar's button (which toggles it itself) excepted
-  useEffect(() => {
-    if (!on) return;
-    const away = (e: PointerEvent) => {
-      const at = e.target as Node;
-      if (!box.current?.contains(at) && !button.current?.contains(at)) onClose();
-    };
-    addEventListener('pointerdown', away, true);
-    return () => removeEventListener('pointerdown', away, true);
-  }, [on]);
   return (
-    <aside id="inbox" ref={box} className={on ? 'on' : undefined} aria-hidden={!on} aria-label={t.inbox.title}>
-      <header>
-        <h2>{t.inbox.title}</h2>
-        <button className="close" title={t.inbox.close} aria-label={t.inbox.close} onClick={onClose} tabIndex={on ? 0 : -1}>
-          ✕
-        </button>
-      </header>
+    <Docked id="inbox" on={on} label={t.inbox.title}>
+      <h2>{t.inbox.title}</h2>
       {entries.length === 0 ? (
         <p className="empty-inbox">{t.inbox.empty}</p>
       ) : (
@@ -117,11 +96,11 @@ export function Inbox({
               {e.text && <div className="text">{e.kind === 'obeya' ? plain(e.text) : <Inline md={e.text} />}</div>}
               <div className="replies">
                 {quickReplies(e).map((r) => (
-                  <button key={r.label} className={r.primary ? 'btn primary' : 'btn'} title={r.title} tabIndex={on ? 0 : -1} onClick={() => onReply(e, r)}>
+                  <button key={r.label} className={r.primary ? 'btn primary' : 'btn'} title={r.title} onClick={() => onReply(e, r)}>
                     {r.label}
                   </button>
                 ))}
-                <button className="btn" tabIndex={on ? 0 : -1} onClick={() => onGo(e)}>
+                <button className="btn" onClick={() => onGo(e)}>
                   {e.kind === 'obeya' ? t.inbox.goToObeya : t.inbox.goToCard}
                 </button>
               </div>
@@ -129,6 +108,6 @@ export function Inbox({
           ))}
         </ul>
       )}
-    </aside>
+    </Docked>
   );
 }

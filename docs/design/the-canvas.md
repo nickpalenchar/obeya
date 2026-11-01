@@ -30,8 +30,9 @@ too old to answer, or numbers that could not be fetched again for five minutes. 
 machines may use other logins; the bar shows this machine's.
 
 „brauchen dich“ counts what waits for the owner on every canvas, and its click slides out the
-inbox from the right instead of jumping to a card; the button's second click, its ✕, Esc and a click
-beside it close it. The inbox lists every entry across canvases, the one that has waited the shortest
+inbox from the right instead of jumping to a card. The inbox is a sheet like Obeya's and a project's
+(see Sheets): docked to the edge from top to bottom, the canvas moved aside, one sheet open at a
+time, the same width and grip; the button's second click, the sheet's ✕ and Esc close it. The inbox lists every entry across canvases, the one that has waited the shortest
 time first. An entry shows its canvas small on top (name and icon, with since when it waits), the
 card's title large and, lighter, what the card waits for (the question, the summary, the proposal's
 text). Buttons answer an entry in one click, and exactly one of them, the default, is primary:
