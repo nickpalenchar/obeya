@@ -16,7 +16,7 @@ if (process.platform === 'win32' || !argv.length) {
 }
 
 // Optional report-only Linux registry. The child waits at a private gate until its identity has
-// been recorded. The prototype's records are not fsynced and are not a production crash guarantee.
+// been recorded. Record writes are fsynced, but the prototype is not a production crash guarantee.
 const registryRoot = process.env.OBEYA_PROTO_REGISTRY;
 let registry: ReturnType<typeof createGeneration> | undefined;
 if (registryRoot) {

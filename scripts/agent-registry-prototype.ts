@@ -1,11 +1,11 @@
 // Report-only experiment. Not integrated with Obeya and not a process-killing authority.
-// Use only a private, local scratch directory: path hardening and durable fsync are not implemented.
+// Use only a private, local scratch directory: path hardening and filesystem guarantees are not established.
 // A per-generation SQLite write lock is a kernel-backed lease on supported local filesystems.
 // Separate files keep record commits independent of the long-lived lease transaction.
 import { Database } from 'bun:sqlite';
 import { randomUUID } from 'node:crypto';
-import { chmodSync, lstatSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { chmodSync, closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { linuxProcessStat } from '../src/server/agent-processes';
 
@@ -56,8 +56,15 @@ function release(db: Database) {
 function atomicRecord(file: string, record: RegistryRecord) {
   const temporary = `${file}.${randomUUID()}.tmp`;
   try {
-    writeFileSync(temporary, JSON.stringify(record) + '\n', { mode: 0o600, flag: 'wx' });
+    const fd = openSync(temporary, 'wx', 0o600);
+    try {
+      writeFileSync(fd, JSON.stringify(record) + '\n');
+      fsyncSync(fd);
+    } finally { closeSync(fd); }
     renameSync(temporary, file);
+    // Persist the directory entry as well as the file. Failure is not a successful publication.
+    const directory = openSync(dirname(file), 'r');
+    try { fsyncSync(directory); } finally { closeSync(directory); }
   } finally { try { unlinkSync(temporary); } catch { /* renamed or not created */ } }
 }
 

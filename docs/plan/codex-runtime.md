@@ -175,10 +175,11 @@ scratch directory: it establishes its lease before launch and records observed i
 start ticks still match, retaining previous observations. A shell waits on a private pipe before
 executing agent code; the supervisor first records the gated child's identity, then releases it.
 A Linux ARM64 container test checks that record from the first line of child code. The record is
-not fsynced, so this is not yet the durable launch gate required below; a crash between later
+fsynced along with its directory before release; filesystem and lease durability under power loss,
+initial directory creation, and write-failure boundaries remain unverified. A crash between later
 observation and publication still loses that observation. A synthetic Linux ARM64 container test
 kills the supervisor and inspects the surviving worker and
-separately grouped child; neither is killed by the report. Windows, hostile paths, durable fsync,
+separately grouped child; neither is killed by the report. Windows, hostile paths, power-loss durability,
 filesystem lock behavior beyond local tests, real agents and packaged Obeya are unverified. This is
 not a production registry, a startup sweep or proof that an identity is safe to signal.
 
