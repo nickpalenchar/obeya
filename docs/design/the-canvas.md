@@ -242,6 +242,9 @@ code, a generic one otherwise.
 
 ### Decisions
 
+- **„brauchen dich“ opens an inbox instead of jumping to the next card** (owner, 2026-11-01): with
+  several things waiting, a jump hides what the others are and cannot answer anything. Entries are
+  newest first, as in a mail inbox. Rejected: keeping the jump on the button (Tab keeps it).
 - **The look is the index card** (2026-10-10), prototyped beside a Swiss editorial card (black
   frame, solid state band, Schibsted Grotesk) that read better from afar but looked like a known
   designer style; a kanji seal and a kanban ticket were not pursued. Ruled lines and inks too close
