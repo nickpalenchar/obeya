@@ -21,7 +21,7 @@ import { Setup } from './setup';
 import { Phone, phoneView } from './phone';
 import { KoordinatorSheet } from './koordinator';
 import { QueuePill } from './queue';
-import { depsOf } from './deps';
+import { depsOf, visibleDotSides } from './deps';
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
 import { Sign, Wordmark } from './logo';
 import { DOUBLE_CLICK_KNOWN, Help, HelpButton, HELP_KEY_KNOWN, NewCardHint } from './help';
@@ -985,7 +985,7 @@ function Canvas({
   // the card the pointer is on, for the waits around it
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [connection, setConnection] = useState<{ from: string; side: string; x: number; y: number; target?: string } | null>(null);
-  const [handle, setHandle] = useState<{ id: string; side: string } | null>(null);
+  const [handles, setHandles] = useState<string[]>([]);
   const connectable = (item: Item) => item.source !== 'plan' && item.kind !== 'project';
   // Shift + drag on the canvas draws a lasso, Shift + click on a card takes it in or out: what is marked
   // moves together and goes into a group at once through the colour ring
@@ -1192,14 +1192,10 @@ function Canvas({
       return;
     }
     const pointer = toWorld(camRef.current, e.clientX, e.clientY);
-    const handles = placed.filter(({ item }) => connectable(item)).flatMap(({ item, b }) => [
-      { id: item.id, side: 'top', x: b.x + b.w / 2, y: b.y },
-      { id: item.id, side: 'right', x: b.x + b.w, y: b.y + b.h / 2 },
-      { id: item.id, side: 'bottom', x: b.x + b.w / 2, y: b.y + b.h },
-      { id: item.id, side: 'left', x: b.x, y: b.y + b.h / 2 },
-    ]);
-    const nearest = handles.map((h) => ({ ...h, distance: Math.hypot(h.x - pointer.x, h.y - pointer.y) * camRef.current.s })).filter((h) => h.distance <= 16).sort((a, b) => a.distance - b.distance)[0];
-    setHandle(nearest ? { id: nearest.id, side: nearest.side } : null);
+    const visible = placed.filter(({ item }) => connectable(item)).flatMap(({ item, b }) =>
+      visibleDotSides(b, pointer, camRef.current.s).map((side) => `${item.id}:${side}`),
+    );
+    setHandles((previous) => previous.length === visible.length && previous.every((h, i) => h === visible[i]) ? previous : visible);
     if (lassoRef.current) {
       lassoRef.current = [...lassoRef.current, { x: e.clientX, y: e.clientY }];
       setLasso(lassoRef.current);
@@ -1535,7 +1531,7 @@ function Canvas({
               ),
             )}
             {placed.filter(({ item }) => connectable(item)).map(({ item, b }) => <div key={`handles:${item.id}`} data-id={item.id} className={`connection-handles ${cardClass(item, underway[item.id]).replace(/^card\s*/, '')}${depOf(item.id) ? ' dep-highlight' : ''}${connection?.target === item.id ? ' target' : ''}`} style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
-              {['top', 'right', 'bottom', 'left'].map((side) => <button key={side} className={`connection-dot ${side}${!connection && handle?.id === item.id && handle.side === side ? ' visible' : ''}`} title={t.deps.connect} aria-label={t.deps.connect} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); const p = toWorld(camRef.current, e.clientX, e.clientY); setConnection({ from: item.id, side, ...p }); }} />)}
+              {['top', 'right', 'bottom', 'left'].map((side) => <button key={side} className={`connection-dot ${side}${!connection && handles.includes(`${item.id}:${side}`) ? ' visible' : ''}`} title={t.deps.connect} aria-label={t.deps.connect} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); const p = toWorld(camRef.current, e.clientX, e.clientY); setConnection({ from: item.id, side, ...p }); }} />)}
             </div>)}
             {planDirs?.map((d, n) => (
               <PlanDirNote

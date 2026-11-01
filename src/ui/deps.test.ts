@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { Item } from '../core/types';
-import { depsOf } from './deps';
+import { depsOf, visibleDotSides } from './deps';
 
 const card = (id: string, ...behind: string[]) =>
   ({ id, kind: 'task', state: behind.length ? 'planned' : 'working', title: id, body: '', x: 0, y: 0, source: 'manual', repo: 'r', ...(behind.length && { queue: { behind, reason: '' } }) }) as Item;
@@ -61,4 +61,15 @@ test('a card snoozed until another card gets somewhere waits for that card', () 
   expect([...d.after]).toEqual(['S']);
   expect(depsOf('F', all)!.edges.sort()).toEqual([['F', 'R'], ['R', 'S']]);
   expect(depsOf('R', [snoozed])).toBeUndefined();
+});
+
+
+test('a dot appears near its centre or anywhere near its edge, at any zoom', () => {
+  const b = { x: 0, y: 0, w: 300, h: 100 };
+  expect(visibleDotSides(b, { x: 150, y: -18 }, 1)).toEqual(['top']);
+  expect(visibleDotSides(b, { x: 150, y: -19 }, 1)).toEqual([]);
+  expect(visibleDotSides(b, { x: 30, y: -6 }, 1)).toEqual(['top']);
+  expect(visibleDotSides(b, { x: 30, y: -7 }, 1)).toEqual([]);
+  expect(visibleDotSides(b, { x: 150, y: -36 }, 0.5)).toEqual(['top']);
+  expect(visibleDotSides(b, { x: 0, y: 0 }, 1)).toEqual(['top', 'left']);
 });
