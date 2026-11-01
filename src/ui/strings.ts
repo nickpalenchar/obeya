@@ -1066,6 +1066,7 @@ const de = {
     close: 'Schließen',
     answered: 'Obeya hat geantwortet',
     pickHint: 'Die Wahl des Agenten',
+    answeredWith: (option: string) => `Geantwortet: ${option}`,
   },
   phone: {
     forYou: 'Für dich',
@@ -2946,6 +2947,7 @@ const en: Strings = {
     close: 'Close',
     answered: 'Obeya answered',
     pickHint: 'The agent’s choice',
+    answeredWith: (option: string) => `Answered: ${option}`,
   },
   phone: {
     forYou: 'For you',
