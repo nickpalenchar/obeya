@@ -99,12 +99,33 @@ the Claude result makes crash cleanup relevant to both harnesses. No `app.keep` 
 involved. Probe and detailed output: `/tmp/obeya-runtime-owner-crash.ts` and
 `/tmp/obeya-{owner,agent}-crash-{codex,claude}.log` on the test machine.
 
+Real Codex card probes (2026-10-31) used a scratch server and trusted settings whose `app.keep`
+logs and succeeds, while `app.stop` logs and signals the test app. A Python heartbeat launched as
+a native background terminal was alive on a waiting question, but `app.keep` had not run while
+that background task remained active. On graceful Obeya shutdown the heartbeat stopped; neither
+settings command had run. A second attempt launched it via a shell `&` with redirected stdio: the
+app was already dead by the time `app.keep` ran, while `app.stop` did not run. Thus neither
+attempt demonstrates that an app which `app.keep` actually protected survives session closure;
+the latter can even report keeping an app that already exited. A third launcher created a separate
+session for the heartbeat and remained its parent for 1.5 seconds so it could be observed. Here
+`app.keep` ran while the heartbeat was alive (57 ticks); graceful server shutdown then killed it
+(58 ticks, PID gone), without invoking `app.stop`. **Decision (owner, 2026-10-31):** `app.keep`
+protects an app from waiting-card parking, not an unconditional right to survive shutdown. A
+graceful shutdown waits; a forced shutdown is chosen precisely because the owner does not want to
+wait, and stops remaining processes as best it can without waiting for them to finish. A crash is
+separate and cannot run graceful shutdown. Check the observed transition against these semantics
+before calling it a defect. All scratch servers stopped and
+test-owned PIDs were cleaned up. Probe source and last report: `/tmp/obeya-keep-card-probe.ts`,
+`/tmp/obeya-keep-card-report.json` on the test machine.
+
 - [ ] Finish and review the current process-group and observed-descendant cleanup, including the
   Linux `/proc` changes. Check normal stop, forced stop and agent death, PID reuse, unrelated
   canaries and shutdown escalation. Verify how this interacts with app parking and `app.keep`;
-  do not silently replace their existing lifecycle with a card-wide kill switch. Native Windows
-  and Linux Codex behavior remains unverified. Record the actual results and limitations, not a
-  containment guarantee.
+  distinguish graceful shutdown, explicit forced shutdown and crashes. `app.keep` governs
+  waiting-card parking; do not invent an app-process identity contract merely to keep the app alive
+  through forced shutdown. Check how Codex's semantic background-terminal cleanup and process
+  groups interact with those lifecycle choices. Native Windows and Linux Codex behavior remains
+  unverified. Record the actual results and limitations, not a containment guarantee.
 - [ ] Run comparable real Claude and Codex probes on macOS in scratch repositories and an isolated
   Obeya home: agent death and Obeya death, with a separately grouped background process and an
   unrelated canary. Check whether the app is meant to remain running, clean up every test-owned
