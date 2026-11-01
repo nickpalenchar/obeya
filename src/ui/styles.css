@@ -2171,3 +2171,17 @@ button.link:hover { text-decoration: underline; }
 .connection-handles.visible .connection-dot, .connection-dot:focus-visible { opacity: 1; pointer-events: auto; }
 .connection-dot.top { left: 50%; top: 0; } .connection-dot.right { left: 100%; top: 50%; }
 .connection-dot.bottom { left: 50%; top: 100%; } .connection-dot.left { left: 0; top: 50%; }
+
+/* A split start button keeps the usual start immediate and the one-off choice discoverable. */
+.start-agent { position: relative; }
+.start-agent-buttons { display: flex; }
+.start-agent-buttons > .btn:first-child { border-radius: 6px 0 0 6px; }
+.start-agent-buttons > .start-agent-chevron { border-radius: 0 6px 6px 0; border-left: 1px solid var(--bg); min-width: 36px; }
+.start-agent-menu { position: absolute; z-index: 30; left: 0; bottom: calc(100% + 8px); width: min(380px, 85vw); max-height: min(70vh, 600px); overflow-y: auto; background: var(--bg); color: var(--ink); border: 1px solid var(--ink); border-radius: 8px; padding: 16px; box-shadow: 0 6px 24px #0003; }
+.start-agent-menu label { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0; }
+.start-agent-menu select { min-width: 0; max-width: 65%; }
+.start-agent-menu p { margin: 0 0 10px; }
+@media (max-width: 600px) {
+  #panel .actions { flex-wrap: wrap; }
+  .start-agent-menu { width: min(380px, calc(100vw - 140px)); }
+}

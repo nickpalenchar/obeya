@@ -640,7 +640,7 @@ export class Workers {
    * free) throw at once; where the clone it took turns out not to be clean and no other is, the card
    * is planned again and the promise rejects with that shortage.
    */
-  start(cardId: string): Promise<void> {
+  start(cardId: string, selected?: AgentSetting): Promise<void> {
     const card = this.card(cardId);
     if (card.kind === 'project') throw new BadRequest('project', 'a project is worked on through its workstreams');
     if (card.state !== 'planned') throw new BadRequest('notPlanned', 'only a planned card can be started');
@@ -658,7 +658,7 @@ export class Workers {
     const contribution = contributionOf(row);
     const pr = contribution ? JSON.stringify({ url: contribution.url, number: contribution.number, seen: [], reported: [] } satisfies PrState) : null;
     // a fresh session knows of no app that was stopped
-    this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, agent_setting: null, pr, approved_at: null, parked: null, paused: null, pausing: null, snoozed: null, app: null });
+    this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, agent_setting: selected ? JSON.stringify(selected) : null, pr, approved_at: null, parked: null, paused: null, pausing: null, snoozed: null, app: null });
     const t = this.o.board.t.worker;
     this.o.board.log(card.id, 'state', 'obeya', this.folder ? t.startedInFolder : contribution ? t.reviewStarted(contribution.number, contribution.author) : t.started(branch));
     const launch = (headProblem?: string | null) => this.launch(card.id, this.briefing(card, branch, !!row.branch, headProblem), undefined, this.taskImages(card));

@@ -105,6 +105,13 @@ function write(home: string, settings: Settings) {
 
 const codexChoice = z.object({ model: z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9_.:/-]+$/), effort: z.enum(AGENT_EFFORTS) }).strict();
 
+/** Validate a one-start choice from an untrusted client without changing the defaults. */
+export function startAgentSetting(input: unknown): AgentSetting {
+  const parsed = z.object({ model: z.enum(AGENT_MODELS), effort: z.enum(AGENT_EFFORTS), harness: z.enum(['claude', 'codex']).optional(), codex: codexChoice.optional() }).strict().safeParse(input);
+  if (!parsed.success || (parsed.data.harness === 'codex' && !parsed.data.codex)) throw new BadRequest('invalid', 'invalid worker harness, model or effort');
+  return parsed.data;
+}
+
 /** The known choices in a file's `agents` that differ from the defaults; anything else in it is left out. */
 function agentsOf(input: unknown): Partial<Record<AgentRole, Partial<AgentSetting>>> {
   const o = (input && typeof input === 'object' ? input : {}) as Record<string, { model?: unknown; effort?: unknown; harness?: unknown; codex?: unknown } | undefined>;

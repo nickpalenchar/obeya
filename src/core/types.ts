@@ -1343,7 +1343,7 @@ export interface CardPatch {
 /** Owner actions on a card's work, posted to `/api/c/:canvas/cards/:id/act`. */
 export type CardAction =
   /** On a project: all its planned workstreams go to the Koordinator, which orders them. */
-  | { action: 'start' }
+  | { action: 'start'; agent?: AgentSetting }
   /** A card the owner closed without a title (`nameless`): Obeya names it from its text. */
   | { action: 'name' }
   | { action: 'stop' }
@@ -1405,7 +1405,7 @@ export type CardAction =
    * `picks`: the options the owner chose for each of its questions. While the proposal is reworked,
    * it is accepted and started once the new text is there, unless that asks questions.
    */
-  | { action: 'accept'; start?: boolean; idea?: boolean; picks?: string[][] }
+  | { action: 'accept'; start?: boolean; idea?: boolean; picks?: string[][]; agent?: AgentSetting }
   /** A proposal: accepting it after its revision is taken back. */
   | { action: 'unaccept' }
   /** A proposal, or a card whose agent withdrew or replaced it since (`Item.superseded`): it goes, its worker stopped. */
