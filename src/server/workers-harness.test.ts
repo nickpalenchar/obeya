@@ -29,6 +29,22 @@ test('pins before first session id and resumes the same harness after settings c
   workers.shutdown();
 });
 
+test('a choice made for one start reaches the worker and is kept across replies and restarts, whatever the default', async () => {
+  const chosen: AgentSetting = { model: 'sonnet', effort: 'low' };
+  let choice: AgentSetting = AGENT_DEFAULTS.worker;
+  using(() => choice);
+  const card = manual();
+  await workers.start(card.id, chosen);
+  expect(runtime.last.spec).toMatchObject({ setting: chosen });
+  expect(board.events(card.id).some((e) => e.text.includes('Claude Code · sonnet · low'))).toBe(true);
+  runtime.last.emit({ type: 'session', id: 'session-1' });
+  workers.shutdown(); await flush();
+  choice = codex;
+  using(() => choice); workers.resumeAll();
+  expect(runtime.last.spec).toMatchObject({ resume: 'session-1', setting: chosen });
+  workers.shutdown();
+});
+
 test('legacy session is Claude even when new worker default is Codex', async () => {
   const card = manual(); await workers.start(card.id);
   runtime.last.emit({ type: 'session', id: 'legacy-session' });

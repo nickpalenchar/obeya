@@ -99,6 +99,17 @@ test("an agent of a group starts with the group's model and effort, asked at eve
   expect(fake.last.spec.model).toBeUndefined();
 });
 
+test("a setting a start carries wins over its group's, and its model and effort reach the runtime", () => {
+  const fake = new FakeRuntime();
+  const runtime = withAgentSetting(fake, () => ({ model: 'opus', effort: 'high' }));
+  const spec = { cwd: '/r', system: '', tools: [], onEvent: () => {}, role: 'worker' as const };
+  runtime.start({ ...spec, setting: { model: 'haiku', effort: 'low' } });
+  expect(fake.last.spec).toMatchObject({ model: 'haiku', effort: 'low', setting: { model: 'haiku', effort: 'low' } });
+  const codex = { model: 'opus' as const, effort: 'high' as const, harness: 'codex' as const, codex: { model: 'gpt-test', effort: 'medium' as const } };
+  runtime.start({ ...spec, setting: codex });
+  expect(fake.last.spec).toMatchObject({ model: 'gpt-test', effort: 'medium', setting: codex });
+});
+
 test('worker harness choices retain separate Claude and Codex options and reject unsupported roles', () => {
   const home = scratchHome();
   const codex = { model: 'codex-test', effort: 'low' as const };

@@ -66,6 +66,8 @@ const de = {
     newSession: (earlier: string) => `Neue Sitzung. ${earlier}`,
     earlierRun: (session: string) => `Der frühere Lauf (Sitzung ${session}) bleibt für die Arbeitsrückschau erhalten.`,
     started: (branch: string) => `Agent gestartet auf ${branch}.`,
+    /** The owner chose the worker's harness, model and effort for this start. */
+    startedWith: (choice: string) => `Für diesen Start gewählt: ${choice}.`,
     /** A review card started: its worker reviews the contributor's pull request. */
     reviewStarted: (n: number, author: string) => `Agent gestartet: Er prüft PR #${n} von ${author}.`,
     /** The worker sent the owner's change request to the contributor as a review on the PR. */
@@ -543,6 +545,7 @@ const en: Messages = {
     restarted: (earlier: string) => `Started from scratch. ${earlier}`,
     newSession: (earlier: string) => `New session. ${earlier}`,
     earlierRun: (session: string) => `The earlier run (session ${session}) is kept for the work retrospective.`,
+    startedWith: (choice: string) => `Chosen for this start: ${choice}.`,
     started: (branch: string) => `Agent started on ${branch}.`,
     reviewStarted: (n: number, author: string) => `Agent started: it reviews PR #${n} by ${author}.`,
     changesRequested: (n: number, author: string) => `Change request sent as a review comment on PR #${n}. Waiting for ${author}.`,
