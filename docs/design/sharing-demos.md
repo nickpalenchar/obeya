@@ -2,6 +2,8 @@
 
 A chapter of the [design doc](../design.md), whose header says how it is written.
 
+Captions show initially on shared and exported videos and can be turned off and on in the player.
+
 ### Sharing a demo
 
 Every demo, video or HTML artifact, has a compact "Teilen" button at the right end of its own line

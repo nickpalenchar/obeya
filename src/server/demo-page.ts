@@ -231,6 +231,7 @@ export const credit = (language: PageLanguage) => `<footer class="credit">${PAGE
 const CUES = (language: PageLanguage) => `
   const vtt = document.getElementById('captions').textContent;
   const track = v.addTextTrack('captions', ${JSON.stringify(PAGE_WORDS[language].captions)}, ${JSON.stringify(language)});
+  track.mode = 'showing';
   const sec = (t) => t.split(':').reduce((a, x) => a * 60 + Number(x), 0);
   for (const block of vtt.replace(/\\r/g, '').split(/\\n\\s*\\n/)) {
     const lines = block.split('\\n');
@@ -341,7 +342,7 @@ export function demoPageHtml(p: DemoPageParts): string {
     : '';
   const src = 'src' in p.video ? ` src="${esc(p.video.src)}"` : '';
   const link = changeLink(p, w);
-  const track = 'src' in p.captions ? `<track kind="captions" src="${esc(p.captions.src)}" srclang="${language}" label="${w.captions}">` : '';
+  const track = 'src' in p.captions ? `<track kind="captions" src="${esc(p.captions.src)}" srclang="${language}" label="${w.captions}" default>` : '';
   return `${pageStart(p, language)}<div class="grid">
   <div class="player"><video controls preload="metadata"${src}${p.poster ? ` poster="${esc(p.poster)}"` : ''}>${track}</video><button class="start" aria-label="${w.play}"><span><svg viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg></span></button></div>
   <div>${chapters}${link ? `<div class="pr">${link}</div>` : ''}</div>
@@ -407,7 +408,7 @@ export function stackedPageHtml(p: StackedPageParts): string {
       ? `<ol>${d.chapters.map(([at, title], j) => `<li><button data-at="${at}"${j === 0 ? ' class="on"' : ''}><span class="t">${mmss(at)}</span>${esc(title)}</button></li>`).join('')}</ol>`
       : '';
     return `<div class="grid">
-  <div class="player"><video controls preload="metadata" src="${esc(d.base)}demo.mp4"${d.poster ? ` poster="${esc(d.base)}poster.jpg"` : ''}><track kind="captions" src="${esc(d.base)}captions.vtt" srclang="${language}" label="${w.captions}"></video><button class="start" aria-label="${w.play}"><span><svg viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg></span></button></div>
+  <div class="player"><video controls preload="metadata" src="${esc(d.base)}demo.mp4"${d.poster ? ` poster="${esc(d.base)}poster.jpg"` : ''}><track kind="captions" src="${esc(d.base)}captions.vtt" srclang="${language}" label="${w.captions}" default></video><button class="start" aria-label="${w.play}"><span><svg viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg></span></button></div>
   <div>${chapters}${link ? `<div class="pr">${link}</div>` : ''}</div>
 </div>`;
   };

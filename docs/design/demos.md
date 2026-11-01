@@ -340,7 +340,8 @@ relabel an element, a scene clears its highlights first.
 ### The demo on the card
 
 The card shows the demo on the left, beside the conversation (see Card layout). Obeya serves video,
-poster and captions (with range requests) and takes the chapter times from the captions. A range is
+poster and captions (with range requests) and takes the chapter times from the captions. Captions
+show initially and can be turned off and on in the video player. A range is
 read from disk at once and answered in one piece, up to 8 MiB per answer, the player asking for the
 rest, and so is a whole file of up to 8 MiB (the poster, the captions). An answer carries only what
 the file holds when it is read, with headers to match: a file a retake cuts meanwhile gives a

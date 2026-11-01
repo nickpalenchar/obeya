@@ -1325,12 +1325,13 @@ describe('exporting a demo, where the repository has no demo site', () => {
     expect(html).toContain('<button class="start" aria-label="Play">');
     expect(html).toContain(`>View pull request</a>`);
     expect(html).toContain(`v.addTextTrack('captions', "English", "en")`);
+    expect(html).toContain("track.mode = 'showing'");
     for (const german of ['Deutsch', 'Abspielen', 'Demo vom', 'ansehen', 'lang="de"']) expect(html).not.toContain(german);
     // a site's page, with the caption file beside it, names the track in English too
     const parts = { title: 'CSV export', text: '', chapters: [], pr: null, when: '', tabTitle: '', video: { src: 'demo.mp4' }, captions: { src: 'captions.vtt' } };
-    expect(demoPageHtml({ ...parts, language: 'en' })).toContain('<track kind="captions" src="captions.vtt" srclang="en" label="English">');
+    expect(demoPageHtml({ ...parts, language: 'en' })).toContain('<track kind="captions" src="captions.vtt" srclang="en" label="English" default>');
     // without a language the page is German
-    expect(demoPageHtml(parts)).toContain('<track kind="captions" src="captions.vtt" srclang="de" label="Deutsch">');
+    expect(demoPageHtml(parts)).toContain('<track kind="captions" src="captions.vtt" srclang="de" label="Deutsch" default>');
   });
 
   test('a demo without its page gets one written first, kept for the next time', async () => {
