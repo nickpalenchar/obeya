@@ -38,7 +38,9 @@ Other roles, setup and the usage meter remain Claude-based; Codex transcript-bas
 are not available. An unsupported capability fails visibly, never by substituting Claude.
 
 Codex keeps its native workspace-write sandbox (its workspace and the temporary directories, plus the
-demos directory where it makes the demos it hands over) and on-request approvals, not Claude's `auto`
+demos directory where it makes the demos it hands over; `OBEYA_CODEX_SANDBOX=danger-full-access` in
+Obeya's environment lifts the sandbox for every Codex worker, a stopgap, with Codex asking only for
+what it holds dangerous) and on-request approvals, not Claude's `auto`
 classifier or pre-command hooks. Approvals use the same owner question as Claude (see Refused and
 confirmed tool calls); extended permission profiles are refused. A command that a `Bash` rule of
 the repository's `.claude/settings.json` allow list covers, as the owner last confirmed it, is not
