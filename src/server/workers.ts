@@ -7,10 +7,10 @@ import type { RepoAdapter } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import { type Language, LANGUAGE_NAMES, LANGUAGES, ownersLanguage, repositoryLanguage } from '../core/locale';
 import { MESSAGES, type Messages, type Pause } from '../core/messages';
-import { realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { basename, isAbsolute } from 'node:path';
 import { type CardFile, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
-import { DEFAULT_DEMO_DIRECTORY } from '../../plugin/skills/demo/lib/settings.ts';
+import { DEFAULT_DEMO_DIRECTORY, expandHome } from '../../plugin/skills/demo/lib/settings.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { AGENT_DEFAULTS, type AgentSetting, answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, ownWords, pickedAnswer, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, SNOOZE_LIMIT, type Spot, type Superseded, type SpotInput, started } from '../core/types';
 import { BadRequest, type Board, replyNote, type Retracted, type StoredDemo, titleKey } from './board';
@@ -2620,6 +2620,9 @@ export class Workers {
     const env = this.env();
     // a plan folder outside the repository is the worker's to tick its workstream in, on this machine
     const plans = live.host ? null : outsidePlanDir(this.o.adapter.planDocs.dir);
+    // a Codex worker's sandbox writes only in its workspace and the temporary directories: the demos directory, where it makes the demos it hands over, is the one more place it may write
+    const demos = live.host || setting.harness !== 'codex' ? null : expandHome(this.demosDir(cardId));
+    const dirs = [plans, demos && isAbsolute(demos) && existsSync(demos) ? demos : null].filter((d): d is string => !!d);
     // a review card's workspace holds a stranger's code: its Claude Code settings (hooks, MCP servers) and
     // CLAUDE.md are the contributor's, so the session reads none of them, the default branch's CLAUDE.md instead
     const review = !!contributionOf(row);
@@ -2629,7 +2632,7 @@ export class Workers {
         cwd: row.workspace,
         role: 'worker',
         setting,
-        ...(plans ? { dirs: [plans] } : {}),
+        ...(dirs.length ? { dirs } : {}),
         ...(review ? { untrusted: true } : {}),
         system: `${this.system(preferences, !!row.prototype_of, this.o.board.item(cardId))}${notes ? `\n\nThe repository's CLAUDE.md, as its default branch has it:\n\n${notes}` : ''}`,
         tools: this.tools(cardId, live, !!row.prototype_of),

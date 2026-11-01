@@ -1,4 +1,7 @@
 import { expect, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import { AGENT_DEFAULTS, type AgentSetting } from '../core/types';
 import { Workers } from './workers';
@@ -46,4 +49,35 @@ test('a worker restarted deliberately takes the new default instead of its old h
   expect(runtime.last.spec.resume).toBeUndefined();
   expect(runtime.last.spec.setting).toEqual(AGENT_DEFAULTS.worker);
   workers.shutdown();
+});
+
+/** The `dirs` a worker with this setting starts with, the demos directory being `demos`. */
+async function dirsWith(choice: AgentSetting, demos: () => string) {
+  setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, workspaces: 'clones', land: 'main' }, agentSetting: () => choice, demoDirectory: demos }));
+  await workers.start(manual().id);
+  const dirs = runtime.last.spec.dirs;
+  workers.shutdown();
+  return dirs;
+}
+
+test('a Codex worker may write in the demos directory', async () => {
+  const demos = mkdtempSync(join(tmpdir(), 'obeya-demos-'));
+  try {
+    expect(await dirsWith(codex, () => demos)).toEqual([demos]);
+  } finally {
+    rmSync(demos, { recursive: true, force: true });
+  }
+});
+
+test('a demos directory that is not there yet is not offered as a place to write', async () => {
+  expect(await dirsWith(codex, () => join(tmpdir(), 'obeya-demos-missing-dir'))).toBeUndefined();
+});
+
+test('a Claude worker gets no extra directory for the demos', async () => {
+  const demos = mkdtempSync(join(tmpdir(), 'obeya-demos-'));
+  try {
+    expect(await dirsWith(AGENT_DEFAULTS.worker, () => demos)).toBeUndefined();
+  } finally {
+    rmSync(demos, { recursive: true, force: true });
+  }
 });

@@ -37,7 +37,8 @@ not covered by Obeya's repository-trust dialog. The user's global Codex configur
 Other roles, setup and the usage meter remain Claude-based; Codex transcript-based work retrospectives
 are not available. An unsupported capability fails visibly, never by substituting Claude.
 
-Codex keeps its native workspace-write sandbox and on-request approvals, not Claude's `auto`
+Codex keeps its native workspace-write sandbox (its workspace and the temporary directories, plus the
+demos directory where it makes the demos it hands over) and on-request approvals, not Claude's `auto`
 classifier or pre-command hooks. Approvals use the same owner question as Claude (see Refused and
 confirmed tool calls); extended permission profiles are refused. A command that a `Bash` rule of
 the repository's `.claude/settings.json` allow list covers, as the owner last confirmed it, is not
