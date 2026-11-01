@@ -148,7 +148,7 @@ text box grows until the reason below it would leave view.
 
 ### Sheets
 
-The sheets (Obeya's, a project's, a plan doc being read) are a sidebar docked to the window's right
+The sheets (Obeya's, a project's, a plan doc being read, the inbox) are a sidebar docked to the window's right
 edge, full height. The canvas is the rest: the top bar, the microphone and its confirmations, the
 edge indicators, the minimap and an unfolding card all keep to it. Opening, closing or resizing a
 sheet shifts the view so its middle stays in the middle of the rest. A card opened beside a sheet
