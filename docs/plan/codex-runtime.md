@@ -139,10 +139,16 @@ test-owned PIDs were cleaned up. Probe source and last report: `/tmp/obeya-keep-
   external operations as distinct lifetimes. Use probe results to design and validate safe
   recovery of observed processes after an Obeya crash. This is not a Codex preview gate; it is
   a Pi gate. Recovery must not kill another live Obeya instance's processes or unrelated processes.
-- [ ] Follow up with a liveness-pipe supervisor prototype, compared with or combined with a
-  boot-aware persistent registry and startup sweep. Evaluate crash windows, concurrent instances,
-  PID reuse, a supervisor's own failure, app ownership and cross-platform packaging. Neither
-  sampling nor a registry recovers processes never observed; a supervisor is not containment.
+- [ ] Evaluate the isolated POSIX liveness-pipe prototype in `scripts/agent-liveness-prototype.ts`:
+  it launches one child, keeps a private owner pipe out of the child's inherited descriptors, samples
+  descendants, and kills the child and observed descendants on owner-pipe EOF or child exit. A
+  synthetic macOS test closes the pipe and checks an observed separately grouped child and an
+  unrelated canary; it is not a real harness, owner SIGKILL or Windows test. It is not wired into
+  Obeya or its packaged binary. Its supervisor can itself die, sampling can miss descendants,
+  numeric signalling still races PID reuse, and root exit and startup before the first observation
+  leave windows. Do not use it as containment or promise crash recovery. Compare or combine it with
+  a boot-aware registry and startup sweep; address concurrent instances, a supervisor's own failure,
+  ownership of apps and external work, normal shutdown and cross-platform packaging before adoption.
 - [ ] Investigate stronger platform boundaries separately: native Windows Job Objects with a
   gated launch, and Linux systemd user scopes including no-manager, no-D-Bus and read-only-cgroup
   fallback. Test native harnesses, nested jobs and breakaway, and preserve app parking semantics.
