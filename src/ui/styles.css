@@ -64,6 +64,8 @@ a.link { text-decoration: underline 1px color-mix(in srgb, currentColor 28%, tra
   transition: text-decoration-color .12s, background-color .12s, box-shadow .12s; }
 a.link:hover, a.link:focus-visible { --hl: color-mix(in srgb, var(--question) 17%, transparent); text-decoration-color: var(--question);
   background: var(--hl); box-shadow: 0 0 0 2px var(--hl); outline: none; }
+/* a card named in a sentence: blue and underlined, so it reads as a link at a glance */
+a.link.card-link { color: var(--working); text-decoration: underline 1px currentColor; }
 /* headings are titles on paper, in the serif; the rest stays in the condensed sans */
 h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-family: var(--serif); font-weight: 600; letter-spacing: -.005em; }
 

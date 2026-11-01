@@ -9,7 +9,7 @@ import { plain } from './markdown';
 import { Cards } from './message';
 
 /** The card by `title` (its own by default); plain text where it is not on the canvas. `onOpen` in place of the `Cards` around it. */
-export function CardLink({ card, title, onOpen, className = 'link' }: { card: Item | undefined; title?: string; onOpen?: (i: Item) => void; className?: string }) {
+export function CardLink({ card, title, onOpen, className = 'link card-link' }: { card: Item | undefined; title?: string; onOpen?: (i: Item) => void; className?: string }) {
   const cards = useContext(Cards);
   const text = plain(title ?? card?.title ?? '');
   // an archived card is not on the canvas to unfold from
