@@ -295,7 +295,13 @@ es; nur die Antwort kam nicht an.“ instead of „Das hat nicht geklappt“.
 
 ### Skills by `/`
 
-In the field where a card's agent hears the owner's words (a task's, an idea's, a review card's; not
+A Codex task worker offers Obeya's bundled browser, demo and settings skills, with their descriptions.
+Its menu comes from the supplied skill files, without starting Claude or advertising Claude-only
+commands. The selected `/obeya:name` and the owner's words reach Codex unchanged; its instructions
+point to the corresponding file. User and repository Codex skills are not part of this preview's
+menu. The card's pinned harness, not a newly changed default, selects its menu.
+
+For Claude agents, in the field where a card's agent hears the owner's words (a task's, an idea's, a review card's; not
 where the Koordinator reads them, nor on a Question card), `/` at the start of the text or of a word
 opens a menu of the skills the agent can be asked for, as in Claude Code: the repository's, the
 user's, those of the plugins the agent loads (Obeya's own for a worker) and Claude Code's own skills

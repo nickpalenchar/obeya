@@ -35,7 +35,7 @@ import { ghHosts, onGitHub, outsidePlanDir, readPlanDocs, watchPlanDocs } from '
 import { boundsOf, GAP, type Place, planDirNoteBox, unionBounds } from '../core/layout';
 import { type AgentRuntime, idleRuntime, withAgentSetting, withLimitWait, withRepoTrust } from './runtime';
 import { commandsOf, heldGroups, withoutHeld } from './trust';
-import { Skills } from './skills';
+import { bundledSkills, Skills } from './skills';
 
 /** The skill lists of all canvases: several share a repository, and the user's skills are the same on each. */
 const sharedSkills = new Skills();
@@ -734,6 +734,7 @@ export class CanvasRuntime {
     workers = new Workers({
       board,
       runtime: deps.workerRuntime ?? deps.runtime,
+      agentSetting: () => (deps.agents ?? ((r: AgentRole) => AGENT_DEFAULTS[r]))('worker'),
       workspaces,
       adapter,
       machineSettings: this.settingsOf(rc),
@@ -1341,6 +1342,11 @@ export class CanvasRuntime {
     const cwd = this.repoOf(card).read.path;
     // an idea's agent loads no plugins; a review card's reads none of the repository's settings
     const idea = card.state === 'idea';
+    if (!idea) {
+      const saved = this.board.row(cardId).agent_setting;
+      const setting = saved ? JSON.parse(saved) : this.deps.agents?.('worker');
+      if (setting?.harness === 'codex') return bundledSkills().map(({ file: _, ...skill }) => skill);
+    }
     return this.skills.of({ cwd, plugins: idea ? [] : [OBEYA_PLUGIN], untrusted: (!idea && !!card.contribution) || (await this.claudeHeld(cwd)) });
   }
 

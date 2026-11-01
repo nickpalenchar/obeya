@@ -28,9 +28,9 @@
 //   playwright install <browser>…    install Playwright's own webkit or firefox (--with-deps: with the
 //                                    system libraries they need on Linux)
 //
-// Each Claude Code session has a browser of its own: its state (port, pid) is in a file named by
-// the session's process (`CLAUDE_PID`), and the process holding the browser (`serve`, started by
-// `start`) closes it once that process has ended. Without `CLAUDE_PID` (a terminal) there is one
+// Each agent session has a browser of its own: its state (port, pid) is in a file named by
+// the session's process (`OBEYA_AGENT_PID`, or Claude Code's `CLAUDE_PID`), and the process holding
+// the browser (`serve`, started by `start`) closes it once that process has ended. In a terminal there is one
 // browser per user, until `stop`. Playwright launches it (`plugin/lib/chromium.ts`), so it is the
 // Chromium the demo skill records with, with a fresh profile that goes with it.
 
@@ -58,9 +58,9 @@ export function alive(pid: number): boolean {
   }
 }
 
-/** The process of the Claude Code session that runs this command, whose browser it drives. */
+/** The process of the agent session that runs this command, whose browser it drives. */
 export function sessionPid(env: NodeJS.ProcessEnv = process.env): number | null {
-  const pid = Number(env.CLAUDE_PID);
+  const pid = Number(env.OBEYA_AGENT_PID ?? env.CLAUDE_PID);
   return Number.isInteger(pid) && pid > 0 ? pid : null;
 }
 

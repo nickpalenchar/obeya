@@ -3,7 +3,7 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { alive } from './browser.ts';
+import { alive, sessionPid, stateFile } from './browser.ts';
 
 // Real browsers, run with plain Node as the skill's commands are; each start takes about a second.
 const SCRIPT = join(import.meta.dir, 'browser.ts');
@@ -78,6 +78,13 @@ function tone(file: string, seconds = 1, rate = 48_000) {
   for (let i = 0; i < samples; i++) buf.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * i) / rate) * 16_000), 44 + i * 2);
   writeFileSync(file, buf);
 }
+
+test('portable agent identity isolates browsers and takes precedence over Claude identity', () => {
+  expect(sessionPid({ OBEYA_AGENT_PID: '123', CLAUDE_PID: '456' })).toBe(123);
+  expect(stateFile({ OBEYA_AGENT_PID: '123' })).toBe(stateFile({ CLAUDE_PID: '123' }));
+  expect(stateFile({ OBEYA_AGENT_PID: '123' })).not.toBe(stateFile({ OBEYA_AGENT_PID: '456' }));
+  expect(sessionPid({ OBEYA_AGENT_PID: 'invalid' })).toBeNull();
+});
 
 const PAGE = `data:text/html,<title>-</title><button id=b style="margin:200px" onclick="this.textContent='clicked '+event.isTrusted">go</button>
 <script>addEventListener('keydown', e => document.title = 'down ' + e.code); addEventListener('keyup', e => document.title = 'up ' + e.code)</script>`;

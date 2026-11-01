@@ -63,7 +63,8 @@ export class WorkRetro {
       return;
     }
     const sessions = [...new Set([...earlierRuns(b.events(cardId)), ...(row.session_id ? [row.session_id] : [])])];
-    if (!sessions.length) return;
+    // Codex rollouts are not Claude transcript files; do not count an unreadable run as evidence.
+    if (!sessions.length || sessions.some((id) => id.startsWith('codex:'))) return;
     const card: Ended = { id: cardId, title: row.title ?? '', repo: row.repo ?? b.home, sessions, workspace: workspace ?? row.workspace };
     const due = this.count(card.repo);
     this.serial(() => this.notes(card));

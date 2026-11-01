@@ -229,6 +229,13 @@ waiting for a question no longer on the card. After a restart the question stays
 allowed call runs once without asking when the resumed worker makes it again. It is no decision for
 the project's log. Claude Code's `AskUserQuestion` is refused with a pointer to `ask`.
 
+Codex's native command and file-change approval requests use this same question and one-call
+allow/deny decision, not session-wide permission or policy amendments. A refusal by the owner is
+labelled as such, not as Obeya's foreground-wait guard. A saved one-use grant identifies the action
+and its permission scope, not ephemeral turn/item ids: a restart can reissue the same action
+without asking again, but a changed command or requested authority needs a new decision. Extended
+permission-profile requests are denied, and native user-input requests must use Obeya's `ask`.
+
 ### Notes and replies
 
 A worker answers a note or feedback with `reply`, saying what it changes or why nothing, and asks if

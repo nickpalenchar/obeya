@@ -186,6 +186,7 @@ const de = {
       mode: 'Berechtigungsmodus',
       hook: 'Hook',
       obeya: 'Obeya: Warten im Vordergrund',
+      owner: 'von dir abgelehnt',
       other: 'ohne Angabe',
     },
     /** A tool call the settings want the owner to confirm, as the question the card waits on. */
@@ -640,6 +641,7 @@ const en: Messages = {
       mode: 'the permission mode',
       hook: 'a hook',
       obeya: 'Obeya: waiting in the foreground',
+      owner: 'declined by you',
       other: 'no reason given',
     },
     permission: (what: string, reason?: string) => `The agent wants to do this, and the settings ask for your confirmation:\n\n${what}${reason ? `\n\nWhy it asks: ${reason}` : ''}`,

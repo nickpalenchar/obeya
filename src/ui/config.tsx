@@ -4,7 +4,7 @@
 // own settings come from its command line and show read-only.
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react';
-import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
+import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type CodexModel, type AgentsView, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
 import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { LANGUAGES } from '../core/locale';
@@ -840,11 +840,21 @@ function UsageBlock({ on }: { on: boolean }) {
 /** The model and effort of each group of agents: saved on each change, taken by the next agent that starts. */
 function AgentsBlock({ on }: { on: boolean }) {
   const [view, setView] = useState<AgentsView | null>(null);
+  const [models, setModels] = useState<CodexModel[] | null>(null);
+  const [catalogError, setCatalogError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const loadModels = async () => {
+    setLoading(true); setCatalogError('');
+    try { setModels(await api.codexModels()); } catch (e) { setCatalogError(failText(e)); }
+    setLoading(false);
+  };
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (on) api.agents().then(setView, console.error);
   }, [on]);
+  const codexOn = view?.agents.worker.harness === 'codex';
+  useEffect(() => { if (on && codexOn) void loadModels(); }, [on, codexOn]);
   if (!view) return null;
   const a = t.config.agents;
   const choose = async (role: AgentRole, choice: Partial<AgentSetting>) => {
@@ -860,27 +870,44 @@ function AgentsBlock({ on }: { on: boolean }) {
   return (
     <>
       <Head title={a.title} hint={a.hint} file={view.file} />
+      {codexOn && <p className="hint">{a.codexScope}</p>}
+      {codexOn && (loading || catalogError) && <p className="hint c-status">{loading ? a.loadingModels : catalogError} {!loading && <button type="button" onClick={loadModels}>{a.reloadModels}</button>}</p>}
       <div className="cfg-agents">
         <span />
+        <span className="hint">{a.harness}</span>
         <span className="hint">{a.model}</span>
         <span className="hint">{a.effort}</span>
         {AGENT_ROLES.map((role) => {
           const setting = view.agents[role];
+          const codex = role === 'worker' && setting.harness === 'codex';
+          const choice = setting.codex ?? { model: 'default', effort: 'high' as const };
+          const selected = models?.find((m) => choice.model === 'default' ? m.isDefault : m.model === choice.model);
+          const efforts = codex ? AGENT_EFFORTS.filter((e) => !selected || selected.supportedReasoningEfforts.some((x) => x.reasoningEffort === e)) : AGENT_EFFORTS;
           return (
             <Fragment key={role}>
               <div className="cfg-agent">
                 {a.roles[role].name}
                 <span className="hint">{a.roles[role].hint}</span>
               </div>
-              <select aria-label={`${a.roles[role].name}: ${a.model}`} value={setting.model} disabled={busy} onChange={(e) => choose(role, { model: e.target.value as AgentModel })}>
-                {AGENT_MODELS.map((m) => (
-                  <option key={m} value={m}>
-                    {a.models[m]}
-                  </option>
-                ))}
+              <select aria-label={`${a.roles[role].name}: ${a.harness}`} value={role === 'worker' ? setting.harness ?? 'claude' : 'claude'} disabled={busy || role !== 'worker'} onChange={(e) => choose(role, { harness: e.target.value as 'claude' | 'codex' })}>
+                <option value="claude">{a.harnesses.claude}</option>
+                <option value="codex">{a.harnesses.codex}</option>
               </select>
-              <select aria-label={`${a.roles[role].name}: ${a.effort}`} value={setting.effort} disabled={busy} onChange={(e) => choose(role, { effort: e.target.value as AgentEffort })}>
-                {AGENT_EFFORTS.map((x) => (
+              <select aria-label={`${a.roles[role].name}: ${a.model}`} value={codex ? choice.model : setting.model} disabled={busy || (codex && loading)} onChange={(e) => {
+                if (!codex) return choose(role, { model: e.target.value as AgentModel });
+                const next = models?.find((m) => e.target.value === 'default' ? m.isDefault : m.model === e.target.value);
+                const supported = AGENT_EFFORTS.filter((x) => next?.supportedReasoningEfforts.some((y) => y.reasoningEffort === x));
+                return choose(role, { codex: { model: e.target.value, effort: supported.includes(choice.effort) ? choice.effort : supported[0] ?? choice.effort } });
+              }}>
+                {codex ? <>
+                  <option value="default">{a.codexDefault}</option>
+                  {choice.model !== 'default' && !models?.some((m) => m.model === choice.model) && <option value={choice.model}>{choice.model}</option>}
+                  {models?.map((m) => <option key={m.model} value={m.model}>{m.model}</option>)}
+                </> : AGENT_MODELS.map((m) => <option key={m} value={m}>{a.models[m]}</option>)}
+              </select>
+              <select aria-label={`${a.roles[role].name}: ${a.effort}`} value={codex ? choice.effort : setting.effort} disabled={busy || (codex && loading)} onChange={(e) => choose(role, codex ? { codex: { ...choice, effort: e.target.value as AgentEffort } } : { effort: e.target.value as AgentEffort })}>
+                {codex && !efforts.includes(choice.effort) && <option value={choice.effort}>{a.efforts[choice.effort]}</option>}
+                {efforts.map((x) => (
                   <option key={x} value={x}>
                     {a.efforts[x]}
                   </option>

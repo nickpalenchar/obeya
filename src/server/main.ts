@@ -53,6 +53,7 @@ import { forgejoForge, originOf } from './forgejo';
 import { fileForge } from './file-forge';
 import { NarrationHost } from './narration';
 import { claudeExecutable, endAgentsHere, sdkRuntime } from './runtime';
+import { workerHarnessRuntime } from './worker-runtime';
 import { claim, release, restarting, running, takenOver } from './instance';
 import { recordingRuntime, replayRuntime } from './replay';
 import { MachineSetup, welcome } from './machine';
@@ -269,12 +270,14 @@ const config = new Config({
       }
     : {}),
 });
+const runtime = agentRuntime();
 canvases = new Canvases(
   configs,
   {
     store,
     home,
-    runtime: agentRuntime(),
+    runtime,
+    ...(!values['idle-workers'] ? { workerRuntime: workerHarnessRuntime(runtime, values.record || values.replay ? { start() { throw new Error('Codex workers are not supported in record/replay mode'); } } : undefined) } : {}),
     ...(values['idle-workers'] && !values.record && !values.replay ? { idleWorkers: true } : {}),
     forge,
     permissionMode: values['permission-mode'] as 'auto',

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CardDiff } from '../core/diff';
 import { type Place, placeParam } from '../core/layout';
-import type { AccessView, Pairing, RemoteSetting, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView } from '../core/types';
+import type { AccessView, Pairing, RemoteSetting, CodexModel, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView } from '../core/types';
 import type { Wish } from '../core/wish';
 import { noteMessage, watchPageStalls } from './stalls';
 
@@ -169,6 +169,7 @@ export const api = {
   saveUsageMeter: (on: boolean) => call<UsageMeterView>('PUT', '/api/usage-meter', { on }),
   /** The model and effort of each group of agents. */
   agents: () => call<AgentsView>('GET', '/api/agents'),
+  codexModels: () => call<CodexModel[]>('GET', '/api/agents/codex-models'),
   /** Saves the model or the effort of one group. */
   saveAgents: (role: AgentRole, choice: Partial<AgentSetting>) => call<AgentsView>('PUT', '/api/agents', { [role]: choice }),
   /** The setup assistant's list: what Obeya needs on this machine. */

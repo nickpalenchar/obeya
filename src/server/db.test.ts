@@ -89,6 +89,7 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     s.db.run('ALTER TABLE cards DROP COLUMN pausing');
     s.db.run('ALTER TABLE talk DROP COLUMN then_step');
     s.db.run('ALTER TABLE talk DROP COLUMN after_answer');
+    s.db.run('ALTER TABLE cards DROP COLUMN agent_setting');
     s.db.run(`PRAGMA user_version = ${RELEASED}`);
     s.db.close();
 
@@ -100,5 +101,6 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     expect(JSON.parse(after.card(held!.id)!.share!)).toMatchObject({ state: 'publishing', shown: { kind: 'video' } });
     expect(JSON.parse(after.card(project!.id)!.plan!)).toEqual({ file: 'docs/plan/gone.md', title: 'Gone', goal: '', workstreams: [], markdown: '' });
     expect(after.setting('c', 'work_retro_runs:app')).toBe('3');
+    expect(after.card(video!.id)!.agent_setting).toBeNull();
     after.db.close();
   }));
