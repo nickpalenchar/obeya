@@ -62,6 +62,38 @@ test('a reused app-server PID does not make an unrelated process its descendant'
   expect((tracker as unknown as { owned: Map<number, unknown> }).owned.size).toBe(0);
 });
 
+test.skipIf(process.platform === 'win32')('a reported leaf keeps its app-server attributable after supervisor death', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'obeya-ancestor-death-'));
+  const appFile = join(dir, 'app');
+  const leafFile = join(dir, 'leaf');
+  const app = `import {spawn} from 'node:child_process';import {writeFileSync} from 'node:fs';
+writeFileSync(${JSON.stringify(appFile)},String(process.pid));
+const leaf=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'});
+writeFileSync(${JSON.stringify(leafFile)},String(leaf.pid));setInterval(()=>{},1000);`;
+  const supervisorCode = `import {spawn} from 'node:child_process';
+spawn(process.execPath,['-e',${JSON.stringify(app)}],{detached:true,stdio:'ignore'});setInterval(()=>{},1000);`;
+  const supervisor = spawn(process.execPath, ['-e', supervisorCode], { detached: true, stdio: 'ignore' });
+  const canary = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' });
+  const tracker = new AgentProcesses(supervisor.pid!);
+  let appPid = 0, leafPid = 0;
+  const filePid = (file: string) => { try { return Number(readFileSync(file, 'utf8')); } catch { return 0; } };
+  const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  try {
+    await until(() => { appPid = filePid(appFile); leafPid = filePid(leafFile); return appPid > 1 && leafPid > 1; });
+    tracker.track([leafPid]);
+    expect(tracker.observed().map((p) => p.pid)).toEqual([supervisor.pid!, appPid, leafPid]);
+    const exited = new Promise<void>((resolve) => supervisor.once('exit', () => resolve()));
+    supervisor.kill('SIGKILL');
+    await exited;
+    tracker.kill();
+    await until(() => !alive(appPid) && !alive(leafPid));
+    expect(alive(canary.pid!)).toBe(true);
+  } finally {
+    supervisor.kill('SIGKILL'); kill(appPid || filePid(appFile)); kill(leafPid || filePid(leafFile)); kill(canary.pid);
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 10_000);
+
 test.skipIf(process.platform === 'win32')('app-server death kills its separately grouped PTY, not an unrelated PID', async () => {
   const root = mkdtempSync(join(tmpdir(), 'obeya-pty-test-'));
   const file = join(root, 'heartbeat');

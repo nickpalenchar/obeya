@@ -149,8 +149,10 @@ test-owned PIDs were cleaned up. Probe source and last report: `/tmp/obeya-keep-
   reverted: on a supervisor SIGKILL, the app-server could retain its pipes after being reparented,
   and a fast app-server exit could leave a same-group child running before sampling observed it.
   Tracking a reported descendant now also retains each verified intermediate ancestor, rather
-  than only the leaf; this addresses one way the app-server was missed but does not solve either
-  failure case by itself. The transport's process identity must remain distinguishable from the
+  than only the leaf. A real-process test on macOS and in a Linux ARM64 container kills a synthetic
+  supervisor after reporting a separately grouped leaf, then checks cleanup of both the intermediate
+  app-server and leaf while an unrelated canary survives. This addresses one way the app-server was
+  missed but does not establish full transport recovery or solve the fast-exit case. The transport's process identity must remain distinguishable from the
   supervisor's, and both failure cases need regression coverage before replacing the direct launch.
   Its supervisor can itself die, sampling can miss descendants,
   numeric signalling still races PID reuse, and root exit and startup before the first observation
