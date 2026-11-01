@@ -1,0 +1,39 @@
+// Starts the Obeya of this checkout on a home and a port of its own, so it runs beside the stable
+// Obeya of another checkout (or the app) without meeting its database: one home serves one Obeya
+// (src/server/instance.ts), and a database written by a newer Obeya is refused by an older one.
+//
+//   bun start [<main.ts args>]      # home ~/.obeya-dev, port 4418
+//   bun run dev [<main.ts args>]    # the same, with hot reload (--hot, --dev)
+//
+// OBEYA_HOME and OBEYA_PORT (or --port) still win when set. A first start without arguments on a
+// home with no canvases.json gets one with this checkout as its only canvas, so the code can be
+// tried at once; copy a database over (stop both first) to start from real cards. Everything else
+// is src/server/main.ts, whose header describes the arguments.
+
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
+
+const DEFAULT_PORT = '4418';
+const root = resolve(import.meta.dir, '..');
+const hot = process.argv[2] === '--hot';
+const args = process.argv.slice(hot ? 3 : 2);
+
+const home = process.env.OBEYA_HOME ?? join(homedir(), '.obeya-dev');
+const env = { ...process.env, OBEYA_HOME: home, OBEYA_PORT: process.env.OBEYA_PORT ?? DEFAULT_PORT };
+
+// without arguments the canvases come from the home's canvases.json
+const config = join(home, 'canvases.json');
+if (args.length === 0 && !existsSync(config)) {
+  mkdirSync(home, { recursive: true, mode: 0o700 });
+  writeFileSync(config, JSON.stringify([{ name: 'Obeya', repos: [{ path: root }] }], null, 2) + '\n');
+}
+
+const child = Bun.spawn(['bun', ...(hot ? ['--hot', join(root, 'src/server/main.ts'), '--dev'] : [join(root, 'src/server/main.ts')]), ...args], {
+  cwd: root,
+  env,
+  stdio: ['inherit', 'inherit', 'inherit'],
+});
+// Ctrl-C reaches the whole foreground group already; a kill of this process must reach the server too
+for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => child.kill(signal));
+process.exit(await child.exited);

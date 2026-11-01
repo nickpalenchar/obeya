@@ -35,8 +35,9 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
   `OBEYA_WHISPER_BACKEND=mlx OBEYA_WHISPER_PYTHON=/Users/sadilek/dev/stimmzwilling/.venv/bin/python`
   (has `mlx_whisper`; the model is cached). That Python alone, without the backend, fails: it has no
   `onnx_asr` for Parakeet.
-- The Obeya instance for this repo runs on port 4417 with `~/.obeya`. It restarts itself once
-  `main` moves to commits that change code, a commit of yours included (workers resume, the page
+- The Obeya that plans this repo is the stable clone's, on port 4417 with `~/.obeya`; `bun start`
+  here runs this checkout's code on `~/.obeya-dev` and port 4418, beside it. An Obeya restarts
+  itself once `main` moves to commits that change code, a commit of yours included (workers resume, the page
   reloads); docs-only commits leave it running. Keep tests off it.
 - No project-specific logic in the core: what a project needs goes into its settings
   (`.obeya/settings.json` in that repository), not into this repo. Those settings stay few and
