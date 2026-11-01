@@ -8,6 +8,7 @@ import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answerText, toggle } from './answer';
 import { ApiError, api, cardAt, type Field, holdRestart, onCardEvent, onCardEventGone, onReconnect } from './api';
 import { useCopy } from './copy';
+import { manualPrerequisites } from './deps';
 import { firstOpening } from './demoSeen';
 import { know, known } from './known';
 import { Branch } from './diff';
@@ -396,7 +397,11 @@ export function Detail(p: Props) {
           </div>
           <QueuePlace item={item} items={all} />
           <div className="actions">
-            <button className="btn" onClick={() => act({ action: 'force' }, { close: true, ack: t.queue.forced })}>
+            <button className="btn" onClick={() => {
+              const waiting = manualPrerequisites(item, all);
+              if (waiting.length && !window.confirm(t.queue.confirmManualStart(waiting.map((card) => plain(card.title)).join(', ')))) return;
+              act({ action: 'force' }, { close: true, ack: waiting.length ? t.queue.forcedManual : t.queue.forced });
+            }}>
               {t.queue.force}
             </button>
             <button className="btn" onClick={() => act({ action: 'dequeue' }, { close: false })}>

@@ -628,6 +628,7 @@ export class Koordinator {
     // taken out of the queue or deleted while waiting for its turn
     if (!card || card.state !== 'planned' || !card.queue || !('checking' in card.queue)) return;
     if (card.repoDown) return this.repoGone(card);
+    if (this.waitForManual(cardId)) return;
     const active = this.inProgress(card.repo);
     const ahead = this.ahead(card);
     const pending = this.pending(card, active, ahead);
@@ -736,15 +737,21 @@ export class Koordinator {
     return !!i && (this.inProgress(i.repo).some((a) => a.id === id) || inQueue(i));
   }
 
-  private startNow(cardId: string, why: string) {
+  /** A drawn dependency holds even when its prerequisite has not been started. */
+  private waitForManual(cardId: string): boolean {
     const card = this.o.board.item(cardId);
-    const since = card?.queue?.since;
     const items = this.o.board.snapshot().items;
     const manual = (card?.manualDependsOn ?? []).filter((id) => unlanded(items.find((i) => i.id === id)));
-    if (manual.length) {
-      this.setQueue(cardId, { behind: manual, buildsOn: manual, manualWait: manual, reason: this.o.board.t.koordinator.buildsOn }, since);
-      return;
-    }
+    if (!manual.length) return false;
+    const t = this.o.board.t.koordinator;
+    this.setQueue(cardId, { behind: manual, buildsOn: manual, manualWait: manual, reason: t.buildsOn }, card?.queue?.since);
+    this.o.board.log(cardId, 'state', 'obeya', t.waitsFor(manual.map((id) => this.nameOf(items.find((i) => i.id === id)!)).join(', '), t.buildsOn));
+    return true;
+  }
+
+  private startNow(cardId: string, why: string) {
+    const since = this.o.board.item(cardId)?.queue?.since;
+    if (this.waitForManual(cardId)) return;
     this.setQueue(cardId, null);
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.koordinator.says(why));
     this.launch(cardId, since);

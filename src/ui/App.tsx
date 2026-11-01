@@ -21,7 +21,9 @@ import { Setup } from './setup';
 import { Phone, phoneView } from './phone';
 import { KoordinatorSheet } from './koordinator';
 import { QueuePill } from './queue';
-import { depsOf } from './deps';
+import { depsOf, manualPrerequisites, visibleDotSides } from './deps';
+import { anchoredPath, edgePoint, nearestEdge } from './manualLinks';
+import type { EdgeSide, ManualAnchor } from '../core/types';
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
 import { Sign, Wordmark } from './logo';
 import { DOUBLE_CLICK_KNOWN, Help, HelpButton, HELP_KEY_KNOWN, NewCardHint } from './help';
@@ -697,12 +699,14 @@ function Canvas({
   /** The play button on a card: starts it, or one queued behind others despite the likely conflict. */
   const startCard = useCallback(async (i: Item) => {
     try {
+      const waiting = i.queue ? manualPrerequisites(i, items) : [];
+      if (waiting.length && !window.confirm(t.queue.confirmManualStart(waiting.map((card) => plain(card.title)).join(', ')))) return;
       await api.act(i.id, { action: i.queue ? 'force' : 'start' });
-      if (i.queue) showAck(t.queue.forced);
+      if (i.queue) showAck(waiting.length ? t.queue.forcedManual : t.queue.forced);
     } catch (e) {
       fail(e);
     }
-  }, []);
+  }, [items]);
 
   /** The archive button on a finished card or a parked or dropped idea: takes it off the canvas, with a moment to undo. */
   const archiveCard = useCallback(async (i: Item) => {
@@ -984,8 +988,8 @@ function Canvas({
   const [dragWith, setDragWith] = useState<string[]>([]);
   // the card the pointer is on, for the waits around it
   const [hoverId, setHoverId] = useState<string | null>(null);
-  const [connection, setConnection] = useState<{ from: string; side: string; x: number; y: number; target?: string } | null>(null);
-  const [handle, setHandle] = useState<{ id: string; side: string } | null>(null);
+  const [connection, setConnection] = useState<{ from: string; side: EdgeSide; x: number; y: number; target?: string; anchor?: ManualAnchor } | null>(null);
+  const [handles, setHandles] = useState<string[]>([]);
   const connectable = (item: Item) => item.source !== 'plan' && item.kind !== 'project';
   // Shift + drag on the canvas draws a lasso, Shift + click on a card takes it in or out: what is marked
   // moves together and goes into a group at once through the colour ring
@@ -1109,7 +1113,7 @@ function Canvas({
     if (focusRef.current?.type === 'card' || e.button !== 0) return;
     if (connection) {
       e.stopPropagation();
-      if (connection.target) api.dependency(connection.from, connection.target).catch((err) => showAck(failText(err)));
+      if (connection.target) api.dependency(connection.from, connection.target, false, connection.anchor).catch((err) => showAck(failText(err)));
       setConnection(null);
       return;
     }
@@ -1188,18 +1192,16 @@ function Canvas({
     if (connection) {
       const p = toWorld(camRef.current, e.clientX, e.clientY);
       const near = placed.filter(({ item }) => item.id !== connection.from && connectable(item)).map(({ item, b }) => ({ id: item.id, area: b.w * b.h, d: Math.hypot(Math.max(b.x - p.x, 0, p.x - b.x - b.w), Math.max(b.y - p.y, 0, p.y - b.y - b.h)) })).filter((x) => x.d <= 8 / camRef.current.s).sort((a, b) => a.d - b.d || a.area - b.area)[0];
-      setConnection({ ...connection, x: p.x, y: p.y, target: near?.id });
+      const target = near && placed.find((placed) => placed.item.id === near.id);
+      const edge = target && nearestEdge(target.b, p);
+      setConnection({ ...connection, x: p.x, y: p.y, target: near?.id, anchor: edge ? { fromSide: connection.side, toSide: edge.side, offset: edge.offset } : undefined });
       return;
     }
     const pointer = toWorld(camRef.current, e.clientX, e.clientY);
-    const handles = placed.filter(({ item }) => connectable(item)).flatMap(({ item, b }) => [
-      { id: item.id, side: 'top', x: b.x + b.w / 2, y: b.y },
-      { id: item.id, side: 'right', x: b.x + b.w, y: b.y + b.h / 2 },
-      { id: item.id, side: 'bottom', x: b.x + b.w / 2, y: b.y + b.h },
-      { id: item.id, side: 'left', x: b.x, y: b.y + b.h / 2 },
-    ]);
-    const nearest = handles.map((h) => ({ ...h, distance: Math.hypot(h.x - pointer.x, h.y - pointer.y) * camRef.current.s })).filter((h) => h.distance <= 16).sort((a, b) => a.distance - b.distance)[0];
-    setHandle(nearest ? { id: nearest.id, side: nearest.side } : null);
+    const visible = placed.filter(({ item }) => connectable(item)).flatMap(({ item, b }) =>
+      visibleDotSides(b, pointer, camRef.current.s).map((side) => `${item.id}:${side}`),
+    );
+    setHandles((previous) => previous.length === visible.length && previous.every((h, i) => h === visible[i]) ? previous : visible);
     if (lassoRef.current) {
       lassoRef.current = [...lassoRef.current, { x: e.clientX, y: e.clientY }];
       setLasso(lassoRef.current);
@@ -1497,20 +1499,30 @@ function Canvas({
           <div id="world" style={{ transform: `translate(${cam.x}px,${cam.y}px) scale(${cam.s})` }}>
             <TerritoryLayer {...territories} selected={placed.filter((p) => (ring ? ring.ids : marked).includes(p.item.id)).map((p) => p.b)} />
             <Links placed={placed} />
-            {deps && <DepLinks placed={placed} edges={deps.edges} />}
+            {deps && <DepLinks placed={placed} edges={deps.edges.filter(([from, to]) => !items.find((i) => i.id === to)?.manualDependsOn?.includes(from))} />}
             <svg className="manual-deps" width="1" height="1">
               <defs><marker id="manual-arrow" viewBox="0 0 9 8" refX="0.3" refY="4" markerWidth="15" markerHeight="13.3" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker><marker id="ghost-arrow" viewBox="0 0 9 8" refX="9" refY="4" markerWidth="15" markerHeight="13.3" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker></defs>
               {placed.flatMap(({ item, b }) => (connectable(item) ? item.manualDependsOn ?? [] : []).flatMap((from) => {
                 const a = placed.find((p) => p.item.id === from && connectable(p.item))?.b;
                 if (!a) return [];
-                const x = (a.x + a.w / 2 + b.x + b.w / 2) / 2, y = (a.y + a.h / 2 + b.y + b.h / 2) / 2;
+                const anchor = item.manualAnchors?.[from];
+                const drawing = anchor && anchoredPath(a, b, anchor);
+                const path = drawing?.path ?? linkPath(a, b, 15);
+                const x = drawing?.mid.x ?? (a.x + a.w / 2 + b.x + b.w / 2) / 2, y = drawing?.mid.y ?? (a.y + a.h / 2 + b.y + b.h / 2) / 2;
                 return [<g className="manual-edge" key={`${from}:${item.id}`}>
-                  <path className="manual-hit" d={linkPath(a, b, 15)} />
-                  <path className="manual-line" d={linkPath(a, b, 15)} markerEnd="url(#manual-arrow)" />
+                  <path className="manual-hit" d={path} />
+                  <path className="manual-line" d={path} markerEnd={anchor ? "url(#ghost-arrow)" : "url(#manual-arrow)"} />
                   <foreignObject x={x - 14} y={y - 14} width="28" height="28"><button title={t.deps.remove} aria-label={t.deps.remove} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); if (window.confirm(t.deps.confirmRemove)) api.dependency(from, item.id, true).catch((err) => showAck(failText(err))); }}><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg></button></foreignObject>
                 </g>];
               }))}
-              {connection && (() => { const a = placed.find((p) => p.item.id === connection.from)?.b; if (!a) return null; const start = connection.side === 'top' ? {x:a.x+a.w/2,y:a.y} : connection.side === 'bottom' ? {x:a.x+a.w/2,y:a.y+a.h} : connection.side === 'left' ? {x:a.x,y:a.y+a.h/2} : {x:a.x+a.w,y:a.y+a.h/2}; const b = placed.find((p) => p.item.id === connection.target)?.b; const path = b ? linkPath({ ...start, w: 0, h: 0 }, b, 15) : `M${start.x},${start.y} L${connection.x},${connection.y}`; return <path className="manual-ghost" d={path} markerEnd={b ? "url(#manual-arrow)" : "url(#ghost-arrow)"} />; })()}
+              {connection && (() => {
+                const a = placed.find((p) => p.item.id === connection.from)?.b;
+                if (!a) return null;
+                const start = edgePoint(a, connection.side);
+                const b = placed.find((p) => p.item.id === connection.target)?.b;
+                const path = b && connection.anchor ? anchoredPath(a, b, connection.anchor).path : `M${start.x},${start.y} L${connection.x},${connection.y}`;
+                return <path className="manual-ghost" d={path} markerEnd="url(#ghost-arrow)" />;
+              })()}
             </svg>
             {placed.map(({ item, b }) =>
               item.kind === 'project' ? (
@@ -1535,7 +1547,7 @@ function Canvas({
               ),
             )}
             {placed.filter(({ item }) => connectable(item)).map(({ item, b }) => <div key={`handles:${item.id}`} data-id={item.id} className={`connection-handles ${cardClass(item, underway[item.id]).replace(/^card\s*/, '')}${depOf(item.id) ? ' dep-highlight' : ''}${connection?.target === item.id ? ' target' : ''}`} style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
-              {['top', 'right', 'bottom', 'left'].map((side) => <button key={side} className={`connection-dot ${side}${!connection && handle?.id === item.id && handle.side === side ? ' visible' : ''}`} title={t.deps.connect} aria-label={t.deps.connect} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); const p = toWorld(camRef.current, e.clientX, e.clientY); setConnection({ from: item.id, side, ...p }); }} />)}
+              {(['top', 'right', 'bottom', 'left'] as const).map((side) => <button key={side} className={`connection-dot ${side}${!connection && handles.includes(`${item.id}:${side}`) ? ' visible' : ''}`} title={t.deps.connect} aria-label={t.deps.connect} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); const p = toWorld(camRef.current, e.clientX, e.clientY); setConnection({ from: item.id, side, ...p }); }} />)}
             </div>)}
             {planDirs?.map((d, n) => (
               <PlanDirNote

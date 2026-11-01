@@ -612,7 +612,7 @@ export function serve(
         }),
       },
       '/api/c/:canvas/dependencies': {
-        POST: on(async (c, req) => { const { from, to } = await req.json() as { from: string; to: string }; c.board.connect(from, to); }),
+        POST: on(async (c, req) => { const { from, to, anchor } = await req.json() as { from: string; to: string; anchor?: import('../core/types').ManualAnchor }; c.board.connect(from, to, false, anchor); }),
         DELETE: on(async (c, req) => { const { from, to } = await req.json() as { from: string; to: string }; c.board.connect(from, to, true); }),
       },
       '/api/c/:canvas/cards/:id/restore': { POST: on((c, req) => c.restore(req.params.id!)) },

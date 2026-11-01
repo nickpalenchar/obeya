@@ -753,3 +753,17 @@ test('owner-drawn dependencies cannot connect projects or their workstreams', ()
     expect(() => board.connect(plan.id, own.id)).toThrow(BadRequest);
   }
 });
+
+test('manual attachment points survive reopening and legacy arrows remain readable', () => {
+  const a = board.create({ title: 'A', x: 0, y: 0 });
+  const b = board.create({ title: 'B', x: 0, y: 0 });
+  const c = board.create({ title: 'C', x: 0, y: 0 });
+  const anchor = { fromSide: 'right', toSide: 'top', offset: 0.25 } as const;
+  board.connect(a.id, b.id, false, anchor);
+  board.connect(b.id, c.id);
+  const reopened = new Board(store, board.canvas, () => ({ docs, dirs }));
+  expect(reopened.item(b.id)?.manualAnchors?.[a.id]).toEqual(anchor);
+  expect(reopened.item(c.id)?.manualDependsOn).toEqual([b.id]);
+  expect(reopened.item(c.id)?.manualAnchors).toBeUndefined();
+  expect(() => board.connect(a.id, c.id, false, { ...anchor, offset: 2 })).toThrow(BadRequest);
+});

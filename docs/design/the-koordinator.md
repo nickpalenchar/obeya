@@ -47,7 +47,9 @@ progress or queued, it skips this judgement only when no workstream of its proje
 
 A dependency drawn by the owner holds a card started afterwards until the prerequisite has finished,
 including while that prerequisite is not started or stopped. Removing the arrow releases that wait;
-an already running card continues. The owner may still start a queued card anyway.
+an already running card continues. The queue names the prerequisites, including those not yet started.
+The owner may start a queued card anyway, after confirming a warning naming its unfinished manual
+prerequisites.
 
 #### Waiting for a workspace
 
