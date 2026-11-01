@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { CodexRpcError, type CodexConnection, type CodexHandlers } from './codex-rpc';
-import { createCodexRuntime } from './codex-runtime';
+import { codexSandbox, createCodexRuntime } from './codex-runtime';
 import type { AgentEvent, AgentSession, AgentSpec } from './runtime';
 
 const model = { model: 'codex-test', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'high' }], inputModalities: ['text', 'image'] };
@@ -363,4 +363,38 @@ test('a completed build wakes Codex while a server stays; unchanged polls do not
   await until(() => wire.n === 2);
   expect(JSON.stringify(wire.calls.filter((c) => c.method === 'turn/start'))).toContain('build');
   expect(pids[0]).toEqual([5678, 5679]);
+});
+
+test('the sandbox is workspace-write unless OBEYA_CODEX_SANDBOX lifts it', () => {
+  const warn = console.warn;
+  const said: string[] = [];
+  console.warn = (m: string) => { said.push(m); };
+  try {
+    expect(codexSandbox({})).toBe('workspace-write');
+    expect(codexSandbox({ OBEYA_CODEX_SANDBOX: 'workspace-write' })).toBe('workspace-write');
+    expect(said).toEqual([]);
+    expect(codexSandbox({ OBEYA_CODEX_SANDBOX: 'danger-full-access' })).toBe('danger-full-access');
+    // anything else keeps the sandbox, and says so
+    expect(codexSandbox({ OBEYA_CODEX_SANDBOX: 'off' })).toBe('workspace-write');
+    expect(codexSandbox({ OBEYA_CODEX_SANDBOX: 'read-only' })).toBe('workspace-write');
+    expect(said.filter((m) => m.includes('neither'))).toHaveLength(2);
+  } finally {
+    console.warn = warn;
+  }
+});
+
+test('a worker starts its Codex thread without the sandbox where the environment says so', async () => {
+  const was = process.env.OBEYA_CODEX_SANDBOX;
+  const warn = console.warn;
+  console.warn = () => {};
+  process.env.OBEYA_CODEX_SANDBOX = 'danger-full-access';
+  try {
+    const { wire } = fixture();
+    await until(() => wire.n === 1);
+    expect(wire.calls.find((c) => c.method === 'thread/start')?.params).toMatchObject({ sandbox: 'danger-full-access', approvalPolicy: 'on-request' });
+  } finally {
+    console.warn = warn;
+    if (was === undefined) delete process.env.OBEYA_CODEX_SANDBOX;
+    else process.env.OBEYA_CODEX_SANDBOX = was;
+  }
 });

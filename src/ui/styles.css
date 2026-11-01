@@ -2177,6 +2177,7 @@ button.link:hover { text-decoration: underline; }
 .connection-handles.s-waiting.underway { --c: var(--approved); }
 .connection-handles.s-waiting.answering { --c: var(--working); }
 .connection-handles:not(.snoozed):not(.underway):not(.answering):is(.s-waiting, .s-idea.your-turn), .connection-handles.dep-highlight { --c: var(--waiting); }
+
 /* A split start button keeps the usual start immediate and the one-off choice discoverable. */
 .start-agent { position: relative; }
 .start-agent-buttons { display: flex; }

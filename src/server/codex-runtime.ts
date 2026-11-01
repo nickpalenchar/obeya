@@ -35,6 +35,24 @@ const connectInstalled: Connect = (spec, handlers) => {
   }, handlers);
 };
 
+/**
+ * The sandbox a Codex worker runs in: Codex's `workspace-write`, which keeps it in its workspace
+ * and the temporary directories with no network. `OBEYA_CODEX_SANDBOX=danger-full-access` in the
+ * environment of Obeya lifts it, for a time when the sandbox stops work more than it protects
+ * (loopback servers, browsers, the demos); Codex then asks only for what it holds dangerous.
+ */
+export function codexSandbox(env: Record<string, string | undefined> = process.env): 'workspace-write' | 'danger-full-access' {
+  const choice = env.OBEYA_CODEX_SANDBOX;
+  if (choice === 'danger-full-access') {
+    if (!warnedUnsandboxed) console.warn('Obeya: Codex workers run without a sandbox (OBEYA_CODEX_SANDBOX=danger-full-access)');
+    warnedUnsandboxed = true;
+    return choice;
+  }
+  if (choice && choice !== 'workspace-write') console.warn(`Obeya: OBEYA_CODEX_SANDBOX=${choice} is neither workspace-write nor danger-full-access; Codex workers keep the workspace-write sandbox`);
+  return 'workspace-write';
+}
+let warnedUnsandboxed = false;
+
 /** Refuse gaps in the spike rather than quietly dropping a safety or orchestration contract. */
 function supported(spec: AgentSpec) {
   const unsupported = [
@@ -296,7 +314,7 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
             ...(spec.dirs?.length ? { 'sandbox_workspace_write.writable_roots': spec.dirs } : {}),
             ...(connection.pid ? { 'shell_environment_policy.set': { OBEYA_AGENT_PID: String(connection.pid) } } : {}),
           };
-          const params = { cwd: spec.cwd, model: model.model, developerInstructions: spec.system, approvalPolicy: 'on-request', sandbox: 'workspace-write', config };
+          const params = { cwd: spec.cwd, model: model.model, developerInstructions: spec.system, approvalPolicy: 'on-request', sandbox: codexSandbox(), config };
           const result = threadResult.parse(await connection.request(spec.resume ? 'thread/resume' : 'thread/start', spec.resume ? { ...params, threadId: spec.resume.slice('codex:'.length) } : { ...params, dynamicTools }));
           if (closing) return;
           if (result.model !== model.model) throw new Error(`Codex substituted model ${result.model} for ${model.model}`);
