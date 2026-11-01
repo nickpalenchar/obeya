@@ -25,6 +25,20 @@ test('a missing initial root is reported, never trusted later', () => {
   expect(() => tracker.track()).toThrow('Cannot establish agent process ownership');
 });
 
+test('observed identities retain original births without exposing mutable tracker state', () => {
+  const root = { pid: 90001, parent: process.pid, group: 90001, born: 'root' };
+  const child = { pid: 90002, parent: root.pid, group: 90002, born: 'child' };
+  let rows = [root, child];
+  const tracker = new AgentProcesses(root.pid, () => rows);
+  tracker.track();
+  rows = [root, { ...child, parent: process.pid, born: 'replacement' }];
+  tracker.track();
+  const observed = tracker.observed();
+  expect(observed).toEqual([{ pid: root.pid, born: 'root' }, { pid: child.pid, born: 'child' }]);
+  observed[1]!.born = 'changed';
+  expect(tracker.observed()[1]!.born).toBe('child');
+});
+
 test('a reused app-server PID does not make an unrelated process its descendant', () => {
   const root = { pid: 90001, parent: process.pid, group: 90001, born: 'original' };
   let rows = [root];

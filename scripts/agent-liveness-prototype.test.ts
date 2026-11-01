@@ -1,9 +1,10 @@
 import { expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Writable } from 'node:stream';
+import { inspectGeneration } from './agent-registry-prototype';
 
 async function until(check: () => boolean) {
   const deadline = Date.now() + 5000;
@@ -37,6 +38,68 @@ writeFileSync(${JSON.stringify(pidFile)},String(c.pid));setInterval(()=>{},1000)
     expect(stderr).toBe('');
   } finally {
     supervisor.kill('SIGKILL'); kill(pid); kill(canary.pid ?? 0);
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 10_000);
+
+test.skipIf(process.platform !== 'linux')('agent code starts only after its identity is in the registry', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'obeya-gate-registry-'));
+  const result = join(dir, 'result');
+  const worker = `import {readdirSync,readFileSync,writeFileSync} from 'node:fs';
+const file=readdirSync(${JSON.stringify(dir)}).find(n=>n.endsWith('.json'));
+const record=JSON.parse(readFileSync(${JSON.stringify(dir)}+'/'+file,'utf8'));
+writeFileSync(${JSON.stringify(result)},String(record.processes.some(p=>p.pid===process.pid)));
+setInterval(()=>{},1000);`;
+  const supervisor = spawn(process.execPath, [join(import.meta.dir, 'agent-liveness-prototype.ts'), '--', process.execPath, '-e', worker], {
+    env: { ...process.env, OBEYA_PROTO_REGISTRY: dir }, stdio: ['ignore', 'ignore', 'pipe', 'pipe'],
+  });
+  try {
+    await until(() => { try { return !!readFileSync(result, 'utf8'); } catch { return false; } });
+    expect(readFileSync(result, 'utf8')).toBe('true');
+    const exited = new Promise<void>((resolve) => supervisor.once('close', () => resolve()));
+    (supervisor.stdio[3] as Writable).end();
+    await exited;
+  } finally {
+    supervisor.kill('SIGKILL');
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 10_000);
+
+test.skipIf(process.platform !== 'linux')('a killed supervisor leaves a report-only record of its observed processes', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'obeya-liveness-registry-'));
+  const rootFile = join(dir, 'root');
+  const childFile = join(dir, 'child');
+  const worker = `import {spawn} from 'node:child_process';import {writeFileSync} from 'node:fs';
+writeFileSync(${JSON.stringify(rootFile)},String(process.pid));
+const c=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'});
+writeFileSync(${JSON.stringify(childFile)},String(c.pid));setInterval(()=>{},1000);`;
+  const canary = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' });
+  const supervisor = spawn(process.execPath, [join(import.meta.dir, 'agent-liveness-prototype.ts'), '--', process.execPath, '-e', worker], {
+    env: { ...process.env, OBEYA_PROTO_REGISTRY: dir }, stdio: ['ignore', 'ignore', 'ignore', 'pipe'],
+  });
+  let rootPid = 0, childPid = 0, id = '';
+  try {
+    await until(() => {
+      rootPid = numberAt(rootFile); childPid = numberAt(childFile);
+      const file = readdirSync(dir).find((name) => name.endsWith('.json'));
+      if (!file || !rootPid || !childPid) return false;
+      id = file.slice(0, -5);
+      try {
+        const record = JSON.parse(readFileSync(join(dir, file), 'utf8')) as { processes: { pid: number }[] };
+        return record.processes.some((p) => p.pid === rootPid) && record.processes.some((p) => p.pid === childPid);
+      } catch { return false; }
+    });
+    expect(inspectGeneration(dir, id).state).toBe('unknown'); // supervisor holds lease
+    const exited = new Promise<void>((resolve) => supervisor.once('exit', () => resolve()));
+    supervisor.kill('SIGKILL'); await exited;
+    const report = inspectGeneration(dir, id);
+    expect(report.state).toBe('inspectable');
+    if (report.state === 'inspectable') expect(report.processes).toEqual(expect.arrayContaining([
+      { pid: rootPid, state: 'match' }, { pid: childPid, state: 'match' },
+    ]));
+    expect(alive(canary.pid!)).toBe(true);
+  } finally {
+    supervisor.kill('SIGKILL'); kill(rootPid || numberAt(rootFile)); kill(childPid || numberAt(childFile)); kill(canary.pid ?? 0);
     rmSync(dir, { recursive: true, force: true });
   }
 }, 10_000);

@@ -88,6 +88,14 @@ export class AgentProcesses {
     // Keep registered identities until transport exit, including descendants whose leader ended.
   }
 
+  /** Snapshot of previously observed identities, for report-only experiments; not signal authority. */
+  observed(): { pid: number; born: string }[] {
+    return [
+      ...(this.rootBorn === undefined ? [] : [{ pid: this.parent, born: this.rootBorn }]),
+      ...[...this.owned.values()].map(({ pid, born }) => ({ pid, born })),
+    ];
+  }
+
   kill() {
     if (!this.owned.size) return;
     const table = this.table();

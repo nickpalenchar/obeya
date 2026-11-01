@@ -159,8 +159,8 @@ test-owned PIDs were cleaned up. Probe source and last report: `/tmp/obeya-keep-
 Use the supervisor and a registry for different failures, not as substitutes. A private liveness
 pipe lets the session's supervisor react when its Obeya server dies. A durable registry is a fallback
 for a supervisor that dies, or cleanup it could not complete; it does nothing until a later sweep.
-Neither makes an unobserved descendant recoverable. The liveness prototype above has no registry or
-startup sweep and must not be treated as providing this design.
+Neither makes an unobserved descendant recoverable. The prototypes below have no startup sweep and
+must not be treated as providing this design.
 
 A separate **report-only** prototype in `scripts/agent-registry-prototype.ts` explores a
 per-generation SQLite write-lock lease and atomic record replacement in a private local scratch
@@ -170,10 +170,17 @@ observed process identities; Linux identity reads boot ID, PID namespace and `/p
 Other platforms report identity unavailable. An inspector reports match, different, or
 missing-or-hidden, and treats a missing/busy lease, corrupt record or mismatched boot/namespace as
 unknown. It never kills processes or deletes records. Tests use synthetic identities and exercise a
-separate owner's death on macOS; Linux identity reading, Windows, hostile paths, durable fsync,
-filesystem lock behavior beyond the local test, integration with the liveness supervisor and
-packaged Obeya are unverified. This is not a production registry, a startup sweep or a proof that
-an identity is safe to signal.
+separate owner's death on macOS. The supervisor can optionally write the registry on Linux in a
+scratch directory: it establishes its lease before launch and records observed identities whose
+start ticks still match, retaining previous observations. A shell waits on a private pipe before
+executing agent code; the supervisor first records the gated child's identity, then releases it.
+A Linux ARM64 container test checks that record from the first line of child code. The record is
+not fsynced, so this is not yet the durable launch gate required below; a crash between later
+observation and publication still loses that observation. A synthetic Linux ARM64 container test
+kills the supervisor and inspects the surviving worker and
+separately grouped child; neither is killed by the report. Windows, hostile paths, durable fsync,
+filesystem lock behavior beyond local tests, real agents and packaged Obeya are unverified. This is
+not a production registry, a startup sweep or proof that an identity is safe to signal.
 
 - **Lifetime:** each local agent session gets a random, never-reused session generation and a
   supervisor. Session work belongs to it; a card's `app.keep` affects parking, not forced shutdown.
