@@ -17,6 +17,7 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { endCodexHere } from './codex-rpc';
 import { agentIdentity } from './agent-identity';
+import { allowed } from './allow-rules';
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { LOST, remote, sessionFiles, type SshHost } from './hosts';
@@ -180,6 +181,30 @@ export function withAgentSetting(runtime: AgentRuntime, setting: (role: AgentRol
           run(() => spec.onEvent(event));
         },
       }, firstMessage, images));
+    },
+  };
+}
+
+/**
+ * A runtime whose Codex agents do not ask the owner for a command that a rule of the repository's
+ * allow list covers (`allow-rules.ts`): Claude Code applies that list itself, Codex has none of
+ * its own that Obeya sets. `rules` are those the owner confirmed for the agent's `cwd`; none while
+ * the repository's configuration is held (`untrusted`). A request for more than the command (a
+ * network or path grant) is always asked.
+ */
+export function withTrustedAllow(runtime: AgentRuntime, rules: (cwd: string) => string[]): AgentRuntime {
+  return {
+    start(spec, firstMessage, images) {
+      const ask = spec.askOwner;
+      if (!ask || spec.untrusted || spec.setting?.harness !== 'codex') return runtime.start(spec, firstMessage, images);
+      return runtime.start({
+        ...spec,
+        askOwner: (request, signal) => {
+          const { command, additionalPermissions, networkApprovalContext, grantRoot } = request.input;
+          if (request.name === 'Bash' && !additionalPermissions && !networkApprovalContext && grantRoot == null && allowed(rules(spec.cwd), command)) return Promise.resolve({ allow: true });
+          return ask(request, signal);
+        },
+      }, firstMessage, images);
     },
   };
 }

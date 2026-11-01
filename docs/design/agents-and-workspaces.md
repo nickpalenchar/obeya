@@ -39,8 +39,14 @@ are not available. An unsupported capability fails visibly, never by substitutin
 
 Codex keeps its native workspace-write sandbox and on-request approvals, not Claude's `auto`
 classifier or pre-command hooks. Approvals use the same owner question as Claude (see Refused and
-confirmed tool calls); extended permission profiles are refused. Obeya's tools and their card
-scope are shared. Bundled skills are supplied as readable skill files, not Claude plugins.
+confirmed tool calls); extended permission profiles are refused. A command that a `Bash` rule of
+the repository's `.claude/settings.json` allow list covers, as the owner last confirmed it, is not
+asked: Claude Code applies that list itself, Obeya applies it to Codex. Only one plain command
+counts, alone or in the shell Codex wraps it in; chaining, redirection, substitution and `..` in a
+path never ride on a rule, and a request for a network or path grant is always asked. The same list
+also gives `.codex/rules/obeya.rules` for Codex's own rule engine (`scripts/codex-rules.ts`), for
+the rules that are literal word prefixes, in a project the owner trusts in Codex.
+Obeya's tools and their card scope are shared. Bundled skills are supplied as readable skill files, not Claude plugins.
 Context changes reach Codex in Obeya tool results or by steering after native command/file-change
 completion; there is no equivalent of Claude's pre-command foreground-wait hook. Background
 terminals keep the worker active. Each completed background task wakes result inspection even

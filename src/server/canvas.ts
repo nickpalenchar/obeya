@@ -33,7 +33,8 @@ import { Revisions } from './revisions';
 import { ProjectAgents } from './project-agents';
 import { ghHosts, onGitHub, outsidePlanDir, readPlanDocs, watchPlanDocs } from './repo';
 import { boundsOf, GAP, type Place, planDirNoteBox, unionBounds } from '../core/layout';
-import { type AgentRuntime, idleRuntime, withAgentSetting, withLimitWait, withRepoTrust } from './runtime';
+import { type AgentRuntime, idleRuntime, withAgentSetting, withLimitWait, withRepoTrust, withTrustedAllow } from './runtime';
+import { bashRules } from './allow-rules';
 import { commandsOf, heldGroups, withoutHeld } from './trust';
 import { bundledSkills, Skills } from './skills';
 
@@ -258,7 +259,7 @@ export class CanvasRuntime {
   constructor(config: CanvasConfig, private deps: CanvasDeps) {
     const agents = deps.agents ?? ((role: AgentRole) => AGENT_DEFAULTS[role]);
     // the agents other than workers and Obeya's chat wait for the usage limit through it, each where it shows
-    const runtime = (r: AgentRuntime) => withLimitWait(withRepoTrust(withAgentSetting(r, agents), this.claudeHeld), deps.limitMargin);
+    const runtime = (r: AgentRuntime) => withLimitWait(withRepoTrust(withAgentSetting(withTrustedAllow(r, this.allowRules), agents), this.claudeHeld), deps.limitMargin);
     const workerRuntime = deps.workerRuntime ?? (deps.idleWorkers ? idleRuntime : undefined);
     deps = { ...deps, runtime: runtime(deps.runtime), ...(workerRuntime ? { workerRuntime: runtime(workerRuntime) } : {}) };
     this.deps = deps;
@@ -550,6 +551,29 @@ export class CanvasRuntime {
     return held;
   }
 
+  /** The repository of the canvas that `cwd` lies in (its checkout, its Lesestand, a workspace of it; the most specific, since the home repository's workspaces hold the others'). */
+  private repoAt(cwd: string): Repo | undefined {
+    const depth = (dir: string) => (cwd === dir || cwd.startsWith(dir.endsWith(sep) || dir.endsWith('/') ? dir : `${dir}${dir.includes('://') ? '/' : sep}`) ? dir.length : -1);
+    let best: { r: Repo; at: number } | undefined;
+    for (const r of this.repos)
+      for (const dir of [r.info.path, r.read.path, r.workspaces.dir, ...r.workspaces.list().map((w) => w.path)]) {
+        const at = depth(dir);
+        if (at >= 0 && (!best || at > best.at)) best = { r, at };
+      }
+    return best?.r;
+  }
+
+  /**
+   * The `Bash` rules of the allow list of the repository `cwd` lies in, as the owner last confirmed
+   * it (`trustedCommands`, not as the default branch has it now): a Codex agent's command that one
+   * covers runs without asking (`withTrustedAllow`). None where nothing was confirmed.
+   */
+  private allowRules = (cwd: string): string[] => {
+    const repo = this.repoAt(cwd);
+    const file = repo && this.deps.store.trustedCommands(repo.info.path)?.claude?.['.claude/settings.json'];
+    return file ? bashRules(file.text) : [];
+  };
+
   /**
    * Whether an agent working in `cwd` works in a repository of the canvas (its checkout, its
    * Lesestand, a workspace of it; the most specific, since the home repository's workspaces hold
@@ -560,20 +584,14 @@ export class CanvasRuntime {
    * move (`refsSeal`), and git reads it again without the server waiting for it.
    */
   private claudeHeld = (cwd: string): boolean | Promise<boolean> => {
-    const depth = (dir: string) => (cwd === dir || cwd.startsWith(dir.endsWith(sep) || dir.endsWith('/') ? dir : `${dir}${dir.includes('://') ? '/' : sep}`) ? dir.length : -1);
-    let best: { r: Repo; at: number } | undefined;
-    for (const r of this.repos)
-      for (const dir of [r.info.path, r.read.path, r.workspaces.dir, ...r.workspaces.list().map((w) => w.path)]) {
-        const at = depth(dir);
-        if (at >= 0 && (!best || at > best.at)) best = { r, at };
-      }
+    const best = this.repoAt(cwd);
     if (!best) return false;
-    const path = best.r.info.path;
-    const mine = this.deps.settings ? this.deps.settings(path) : best.r.config.settings;
+    const path = best.info.path;
+    const mine = this.deps.settings ? this.deps.settings(path) : best.config.settings;
     const trusted = this.deps.store.trustedCommands(path);
     const held = (read: SharedRead) => heldGroups(commandsOf(read), trusted, mine).includes('claude');
     // a folder without git is read as it is
-    if (best.r.info.folder) return held(readSharedFiles(path));
+    if (best.info.folder) return held(readSharedFiles(path));
     const seal = refsSeal(path);
     const known = this.defaultRead.get(path);
     const read = seal && known?.seal === seal ? known.read : this.readSettings(path);
