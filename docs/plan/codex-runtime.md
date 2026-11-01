@@ -154,6 +154,74 @@ test-owned PIDs were cleaned up. Probe source and last report: `/tmp/obeya-keep-
   fallback. Test native harnesses, nested jobs and breakaway, and preserve app parking semantics.
   macOS has no selected unprivileged equivalent. Do not claim an untested boundary or platform.
 
+### Proposed recovery boundary (not implemented)
+
+Use the supervisor and a registry for different failures, not as substitutes. A private liveness
+pipe lets the session's supervisor react when its Obeya server dies. A durable registry is a fallback
+for a supervisor that dies, or cleanup it could not complete; it does nothing until a later sweep.
+Neither makes an unobserved descendant recoverable. The liveness prototype above has no registry or
+startup sweep and must not be treated as providing this design.
+
+A separate **report-only** prototype in `scripts/agent-registry-prototype.ts` explores a
+per-generation SQLite write-lock lease and atomic record replacement in a private local scratch
+directory. The lease is held independently of the record file; an inspector cannot read a generation
+while its lease is held, and an owner process's death releases it. Records carry a supervisor and
+observed process identities; Linux identity reads boot ID, PID namespace and `/proc` start ticks.
+Other platforms report identity unavailable. An inspector reports match, different, or
+missing-or-hidden, and treats a missing/busy lease, corrupt record or mismatched boot/namespace as
+unknown. It never kills processes or deletes records. Tests use synthetic identities and exercise a
+separate owner's death on macOS; Linux identity reading, Windows, hostile paths, durable fsync,
+filesystem lock behavior beyond the local test, integration with the liveness supervisor and
+packaged Obeya are unverified. This is not a production registry, a startup sweep or a proof that
+an identity is safe to signal.
+
+- **Lifetime:** each local agent session gets a random, never-reused session generation and a
+  supervisor. Session work belongs to it; a card's `app.keep` affects parking, not forced shutdown.
+  External operations and remote hosts are not assumed to be session-owned. An app that needs an
+  independent lifetime cannot be identified or protected by ancestry alone; no such handoff is
+  specified yet. An ordinary session end and owner-pipe EOF both trigger cleanup, while a graceful
+  server stop waits for busy turns as described above. No command-line search or workspace-wide
+  kill is an ownership boundary.
+- **Ownership:** the supervisor holds an exclusive, kernel-backed per-generation lease while it can
+  own or clean up the session. Another Obeya instance or startup sweeper must acquire that same
+  lease non-blockingly and keep it throughout inspection, signalling and record updates; a busy,
+  missing, inaccessible, unsupported or ambiguous lease is *not* permission to kill. Lease files
+  must not be unlinked and recreated while contenders may hold the old inode. Use a private local
+  directory, secure permissions and paths that cannot be redirected; define and test platform lock
+  semantics before relying on them. A random id or an owner PID alone is not a lease.
+- **Records:** persist a versioned record per generation containing the host and boot identity,
+  supervisor identity, and only observed session-process identities (PID plus a sufficiently
+  precise kernel creation identity), with the session generation and lifecycle state. Do not store
+  credentials or full command lines. Use atomic, crash-safe updates and serialize updates with the
+  lease; keep a record when writing, inspecting or cleanup fails, rather than declaring success.
+  Boot, host, PID namespace, identity format and lock backend must match the observer's environment;
+  an unknown, corrupt, old, inaccessible or incompatible record is quarantined and reported, never
+  guessed at. A filesystem shared across hosts or PID namespaces is not by itself a common process
+  ownership domain.
+- **Ordering:** a gated launch must establish the lease and durable initial record before agent code
+  is allowed to run. As processes are observed, persist identities before relying on the registry
+  to recover them. A crash before persistence or between observations still leaves a gap: the gate
+  does not make later children atomic. Close or crash triggers immediate best-effort supervisor
+  cleanup; mark the generation finished and remove its record only after cleanup is known to have
+  completed. A crash during record updates or cleanup leaves it eligible for a later retry once the
+  lease is available. Concurrent sweepers must not both clean the same generation.
+- **Sweep:** only after obtaining the lease and establishing same-host, same-boot, same-namespace
+  identities may a sweep consider an individual recorded process. Missing or mismatched processes
+  are not targets; a live process whose identity cannot be established is left alone and reported.
+  Verification followed by `kill(pid)` or `killpg(pgid)` still races reuse, and a group number does
+  not prove every member is owned. Automatic destructive recovery requires an OS mechanism that
+  safely binds signalling to the verified process identity; until one is selected and tested on a
+  platform, its sweep is report-only. In particular, macOS `ps` second-resolution start times and
+  numeric group IDs are insufficient for that guarantee. Linux pidfds and Windows process handles
+  are candidates, not yet a verified complete design; neither discovers unseen children.
+- **Acceptance before integration:** exercise crashes at each launch, registration and cleanup
+  boundary; an owner and supervisor dying independently; concurrent instances and sweepers;
+  reboot, namespace and PID reuse; invalid records, permissions and failed writes; normal and
+  forced stop; kept apps and unrelated canaries. Test real Claude and Codex, packaging, and each
+  supported OS. A failed or unavailable recovery must be visible and must not silently widen the
+  kill scope. Preserve the distinction between a session that can safely resume and one whose old
+  writer is still unaccounted for.
+
 ## Remaining phase 1 acceptance and parity
 - [ ] Rerun live mixed-harness cards, rate-limit recovery and longer-running pause/restart scenarios.
 - [ ] Expose the active session's own identity if working and reading bubbles should name its model.
