@@ -179,7 +179,7 @@ export function serve(
     };
   };
   /** How many things on each canvas need the owner: each canvas's switcher points to the others. */
-  const counted = (c: CanvasRuntime) => waitingOn(c.board.snapshot());
+  const counted = (c: CanvasRuntime, snapshot = c.board.snapshot()) => waitingOn(snapshot);
   const waiting: Record<string, number> = {};
   const waitingMessage = () => JSON.stringify({ type: 'waiting', waiting } satisfies ServerMessage);
   /** What waits for the owner on each canvas, kept for the inbox every page shows. */
@@ -242,7 +242,7 @@ export function serve(
         refreshInbox(c, snapshot);
         // what the switchers show of it (its repositories, whether they run as configured) may have changed
         relist();
-        const n = counted(c);
+        const n = counted(c, snapshot);
         if (n === waiting[c.id]) return;
         waiting[c.id] = n;
         everyone(waitingMessage());
