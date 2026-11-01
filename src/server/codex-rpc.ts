@@ -6,12 +6,12 @@ import { messageOf } from '../core/text';
 import { OWN_GROUP } from './spawn';
 import { AgentProcesses } from './agent-processes';
 
-const running = new Map<() => void, Promise<void>>();
-/** Wait for bounded escalation before the owner process exits and destroys its timers. */
-export async function endCodexHere() {
+const running = new Map<() => void, { done: Promise<void>; force: () => void }>();
+/** Ordinary shutdown waits for escalation; an explicit force signals without waiting. */
+export async function endCodexHere(force = false) {
   const active = [...running];
-  for (const [close] of active) close();
-  await Promise.allSettled(active.map(([, done]) => done));
+  for (const [close, entry] of active) force ? entry.force() : close();
+  if (!force) await Promise.allSettled(active.map(([, entry]) => entry.done));
 }
 
 export interface CodexHandlers {
@@ -152,7 +152,11 @@ export function codexConnection(
     try { terminals?.kill(); } catch (error) { failure ??= new Error(messageOf(error)); }
     if (OWN_GROUP) signal('SIGKILL');
   });
-  running.set(close, done);
+  running.set(close, { done, force: () => {
+    close();
+    try { terminals?.kill(); } catch (error) { failure ??= new Error(messageOf(error)); }
+    signal('SIGKILL');
+  } });
   child.on('close', (code, exitSignal) => {
     clearInterval(observe);
     running.delete(close);

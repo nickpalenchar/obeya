@@ -59,7 +59,7 @@ export interface RestarterOptions {
   /** The workers in the middle of a turn. */
   busy: () => Busy[];
   /** Stops the server so that it starts again, or for good when the reason is `stop`, or for the app to be updated. */
-  go: (reason: RestartReason) => void;
+  go: (reason: RestartReason, forced: boolean) => void;
   /** What the owner did that the server itself finishes first, whether or not a page is open: commands in their undo window. */
   held?: () => OwnerHold[];
   patienceMs?: number;
@@ -154,7 +154,7 @@ export class Restarter {
   /** Goes ahead with the restart that waits, cutting off the workers it waits for; false when none waits. */
   now(): boolean {
     if (!this.current) return false;
-    this.go(this.current.reason);
+    this.go(this.current.reason, true);
     return true;
   }
 
@@ -165,12 +165,12 @@ export class Restarter {
     return (['video', 'voice'] as const).filter((h) => all.has(h));
   }
 
-  private go(reason: RestartReason) {
+  private go(reason: RestartReason, forced = false) {
     if (this.gone) return;
     this.gone = true;
     this.stopWaiting();
     this.current = null;
-    this.o.go(this.stopping ? 'stop' : this.updating ? 'update' : this.taking ? 'takeover' : reason);
+    this.o.go(this.stopping ? 'stop' : this.updating ? 'update' : this.taking ? 'takeover' : reason, forced);
   }
 
   private emit() {

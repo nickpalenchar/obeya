@@ -111,10 +111,15 @@ session for the heartbeat and remained its parent for 1.5 seconds so it could be
 `app.keep` ran while the heartbeat was alive (57 ticks); graceful server shutdown then killed it
 (58 ticks, PID gone), without invoking `app.stop`. **Decision (owner, 2026-10-31):** `app.keep`
 protects an app from waiting-card parking, not an unconditional right to survive shutdown. A
-graceful shutdown waits; a forced shutdown is chosen precisely because the owner does not want to
-wait, and stops remaining processes as best it can without waiting for them to finish. A crash is
-separate and cannot run graceful shutdown. Check the observed transition against these semantics
-before calling it a defect. All scratch servers stopped and
+graceful shutdown waits up to the existing 15-minute limit for busy workers; a forced shutdown is
+chosen precisely because the owner does not want to wait, and stops remaining processes as best it
+can without waiting for them to finish. A crash is separate and cannot run graceful shutdown.
+The stop scheduler waits for busy workers and supports an immediate owner override, with regression
+tests for both and for the deadline. Forced stop signals the tracked processes immediately instead
+of waiting for Codex's normal EOF/TERM/KILL escalation; a synthetic macOS test checks a separately
+grouped child and unrelated canary. Ordinary shutdown still waits for escalation. The card probe
+above had no busy worker at shutdown, so it does not verify graceful waiting or this forced path
+with a real card. All scratch servers stopped and
 test-owned PIDs were cleaned up. Probe source and last report: `/tmp/obeya-keep-card-probe.ts`,
 `/tmp/obeya-keep-card-report.json` on the test machine.
 

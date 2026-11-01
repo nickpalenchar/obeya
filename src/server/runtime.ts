@@ -452,12 +452,18 @@ export function withStderr(message: string, stderr: string): string {
  * stay in the console (`OWN_GROUP`) and a kill would end them at once, before they end what they run:
  * there they end as before, with their stdin.
  */
-export function endAgentsHere() {
-  const codexDone = endCodexHere();
-  if (!OWN_GROUP) return codexDone;
+export function endAgentsHere(force = false) {
+  const codexDone = endCodexHere(force);
+  if (!OWN_GROUP && !force) return codexDone;
   for (const p of here) {
     try {
-      if (p.pid) process.kill(-p.pid, 'SIGTERM');
+      if (OWN_GROUP && p.pid) process.kill(-p.pid, force ? 'SIGKILL' : 'SIGTERM');
+      else if (force && p.pid) {
+        // taskkill handles the process tree; do not wait for the helper on an explicit force.
+        const killer = spawn('taskkill.exe', ['/PID', String(p.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore', detached: true });
+        killer.on('error', () => { try { p.kill('SIGKILL'); } catch { /* already gone */ } });
+        killer.unref();
+      }
     } catch {
       // gone already
     }

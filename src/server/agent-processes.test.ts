@@ -63,6 +63,36 @@ setInterval(()=>{},1000);`;
   }
 });
 
+test.skipIf(process.platform === 'win32')('forced shutdown signals an observed detached child and does not wait for escalation', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'obeya-force-test-'));
+  const file = join(root, 'heartbeat');
+  const code = `import {writeFileSync} from 'node:fs';let n=0;process.on('SIGTERM',()=>{});setInterval(()=>writeFileSync(${JSON.stringify(file)},String(++n)),25);`;
+  const server = `import {spawn} from 'node:child_process';import {createInterface} from 'node:readline';
+const child=spawn(process.execPath,['-e',${JSON.stringify(code)}],{detached:true,stdio:'ignore'});
+createInterface({input:process.stdin}).on('line',line=>process.stdout.write(JSON.stringify({id:JSON.parse(line).id,result:child.pid})+'\\n'));
+process.stdin.on('end',()=>{});process.on('SIGTERM',()=>{});setInterval(()=>{},1000);`;
+  const { endCodexHere } = await import('./codex-rpc');
+  const canary = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' });
+  const c = codexConnection({ command: process.execPath, args: ['-e', server], cwd: root, env: process.env }, handlers);
+  let pid: number | undefined;
+  try {
+    pid = await c.request<number>('spawn', {});
+    await until(() => beat(file) > 2);
+    c.trackProcesses!([pid]);
+    // A second stop can arrive after ordinary shutdown has already closed the session.
+    c.close();
+    const start = Date.now();
+    await endCodexHere(true);
+    expect(Date.now() - start).toBeLessThan(1000);
+    await until(() => { try { process.kill(pid!, 0); return false; } catch { return true; } });
+    expect(process.kill(canary.pid!, 0)).toBe(true);
+  } finally {
+    c.close(); await c.done.catch(() => {});
+    kill(pid); kill(canary.pid);
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 10_000);
+
 test('shutdown awaits escalation before exiting, including an EOF/TERM-ignoring subprocess', async () => {
   const root = mkdtempSync(join(tmpdir(), 'obeya-exit-test-'));
   const file = join(root, 'heartbeat');
