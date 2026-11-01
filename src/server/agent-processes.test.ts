@@ -172,3 +172,49 @@ console.log(c.pid);await Bun.sleep(150);await endCodexHere();process.exit(0);`;
     expect(beat(file)).toBe(stopped);
   } finally { p.kill(); kill(pid); rmSync(root, { recursive: true, force: true }); }
 }, 10_000);
+
+function spyOnKill(refuse: (pid: number) => boolean = () => false) {
+  const real = process.kill;
+  const calls: [number, string | number | undefined][] = [];
+  process.kill = ((pid: number, sig?: string | number) => {
+    if (Math.abs(pid) >= 90000) {
+      calls.push([pid, sig]);
+      if (refuse(pid)) throw Object.assign(new Error('not permitted'), { code: 'EPERM' });
+      return true;
+    }
+    return real(pid, sig as NodeJS.Signals);
+  }) as typeof process.kill;
+  return { calls, restore: () => { process.kill = real; } };
+}
+
+test.skipIf(process.platform === 'win32')('a refused signal does not leave the other observed processes alive, and is retried later', () => {
+  const root = { pid: 90001, parent: process.pid, group: 90001, born: 'root' };
+  const a = { pid: 90002, parent: root.pid, group: 90002, born: 'a' };
+  const b = { pid: 90003, parent: root.pid, group: 90003, born: 'b' };
+  const tracker = new AgentProcesses(root.pid, () => [root, a, b]);
+  tracker.track();
+  const spy = spyOnKill((pid) => pid === -90003);
+  try {
+    expect(() => tracker.kill()).toThrow('not permitted');
+    expect(spy.calls.map(([pid]) => pid).sort()).toEqual([-90003, -90002].sort());
+    // only the refused one is still owed a signal
+    expect(tracker.observed().map((p) => p.pid)).toEqual([root.pid, b.pid]);
+  } finally { spy.restore(); }
+});
+
+test.skipIf(process.platform === 'win32')('after the app-server has exited, its group number is signalled once and never again', async () => {
+  const spy = spyOnKill();
+  const real = process.kill;
+  const c = codexConnection({ command: process.execPath, args: ['-e', `process.stdin.resume();process.stdin.on('end',()=>process.exit(0));`], cwd: process.cwd(), env: process.env }, handlers);
+  const group = -c.pid!;
+  const seen: [number, unknown][] = [];
+  process.kill = ((pid: number, sig?: string | number) => { if (pid === group) seen.push([pid, sig]); return real(pid, sig as NodeJS.Signals); }) as typeof process.kill;
+  try {
+    await Bun.sleep(100);
+    c.close();
+    await c.done;
+    // the escalation timers (1 s, 2 s) must not fire at a group number that may be reused by now
+    await Bun.sleep(2300);
+    expect(seen).toEqual([[group, 'SIGKILL']]);
+  } finally { process.kill = real; spy.restore(); }
+}, 10_000);

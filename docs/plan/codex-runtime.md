@@ -10,7 +10,7 @@ Harden the local Codex worker preview and complete its remaining acceptance and 
 
 ## Workstreams
 
-- [ ] **W1:** Process cleanup. Finish and review the current process-group and observed-descendant cleanup, including the
+- [x] **W1:** Process cleanup. Finish and review the current process-group and observed-descendant cleanup, including the
   Linux `/proc` changes. Check normal stop, forced stop and agent death, PID reuse, unrelated
   canaries and shutdown escalation. Verify how this interacts with app parking and `app.keep`;
   distinguish graceful shutdown, explicit forced shutdown and crashes. `app.keep` governs
@@ -182,6 +182,39 @@ above had no busy worker at shutdown, so it does not verify graceful waiting or 
 with a real card. All scratch servers stopped and
 test-owned PIDs were cleaned up. Probe source and last report: `/tmp/obeya-keep-card-probe.ts`,
 `/tmp/obeya-keep-card-report.json` on the test machine.
+
+W1 closing pass (2026-11-01, macOS, Codex CLI 0.162.0, scratch directories, no model turn;
+`scripts/process-lifecycle-probe.ts`). The probe drives the installed app-server through Obeya's
+transport, starts three Python heartbeats with `thread/shellCommand` (in the shell's group, in a
+session of its own, in a session of its own whose launcher exits early) and an unrelated canary,
+then ends things four ways:
+
+| Case | Heartbeats | App-server | Canary |
+| --- | --- | --- | --- |
+| Graceful transport close | all three stopped | gone | alive |
+| Forced close (`endCodexHere(true)`) | all three stopped | gone | alive |
+| SIGKILL of the app-server (the host lives) | all three stopped | gone | alive |
+| SIGKILL of the host (no tracker left to run) | **all three kept running** | gone (stdin EOF) | alive |
+
+So cleanup follows from the host's tracker, not from Codex: when Obeya itself dies, the
+separately grouped and the same-group jobs alike outlive it. This differs from the earlier
+host-death probe above, where the heartbeat stopped; the earlier job was most likely a Codex-managed
+terminal that the app-server ended itself on EOF, whereas `shellCommand` jobs are not. Treat the host-death result as
+"depends on how Codex started the process", never as a guarantee either way. Crash recovery is W3/W4.
+
+Review changes from this pass: a refused signal (EPERM) no longer leaves the other observed
+processes alive, and the identities still owed are kept and retried when the transport's pipes
+close; a Windows `taskkill` failure other than "not found" is reported and retried, not forgotten
+(untested on Windows); the app-server's group is signalled once at `exit`, never again by later
+escalation timers (a test pins it); the probe itself only signals pids that still look like its own.
+Open, by nature of numeric signalling: that one group signal at `exit` and every snapshot-to-signal
+kill can reach a reused number if the group emptied and the number was recycled in between.
+
+Lifecycle summary, as verified: normal and forced stop and agent death end session work (observed
+descendants and the app-server's group), unrelated processes are left alone, and `app.keep` is not
+involved: it only decides whether a waiting card's app is stopped by parking. An app started as
+session work dies with its session on any shutdown, graceful or forced; one the owner wants to
+outlive a shutdown needs a handoff that does not exist (W3). A crash of Obeya runs no cleanup.
 
 ### Proposed recovery boundary (not implemented)
 

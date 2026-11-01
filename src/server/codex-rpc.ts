@@ -56,6 +56,9 @@ export function codexConnection(
   const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
   let nextId = 0;
   let closing = false;
+  // Once the app-server has exited, its process group id is no longer held by it: a later signal
+  // could reach a process that was given the number since. The exit handler signals the group once.
+  let exited = false;
   let failure: Error | undefined;
   let stderr = '';
   let buffer = '';
@@ -69,6 +72,7 @@ export function codexConnection(
   const decoder = new StringDecoder('utf8');
 
   function signal(which: NodeJS.Signals) {
+    if (exited) return;
     try {
       if (OWN_GROUP && child.pid) process.kill(-child.pid, which);
       else child.kill(which);
@@ -150,7 +154,13 @@ export function codexConnection(
     if (!closing) fail(new Error(`Codex app-server exited (${exitSignal ?? code})${stderr.trim() ? `: ${stderr.trim()}` : ''}`));
     // Do not wait for `close`: a child command may still hold the dead parent's pipes open.
     try { terminals?.kill(); } catch (error) { failure ??= new Error(messageOf(error)); }
-    if (OWN_GROUP) signal('SIGKILL');
+    // The leader is gone, so any member still in its group keeps the number reserved: this is the
+    // last point where signalling the group cannot reach a reused one.
+    if (OWN_GROUP && child.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch { /* none left */ }
+    exited = true;
+    // `fail` above may have just armed the escalation of a process that is already gone
+    clearTimeout(terminate);
+    clearTimeout(kill);
   });
   running.set(close, { done, force: () => {
     close();
@@ -159,10 +169,9 @@ export function codexConnection(
   } });
   child.on('close', (code, exitSignal) => {
     clearInterval(observe);
+    // Identities a refused signal left owed at `exit` are tried once more before the transport is gone.
+    try { terminals?.kill(); } catch (error) { failure ??= new Error(messageOf(error)); }
     running.delete(close);
-    // The parent can exit while commands with redirected stdio remain in its process group.
-    // They must not outlive the transport merely because no pipe still holds `close` open.
-    if (OWN_GROUP) signal('SIGKILL');
     clearTimeout(terminate);
     clearTimeout(kill);
     if (!closing) failure = new Error(`Codex app-server exited (${exitSignal ?? code})${stderr.trim() ? `: ${stderr.trim()}` : ''}`);
