@@ -21,7 +21,7 @@ import { Setup } from './setup';
 import { Phone, phoneView } from './phone';
 import { KoordinatorSheet } from './koordinator';
 import { QueuePill } from './queue';
-import { depsOf, visibleDotSides } from './deps';
+import { depsOf, manualPrerequisites, visibleDotSides } from './deps';
 import { anchoredPath, edgePoint, nearestEdge } from './manualLinks';
 import type { EdgeSide, ManualAnchor } from '../core/types';
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
@@ -699,12 +699,14 @@ function Canvas({
   /** The play button on a card: starts it, or one queued behind others despite the likely conflict. */
   const startCard = useCallback(async (i: Item) => {
     try {
+      const waiting = i.queue ? manualPrerequisites(i, items) : [];
+      if (waiting.length && !window.confirm(t.queue.confirmManualStart(waiting.map((card) => plain(card.title)).join(', ')))) return;
       await api.act(i.id, { action: i.queue ? 'force' : 'start' });
-      if (i.queue) showAck(t.queue.forced);
+      if (i.queue) showAck(waiting.length ? t.queue.forcedManual : t.queue.forced);
     } catch (e) {
       fail(e);
     }
-  }, []);
+  }, [items]);
 
   /** The archive button on a finished card or a parked or dropped idea: takes it off the canvas, with a moment to undo. */
   const archiveCard = useCallback(async (i: Item) => {

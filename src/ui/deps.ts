@@ -66,3 +66,11 @@ export function visibleDotSides(b: Bounds, pointer: { x: number; y: number }, sc
     Math.hypot(pointer.x - edge[0]!, pointer.y - edge[1]!) * scale <= 6,
   ).map(({ side }) => side);
 }
+
+/** Unfinished prerequisites explicitly connected by the owner. */
+export function manualPrerequisites(item: Item, items: Item[]): Item[] {
+  return (item.manualDependsOn ?? []).flatMap((id) => {
+    const prerequisite = items.find((i) => i.id === id);
+    return prerequisite && !prerequisite.archivedAt && !finished(prerequisite.state) ? [prerequisite] : [];
+  });
+}
