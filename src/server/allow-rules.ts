@@ -30,7 +30,15 @@ function words(text: string): string[] | null {
       let j = i + 1;
       let part = '';
       for (; j < text.length && text[j] !== '"'; j++) {
-        if (text[j] === '\\' || text[j] === '$' || text[j] === '`') return null;
+        // in double quotes a backslash only escapes `"`, `\\`, `$` and the backtick; the escaped character is the text's own
+        if (text[j] === '\\') {
+          const next = text[j + 1];
+          if (next === undefined || !'"\\$`'.includes(next)) return null;
+          part += next;
+          j++;
+          continue;
+        }
+        if (text[j] === '$' || text[j] === '`') return null;
         part += text[j];
       }
       if (j >= text.length) return null;
@@ -45,26 +53,107 @@ function words(text: string): string[] | null {
   return out;
 }
 
-/** What the shell would give its own syntax a meaning with: none of it may be in a command a rule covers. */
-const SYNTAX = /[;&|<>$`()\n\r\\{}!~#*?[\]]/;
+/** Where a command may send its output to: the temporary directories, and no `..` out of them. */
+export const TEMP_ROOTS: readonly string[] = ['/tmp/', '/private/tmp/'];
+
+/** Variables a command may not set in front of itself: they change what a rule's program is or does. */
+const UNSAFE_VARIABLES = /^(?:PATH|HOME|SHELL|IFS|ENV|BASH_ENV|LD_\w*|DYLD_\w*|NODE_\w*|BUN_\w*|PYTHON\w*|GIT_\w*|OBEYA_\w*|NPM_\w*)$/;
 
 /**
- * The plain command a request stands for: `/bin/zsh -lc '<command>'` (the shell Codex wraps a
- * command in) as the command inside it. Null for anything that is not one plain command.
+ * The parts of a script that the shell runs one after the other (`&&`, `;`, a new line); null
+ * where the script has any other syntax outside quotes: pipes, `||`, `&`, substitution,
+ * expansion, globs, heredocs, input redirection, groups. Output redirection stays in its part.
  */
-export function plainCommand(command: unknown): string | null {
+function parts(script: string): string[] | null {
+  const out: string[] = [];
+  let cur = '';
+  for (let i = 0; i < script.length; i++) {
+    const c = script[i]!;
+    if (c === "'" || c === '"') {
+      const end = script.indexOf(c, i + 1);
+      if (end < 0) return null;
+      const quoted = script.slice(i, end + 1);
+      // inside double quotes the shell still expands these
+      if (c === '"' && /[\\$`]/.test(quoted)) return null;
+      cur += quoted;
+      i = end;
+    } else if (c === '&') {
+      if (script[i + 1] === '&') {
+        out.push(cur);
+        cur = '';
+        i++;
+      } else if (cur.endsWith('>') && /\d/.test(script[i + 1] ?? '')) cur += c;
+      else return null;
+    } else if (c === ';' || c === '\n' || c === '\r') {
+      out.push(cur);
+      cur = '';
+    } else if (/[|\\$`(){}!~#*?[\]<]/.test(c)) return null;
+    else cur += c;
+  }
+  out.push(cur);
+  const nonEmpty = out.map((p) => p.trim()).filter(Boolean);
+  return nonEmpty.length ? nonEmpty : null;
+}
+
+/** `part` without its output redirections (to a file under a temporary directory, and `2>&1`); null for any other. */
+function withoutRedirects(part: string, roots: readonly string[]): string | null {
+  // what lies between quotes is no syntax: masked, it keeps its place and its length
+  const mask = part.replace(/'[^']*'|"[^"]*"/g, (m) => 'x'.repeat(m.length));
+  let rest = '';
+  let at = 0;
+  for (const m of mask.matchAll(/(?:^|\s)(\d*)(>>?)(?:&(\d))?\s*([^\s>]*)/g)) {
+    const [whole, fd, , dup, target] = m;
+    const from = m.index!;
+    // `2>&1`
+    if (dup !== undefined) {
+      if (fd !== '2' || dup !== '1') return null;
+    } else {
+      const file = part.slice(from + whole!.length - target!.length, from + whole!.length);
+      if ((fd !== '' && fd !== '1' && fd !== '2') || !/^[\w./-]+$/.test(file) || !roots.some((r) => file.startsWith(r)) || file.split('/').includes('..')) return null;
+    }
+    rest += part.slice(at, from);
+    at = from + whole!.length;
+  }
+  rest += part.slice(at);
+  return /[<>]/.test(rest.replace(/'[^']*'|"[^"]*"/g, '')) ? null : rest.trim();
+}
+
+/**
+ * The plain commands a request stands for, in the order they run: `/bin/zsh -lc '<script>'` (the
+ * shell Codex wraps a command in) as the script inside it, split at `&&`, `;` and new lines, each
+ * without the variables set in front of it and without output redirected to a temporary
+ * directory. Null for anything else.
+ */
+export function plainCommands(command: unknown, roots: readonly string[] = TEMP_ROOTS): string[] | null {
   const argv = Array.isArray(command) ? command.map(String) : typeof command === 'string' ? words(command) : null;
   if (!argv?.length) return null;
-  let text: string | null = null;
+  let script: string;
   if (/^(?:\/(?:usr\/)?bin\/)?(?:zsh|bash|sh)$/.test(argv[0]!)) {
     if (argv.length !== 3 || (argv[1] !== '-lc' && argv[1] !== '-c')) return null;
-    text = argv[2]!;
-  } else text = argv.join(' ');
-  const inner = words(text);
-  if (!inner?.length || SYNTAX.test(text.replace(/'[^']*'|"[^"]*"/g, ''))) return null;
-  // `..` in a path would take a text pattern out of the directory it names
-  if (inner.some((w) => w.split('/').includes('..'))) return null;
-  return inner.join(' ');
+    script = argv[2]!;
+  } else script = Array.isArray(command) ? argv.join(' ') : String(command);
+  const split = parts(script);
+  if (!split) return null;
+  const commands: string[] = [];
+  for (const part of split) {
+    const bare = withoutRedirects(part, roots);
+    const inner = bare === null ? null : words(bare);
+    if (!inner?.length) return null;
+    while (inner.length && /^[A-Za-z_]\w*=/.test(inner[0]!)) {
+      if (UNSAFE_VARIABLES.test(inner[0]!.split('=')[0]!)) return null;
+      inner.shift();
+    }
+    // `..` in a path would take a text pattern out of the directory it names
+    if (!inner.length || inner.some((w) => w.split('/').includes('..'))) return null;
+    commands.push(inner.join(' '));
+  }
+  return commands;
+}
+
+/** The one plain command a request stands for; null where it is none or several. */
+export function plainCommand(command: unknown): string | null {
+  const all = plainCommands(command);
+  return all?.length === 1 ? all[0]! : null;
 }
 
 /** Whether `rule` (a `Bash(...)` pattern, `*` for any text, a space before it making the word end there) covers `command`. */
@@ -76,8 +165,8 @@ function covers(rule: string, command: string): boolean {
   return new RegExp(`^${escaped.join('.*')}$`, 's').test(command);
 }
 
-/** Whether an allow rule covers the command of an approval request: only then may it be granted without asking. */
-export function allowed(rules: string[], command: unknown): boolean {
-  const plain = plainCommand(command);
-  return plain !== null && rules.some((r) => covers(r, plain));
+/** Whether allow rules cover every command of an approval request: only then may it be granted without asking. */
+export function allowed(rules: string[], command: unknown, roots?: readonly string[]): boolean {
+  const all = plainCommands(command, roots);
+  return all !== null && all.every((plain) => rules.some((r) => covers(r, plain)));
 }
