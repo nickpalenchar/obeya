@@ -660,8 +660,8 @@ textarea.p-body:focus { border-color: var(--muted); }
 .demo-view .zoom-hint kbd { font: inherit; font-weight: 600; margin-left: 3px; padding: 0 6px; border-radius: 2px; background: rgba(255, 255, 255, .2); border: 1px solid rgba(255, 255, 255, .35); }
 .demo-view .zoom svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; }
 /* the arrow keys, over the video's controls for a moment after a click on them, until the owner first jumped with them */
-.demo-view .screen:not(.zoomed):not(.full) { padding-bottom: 40px; background: #000; }
-.demo-view .captions-toggle { position: absolute; right: 10px; bottom: 4px; z-index: 2; min-width: 38px; height: 32px;
+.demo-view .screen:not(.zoomed):not(.full) { padding-bottom: 52px; background: #000; }
+.demo-view .captions-toggle { position: absolute; right: 10px; bottom: 10px; z-index: 2; min-width: 38px; height: 32px;
   border: 1px solid rgba(255, 255, 255, .8); border-radius: 4px; background: rgba(0, 0, 0, .8); color: #fff;
   font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 .demo-view .screen.zoomed .captions-toggle, .demo-view .screen.full .captions-toggle { bottom: 52px; }
