@@ -1323,6 +1323,22 @@ describe('tool calls the settings refuse or want confirmed', () => {
     expect(state(c.id)).toBe('working');
   });
 
+  test('obsolete permission settles and clears its question so the next queued request can appear', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    const controller = new AbortController();
+    const first = runtime.last.spec.askOwner!({ name: 'Bash', input: { command: 'obsolete' } }, controller.signal);
+    const second = runtime.last.permission('Bash', { command: 'next' });
+    await flush();
+    expect(board.item(c.id)!.question!.text).toContain('obsolete');
+    controller.abort('permission-obsolete');
+    expect((await first).allow).toBe(false);
+    await flush();
+    expect(board.item(c.id)!.question!.text).toContain('next');
+    workers.answer(c.id, 'Erlauben');
+    expect(await second).toEqual({ allow: true });
+  });
+
   test('two calls that need confirmation at once are asked one after the other', async () => {
     const c = manual();
     await workers.start(c.id);

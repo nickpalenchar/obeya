@@ -14,6 +14,7 @@ import { oneAtATime } from '../core/one-at-a-time';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { type AnswerFile, type AnswerRef, type CardEvent, type Item, pausable, pausableNow, type Talk, type TalkRef } from '../core/types';
+import type { AgentIdentity } from '../core/types';
 import { type Briefing, INFORM_RULES, inform, Interrupted, type OwnerAnswer } from './advisor';
 import { BadRequest, type Board, replyNote } from './board';
 import { imageNote } from './images';
@@ -269,7 +270,7 @@ export class Answers {
     const card = this.o.board.addQuestion(root.question, { talk: thread, answers: answered.length, files }, session, about?.repo, root.cardId ?? root.askedIn);
     for (const r of rows) {
       this.o.board.log(card.id, 'talk', 'owner', r.said, { images: r.images, at: r.at });
-      if (r.answer !== undefined) this.o.board.log(card.id, 'talk', r.answerBy ?? by, r.answer, { answer: answerRef(thread, r.files, r.continues), at: r.at });
+      if (r.answer !== undefined) this.o.board.log(card.id, 'talk', r.answerBy ?? by, r.answer, { answer: answerRef(thread, r.files, r.continues), at: r.at, agent: r.answerAgent });
     }
     this.o.board.moveThread(thread, card.id);
     return this.o.board.item(card.id)!;
@@ -357,7 +358,7 @@ export class Answers {
     }
     const text = clip(a.text, 12000);
     // the card may have become an idea meanwhile; the answer stands in its conversation all the same
-    this.o.board.log(cardId, 'talk', by, text, { answer: answerRef(stored.talk, a.files) });
+    this.o.board.log(cardId, 'talk', by, text, { answer: answerRef(stored.talk, a.files), agent: a.agent });
     const now = this.o.board.row(cardId).thread ? this.o.board.thread(cardId) : undefined;
     if (now) {
       const left = (now.pending ?? []).filter((p) => !heard(p));
@@ -366,7 +367,7 @@ export class Answers {
     // the owner asked it to pause once its answer was given: what was asked meanwhile waits for them to let it go on
     if (this.o.board.row(cardId).pausing) this.halt(cardId);
     this.o.board.notify({ cardId, text, inTalk: true });
-    for (const p of taken) if (p.talk) this.answer(p.talk, root.question, text, by, a.files);
+    for (const p of taken) if (p.talk) this.answer(p.talk, root.question, text, by, a.files, a.agent);
   }
 
   /**
@@ -459,11 +460,11 @@ export class Answers {
     const t = this.o.board.exchange(talkId);
     // in the log of the card that was open; with the thread moved onto a Question card meanwhile, there too
     const moved = t?.movedTo && this.o.board.item(t.movedTo)?.kind === 'question' ? t.movedTo : undefined;
-    this.o.board.answerTalk(talkId, text, by, a.files);
+    this.o.board.answerTalk(talkId, text, by, a.files, a.agent);
     const ref = answerRef(thread, a.files, t?.continues);
-    if (card) this.o.board.log(card, 'say', by, text, { answer: ref });
+    if (card) this.o.board.log(card, 'say', by, text, { answer: ref, agent: a.agent });
     if (moved) {
-      this.o.board.log(moved, 'talk', by, text, { answer: ref });
+      this.o.board.log(moved, 'talk', by, text, { answer: ref, agent: a.agent });
       const s = this.o.board.thread(moved);
       this.o.board.setThread(moved, { answers: s.answers + 1, files: s.files + (a.files?.length ?? 0) });
     }
@@ -473,8 +474,8 @@ export class Answers {
   }
 
   /** An exchange from the sheet answered on its thread's Question card. */
-  private answer(talkId: number, question: string, text: string, by: By, files: AnswerFile[] = []) {
-    this.o.board.answerTalk(talkId, text, by, files);
+  private answer(talkId: number, question: string, text: string, by: By, files: AnswerFile[] = [], agent?: AgentIdentity) {
+    this.o.board.answerTalk(talkId, text, by, files, agent);
     this.o.onAnswer?.(talkId, question, text);
   }
 

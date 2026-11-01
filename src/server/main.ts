@@ -200,9 +200,9 @@ let exitCode = RESTART;
 const live = () => canvases?.all() ?? [];
 /** Starts the server again once no worker is in the middle of a turn, or when the owner says so. */
 const busy = () => live().flatMap((c) => c.busy().map((card) => ({ canvas: c.id, card })));
-const leave = (reason: RestartReason) => {
+const leave = (reason: RestartReason, forced = false) => {
   server?.stop(true);
-  if (reason === 'stop') return shutdown(0);
+  if (reason === 'stop') return shutdown(0, forced);
   if (reason === 'update') return shutdown(UPDATE);
   if (own && ranFrom) {
     const done = installDependencies(own, ranFrom);
@@ -216,10 +216,10 @@ const restarter = new Restarter({
   busy,
   // a command in its undo window holds a restart off even when the page that said it reloads
   held: () => (live().some((c) => c.commander.holding()) ? ['voice'] : []),
-  go: (reason) => {
+  go: (reason, forced) => {
     // the app that asked hears the answer first, which may be the request that goes at once
     if (reason === 'takeover') return void setTimeout(() => leave(reason), 100);
-    leave(reason);
+    leave(reason, forced);
   },
 });
 // workers in the middle of a turn hear of a restart that waits for them, and pause for it
@@ -319,11 +319,13 @@ const usage = new UsageMeter(() => claudeUsage(home), { on: usageMeterView(home)
 const machine = new MachineSetup({ home, config, voice: voiceSetup });
 // the canvas the assistant created gets a first card that says what to try
 welcome(home, canvases.all());
-const shutdown = (code: number) => {
+const shutdown = async (code: number, forced = false) => {
+  // Force while the sessions and their process identities are still available.
+  const agents = forced ? endAgentsHere(true) : undefined;
   canvases?.shutdown();
   usage.stop();
   demoSpace.stop();
-  endAgentsHere();
+  await (agents ?? endAgentsHere());
   awake.stop();
   // what it counted of a page's stalls, before it goes
   stalls.stop();
@@ -348,7 +350,7 @@ const stop = () => {
   // Ctrl-C in the terminal reaches the supervisor too, which passes it on: one press arrives twice
   if (Date.now() - stopAsked < SAME_PRESS_MS) return;
   console.log('Obeya: stopping now');
-  if (!restarter.now()) shutdown(0);
+  if (!restarter.now()) shutdown(0, true);
 };
 for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, stop);
 

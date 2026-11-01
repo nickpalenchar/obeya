@@ -1,6 +1,8 @@
 // What the agents that answer the owner's questions (the Koordinator, a project agent) share, and
 // how an agent's question to the owner is put together.
 
+import { currentAgent } from './agent-identity';
+import type { AgentIdentity } from '../core/types';
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import { existsSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
@@ -12,6 +14,7 @@ import { clip } from '../core/text';
 
 /** An answer to a question the owner asked, for the card or the sheet, with the files it comes with. */
 export interface OwnerAnswer {
+  agent?: AgentIdentity;
   text: string;
   files?: AnswerFile[];
 }
@@ -71,8 +74,8 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
     let closed = false;
     const settle = (a: OwnerAnswer) => {
       if (answer) return 'Only the first answer counts.';
-      answer = a;
-      resolve(a);
+      answer = { ...a, ...(currentAgent() ? { agent: currentAgent() } : {}) };
+      resolve(answer);
       return 'Delivered. End your turn now.';
     };
     const close = () => {

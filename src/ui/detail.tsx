@@ -1351,15 +1351,10 @@ function Conversation({
   // how the agent came to the questions it waits on, or the steps no message came after
   const askedAt = turns.asked.at(-1)?.e.at;
   const askedSteps = (steps: CardEvent[]) =>
-    steps.length > 0 && (
-      <div className={`msg by-${by}`}>
-        {askedAt && (
-          <div className="who">
-            {agent} · {t.talk.question} <span className="t">{time(askedAt)}</span>
-          </div>
-        )}
+    (steps.length > 0 || askedAt) && (
+      <Msg by={by} who={askedAt ? `${agent} · ${t.talk.question}` : undefined} agent={turns.asked.at(-1)?.e.agent} at={askedAt}>
         <Steps steps={steps} />
-      </div>
+      </Msg>
     );
   return (
     <>
@@ -1546,6 +1541,7 @@ function Message({
       by={ownerSide(e) ? 'owner' : e.author}
       className={[q && 'q', turn.end && `ended ${turn.end}`, fresh && 'fresh', unread ? 'unread' : onDelete && 'held'].filter(Boolean).join(' ')}
       who={`${t.author[e.author]}${e.kind === 'question' ? ` · ${t.talk.question}` : e.kind === 'review' ? ` · ${t.talk.handover}` : ''}`}
+      agent={e.agent}
       at={e.at}
       ev={e.id}
       onReply={onReply && !turn.quiet ? () => onReply(e) : undefined}

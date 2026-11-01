@@ -326,6 +326,25 @@ test('a stop waits for the workers like a restart, but not for the owner, and go
   expect(gone).toEqual(['stop']);
 });
 
+test('a stop proceeds at its deadline even if a worker is still busy', async () => {
+  const gone: string[] = [];
+  const r = new Restarter({ busy: () => [{ canvas: 'c', card: 'a' }], go: (reason) => gone.push(reason), patienceMs: 40, intervalMs: 10 });
+  r.request('stop');
+  expect(gone).toEqual([]);
+  await wait(100);
+  expect(gone).toEqual(['stop']);
+});
+
+test('a forced stop proceeds without waiting for a busy worker', async () => {
+  const gone: [string, boolean][] = [];
+  const r = new Restarter({ busy: () => [{ canvas: 'c', card: 'a' }], go: (reason, forced) => gone.push([reason, forced]), patienceMs: 10_000, intervalMs: 10 });
+  r.request('stop');
+  expect(r.now()).toBe(true);
+  expect(gone).toEqual([['stop', true]]);
+  await wait(50);
+  expect(gone).toEqual([['stop', true]]);
+});
+
 test('a stop turns a restart that waits into a stop', async () => {
   const gone: string[] = [];
   let changes = 0;

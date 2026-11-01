@@ -332,6 +332,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
                 // what waited unread: the reply, unless an answer to look up follows it
                 className={x.undone ? 'undone' : fresh.includes(x.id) && !x.question ? 'fresh' : undefined}
                 who={t.author.koordinator}
+                agent={x.replyAgent}
                 at={x.at}
                 ev={talkEv({ talk: x.id, part: 'reply' })}
                 onReply={reply('reply', 'koordinator', x.reply)}
@@ -360,6 +361,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
                     by={x.answerBy ?? 'koordinator'}
                     className={fresh.includes(x.id) ? 'fresh' : undefined}
                     who={t.author[x.answerBy ?? 'koordinator']}
+                    agent={x.answerAgent}
                     ev={talkEv({ talk: x.id, part: 'answer' })}
                     onReply={reply('answer', x.answerBy ?? 'koordinator', x.answer)}
                     head={x.thread !== undefined && <ThreadCard thread={x.thread} onOpen={onOpen} />}

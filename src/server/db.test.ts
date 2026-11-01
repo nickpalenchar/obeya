@@ -90,6 +90,9 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     s.db.run('ALTER TABLE talk DROP COLUMN then_step');
     s.db.run('ALTER TABLE talk DROP COLUMN after_answer');
     s.db.run('ALTER TABLE cards DROP COLUMN agent_setting');
+    s.db.run('ALTER TABLE events DROP COLUMN agent');
+    s.db.run('ALTER TABLE talk DROP COLUMN reply_agent');
+    s.db.run('ALTER TABLE talk DROP COLUMN answer_agent');
     s.db.run(`PRAGMA user_version = ${RELEASED}`);
     s.db.close();
 

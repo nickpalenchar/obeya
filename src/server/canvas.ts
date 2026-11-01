@@ -1343,8 +1343,9 @@ export class CanvasRuntime {
     // an idea's agent loads no plugins; a review card's reads none of the repository's settings
     const idea = card.state === 'idea';
     if (!idea) {
-      const saved = this.board.row(cardId).agent_setting;
-      const setting = saved ? JSON.parse(saved) : this.deps.agents?.('worker');
+      const row = this.board.row(cardId);
+      // Legacy unqualified sessions belong to Claude even after the default changes.
+      const setting = row.agent_setting ? JSON.parse(row.agent_setting) : row.session_id ? undefined : this.deps.agents?.('worker');
       if (setting?.harness === 'codex') return bundledSkills().map(({ file: _, ...skill }) => skill);
     }
     return this.skills.of({ cwd, plugins: idea ? [] : [OBEYA_PLUGIN], untrusted: (!idea && !!card.contribution) || (await this.claudeHeld(cwd)) });

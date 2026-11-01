@@ -232,9 +232,13 @@ the project's log. Claude Code's `AskUserQuestion` is refused with a pointer to 
 Codex's native command and file-change approval requests use this same question and one-call
 allow/deny decision, not session-wide permission or policy amendments. A refusal by the owner is
 labelled as such, not as Obeya's foreground-wait guard. A saved one-use grant identifies the action
-and its permission scope, not ephemeral turn/item ids: a restart can reissue the same action
-without asking again, but a changed command or requested authority needs a new decision. Extended
-permission-profile requests are denied, and native user-input requests must use Obeya's `ask`.
+and its permission scope, not ephemeral turn/item ids, callback ids or timestamps: a restart can
+reissue the same action without asking again, but a changed command or requested authority needs
+a new decision. Requests granting write access to a root for the rest of the session and extended
+permission profiles are denied. A denial's accompanying owner instructions reach the coding loop
+as input, since the wire decision itself carries no text. Resolving a native request or ending its
+turn withdraws the obsolete question and settles its callback; closing a session instead preserves
+the question for restart. Native user-input requests must use Obeya's `ask`.
 
 ### Notes and replies
 

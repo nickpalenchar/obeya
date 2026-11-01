@@ -297,3 +297,70 @@ test('stuck semantic cleanup is bounded independently of the normal RPC timeout'
   expect(wire.closed).toBe(true);
   expect(Date.now() - start).toBeLessThan(2000);
 });
+
+test('permission identity ignores RPC timestamps and callback ids, never changes authority', async () => {
+  const inputs: Record<string, unknown>[] = [];
+  const { wire } = fixture({ askOwner: async (r) => { inputs.push(r.input); return { allow: false, message: 'No' }; } });
+  await until(() => wire.n === 1);
+  await wire.server('item/commandExecution/requestApproval', { command: 'preview', cwd: '/repo', startedAtMs: 1, approvalId: 'old', additionalPermissions: { network: true } });
+  await wire.server('item/commandExecution/requestApproval', { command: 'preview', cwd: '/repo', startedAtMs: 2, approvalId: 'new', additionalPermissions: { network: true } });
+  await wire.server('item/commandExecution/requestApproval', { command: 'preview', cwd: '/repo', startedAtMs: 3, approvalId: 'new', additionalPermissions: { network: false } });
+  expect(inputs[0]).toEqual(inputs[1]);
+  expect(inputs[0]).not.toEqual(inputs[2]);
+});
+
+test('one-action owner approvals never grant a session-wide outside root', async () => {
+  let asked = false;
+  const { wire } = fixture({ askOwner: async () => { asked = true; return { allow: true }; } });
+  await until(() => wire.n === 1);
+  expect(await wire.server('item/fileChange/requestApproval', { grantRoot: '/outside' })).toEqual({ decision: 'decline' });
+  expect(asked).toBe(false);
+});
+
+test('turn interruption and server resolution abort and settle the outstanding permission', async () => {
+  const signals: AbortSignal[] = [];
+  const { wire } = fixture({ askOwner: async (_r, signal) => {
+    signals.push(signal);
+    return new Promise((resolve) => signal.addEventListener('abort', () => resolve({ allow: false, message: 'Ended' }), { once: true }));
+  } });
+  await until(() => wire.n === 1);
+  const params = { threadId: 'thread-1', turnId: 'turn-1', command: 'preview' };
+  const first = wire.handlers.request('item/commandExecution/requestApproval', params, 'request-1');
+  await until(() => signals.length === 1);
+  wire.handlers.notification('serverRequest/resolved', { threadId: 'thread-1', requestId: 'request-1' });
+  expect(await first).toEqual({ decision: 'decline' });
+  expect(signals[0]!.reason).toBe('permission-obsolete');
+  const second = wire.handlers.request('item/commandExecution/requestApproval', params, 'request-2');
+  await until(() => signals.length === 2);
+  wire.complete('turn-1', 'interrupted');
+  expect(await second).toEqual({ decision: 'decline' });
+  expect(signals[1]!.aborted).toBe(true);
+  expect(wire.calls.filter((c) => c.method === 'turn/steer')).toHaveLength(0);
+});
+
+test('denial forwards the owner alternative as model input, not just an audit line', async () => {
+  const alternative = 'Create a new commit instead of force-pushing.';
+  const { wire } = fixture({ askOwner: async () => ({ allow: false, message: alternative }) });
+  await until(() => wire.n === 1);
+  expect(await wire.server('item/commandExecution/requestApproval', { command: 'git push --force' })).toEqual({ decision: 'decline' });
+  await until(() => wire.calls.some((c) => c.method === 'turn/steer'));
+  expect(JSON.stringify(wire.calls.filter((c) => c.method === 'turn/steer'))).toContain(alternative);
+});
+
+test('a completed build wakes Codex while a server stays; unchanged polls do not emit idle', async () => {
+  let tasks = [{ itemId: 'server', command: 'serve', osPid: 5678 }, { itemId: 'build', command: 'build', osPid: 5679 }];
+  const pids: number[][] = [];
+  const wire = new Wire();
+  Object.assign(wire, { trackProcesses: (ids: number[]) => pids.push(ids) });
+  wire.override = (method) => method === 'thread/backgroundTerminals/list' ? Promise.resolve({ data: tasks, nextCursor: null }) : undefined;
+  const { events } = fixture({}, wire);
+  await until(() => wire.n === 1);
+  wire.complete();
+  await until(() => events.some((e) => e.type === 'idle'));
+  await Bun.sleep(1100);
+  expect(events.filter((e) => e.type === 'idle')).toHaveLength(1);
+  tasks = tasks.slice(0, 1);
+  await until(() => wire.n === 2);
+  expect(JSON.stringify(wire.calls.filter((c) => c.method === 'turn/start'))).toContain('build');
+  expect(pids[0]).toEqual([5678, 5679]);
+});

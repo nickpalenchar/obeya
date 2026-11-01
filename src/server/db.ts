@@ -1,4 +1,6 @@
 import { Database } from 'bun:sqlite';
+import { currentAgent } from './agent-identity';
+import type { AgentIdentity } from '../core/types';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { AnswerFile, AnswerRef, CardEvent, DeviceView, CardKind, CardState, Mock, Need, Preference, PreferenceState, ProposedSetting, RepoCommands, SettingProposal, SettingProposalState, Spot, Talk, TalkAfter, TalkMoved, TalkQuote, TalkRef, TalkWait } from '../core/types';
@@ -452,10 +454,13 @@ export const MIGRATIONS = [
   'ALTER TABLE talk ADD COLUMN then_step TEXT; ALTER TABLE talk ADD COLUMN after_answer INTEGER;',
   // harness, model and effort of a worker run; old unqualified session ids belong to Claude
   'ALTER TABLE cards ADD COLUMN agent_setting TEXT;',
+  // Attribution belongs to each utterance, not mutable role defaults or a card's later runs.
+  'ALTER TABLE events ADD COLUMN agent TEXT; ALTER TABLE talk ADD COLUMN reply_agent TEXT; ALTER TABLE talk ADD COLUMN answer_agent TEXT;',
 ];
 
-const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded';
-type EventRow = Omit<CardEvent, 'images' | 'mocks' | 'replyTo' | 'spot' | 'answer' | 'picks' | 'unread' | 'readAfter' | 'wish' | 'reply' | 'forwarded'> & {
+const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, agent';
+type EventRow = Omit<CardEvent, 'images' | 'mocks' | 'replyTo' | 'spot' | 'answer' | 'picks' | 'unread' | 'readAfter' | 'wish' | 'reply' | 'forwarded' | 'agent'> & {
+  agent: string | null;
   code: CardEvent['code'] | null;
   images: string | null;
   mocks: string | null;
@@ -469,8 +474,9 @@ type EventRow = Omit<CardEvent, 'images' | 'mocks' | 'replyTo' | 'spot' | 'answe
   reply: number | null;
   forwarded: number | null;
 };
-const eventOf = ({ code, images, mocks, replyTo, spot, answer, picks, unread, readAfter, wish, reply, forwarded, ...e }: EventRow): CardEvent => ({
+const eventOf = ({ code, images, mocks, replyTo, spot, answer, picks, unread, readAfter, wish, reply, forwarded, agent, ...e }: EventRow): CardEvent => ({
   ...e,
+  ...(agent ? { agent: JSON.parse(agent) as AgentIdentity } : {}),
   ...(code ? { code } : {}),
   ...(images ? { images: JSON.parse(images) as string[] } : {}),
   ...(mocks ? { mocks: JSON.parse(mocks) as Mock[] } : {}),
@@ -725,12 +731,15 @@ export class Store {
   /** A line in a card's log, said now or (`at`) earlier: a thread copied onto its Question card keeps its times. */
   addEvent(e: Omit<CardEvent, 'id' | 'at'> & { at?: string }): CardEvent {
     const at = e.at ?? now();
+    // An explicitly absent identity keeps copied historical messages unknown, even inside another agent's context.
+    const agent = 'agent' in e ? e.agent : (e.author !== 'owner' && e.author !== 'obeya' ? currentAgent() : undefined);
     const { id } = this.db
       .query(
-        'INSERT INTO events (card_id, at, kind, author, text, code, images, mocks, reply_to, spot, answer, picks, unread, wish, reply, forwarded) VALUES ($cardId, $at, $kind, $author, $text, $code, $images, $mocks, $replyTo, $spot, $answer, $picks, $unread, $wish, $reply, $forwarded) RETURNING id',
+        'INSERT INTO events (card_id, at, kind, author, text, code, images, mocks, reply_to, spot, answer, picks, unread, wish, reply, forwarded, agent) VALUES ($cardId, $at, $kind, $author, $text, $code, $images, $mocks, $replyTo, $spot, $answer, $picks, $unread, $wish, $reply, $forwarded, $agent) RETURNING id',
       )
       .get({
         ...e,
+        agent: agent ? JSON.stringify(agent) : null,
         answer: e.answer ? JSON.stringify(e.answer) : null,
         code: e.code ?? null,
         images: e.images?.length ? JSON.stringify(e.images) : null,
@@ -744,7 +753,7 @@ export class Store {
         forwarded: e.forwarded ? 1 : null,
         at,
       }) as { id: number };
-    return { ...e, id, at };
+    return { ...e, ...(agent ? { agent } : {}), id, at };
   }
 
   /** The latest messages of the card's conversation (`talk`, `question`), however many other lines came between them, oldest first. */
@@ -964,10 +973,11 @@ export class Store {
    * for Obeya's makers would start from; with `waits`, one for the sheet waits there unread, as an
    * answer that was looked up does.
    */
-  replyTalk(id: number, reply: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false) {
+  replyTalk(id: number, reply: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false, agent?: AgentIdentity) {
+    if (arguments.length < 6) agent = currentAgent();
     this.db
-      .query('UPDATE talk SET reply = $reply, question = $question, about = $about, wish = $wish, unread = $waits AND card_id IS NULL AND card IS NULL WHERE id = $id')
-      .run({ id, reply, question: lookUp?.question ?? null, about: lookUp?.about ?? null, wish: wish ? JSON.stringify(wish) : null, waits: waits ? 1 : 0 });
+      .query('UPDATE talk SET reply = $reply, reply_agent = $agent, question = $question, about = $about, wish = $wish, unread = $waits AND card_id IS NULL AND card IS NULL WHERE id = $id')
+      .run({ id, reply, agent: agent ? JSON.stringify(agent) : null, question: lookUp?.question ?? null, about: lookUp?.about ?? null, wish: wish ? JSON.stringify(wish) : null, waits: waits ? 1 : 0 });
   }
 
   /**
@@ -1032,10 +1042,11 @@ export class Store {
    * The answer to a looked-up question, with its files; one for the sheet (no card was open, and its
    * thread is on no Question card) waits there unread.
    */
-  answerTalk(id: number, answer: string, by: 'koordinator' | 'project', files: AnswerFile[] = []) {
+  answerTalk(id: number, answer: string, by: 'koordinator' | 'project', files: AnswerFile[] = [], agent?: AgentIdentity) {
+    if (arguments.length < 5) agent = currentAgent();
     this.db
-      .query('UPDATE talk SET answer = $answer, answer_by = $by, files = $files, unread = card_id IS NULL AND card IS NULL WHERE id = $id')
-      .run({ id, answer, by, files: files.length ? JSON.stringify(files) : null });
+      .query('UPDATE talk SET answer = $answer, answer_agent = $agent, answer_by = $by, files = $files, unread = card_id IS NULL AND card IS NULL WHERE id = $id')
+      .run({ id, answer, agent: agent ? JSON.stringify(agent) : null, by, files: files.length ? JSON.stringify(files) : null });
   }
 
   /** A follow-up continues the answer `follows`, in the thread `thread`. */
@@ -1351,6 +1362,8 @@ export interface Friction extends FrictionNote {
 }
 
 interface TalkRow {
+  reply_agent: string | null;
+  answer_agent: string | null;
   id: number;
   at: string;
   said: string;
@@ -1383,6 +1396,8 @@ const toTalk = (r: TalkRow): Talk => ({
   id: r.id,
   at: r.at,
   said: r.said,
+  ...(r.reply_agent ? { replyAgent: JSON.parse(r.reply_agent) as AgentIdentity } : {}),
+  ...(r.answer_agent ? { answerAgent: JSON.parse(r.answer_agent) as AgentIdentity } : {}),
   // empty while the Koordinator reads the words
   ...(r.reply ? { reply: r.reply } : {}),
   ...(r.card_id ? { cardId: r.card_id } : {}),

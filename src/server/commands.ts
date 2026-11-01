@@ -2,6 +2,7 @@
 // confirms them in one sentence, and runs them after a short delay unless the owner takes them back.
 
 import { z } from 'zod';
+import { currentAgent } from './agent-identity';
 import { type AgentSetting, agentListens, answering, askable, type Awaited, awaited, type AwaitedState, blocksSaving, type CanvasConfig, finished, handedOver, type Item, type NextStep, type Notice, openQuestions, pausableNow, plannableAsProject, halted, prototypeWorkstream, snoozable, SNOOZE_LIMIT, type Queue, type SpotInput, type Talk, type TalkAfter, type TalkQuote, type TalkRef } from '../core/types';
 import { holdsNotes, notStarted } from '../core/queue';
 import { answerTag, fromAnswerTag } from './answers';
@@ -243,7 +244,7 @@ interface Session {
 type LookUp = { question: string; about?: string; follows?: number; then?: string };
 /** `wish`: what the owner wants Obeya's makers told; `cannot`: the reply says Obeya cannot do what they asked. */
 type More = { wish?: string; cannot?: boolean };
-type Decision = { commands: Command[]; confirm: string; lookUp?: LookUp } & More;
+type Decision = { commands: Command[]; confirm: string; lookUp?: LookUp; agent?: import('../core/types').AgentIdentity } & More;
 
 /** The actions `act` takes, as the Koordinator names them. */
 const ACTIONS = ['new_card', 'new_idea', 'review_pr', 'start', 'dequeue', 'note', 'answer', 'feedback', 'approve', 'accept', 'dismiss', 'keep', 'revise', 'stop', 'pause', 'resume', 'snooze', 'wake', 'discuss', 'build', 'split_off', 'plan_doc', 'prototype', 'park', 'drop', 'remember', 'work_retro', 'group', 'ungroup', 'rename_group', 'wait_for', 'stop_waiting', 'wish'] as const;
@@ -371,8 +372,8 @@ export class Commander {
     // until the owner sees it, as a looked-up answer does: it may come once the sheet is closed; on a
     // card it stands in the conversation, where a confirmation folds away
     const reply = (confirm: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false) => {
-      this.o.board.replyTalk(talk, confirm, lookUp, wish, waits);
-      if (card) this.o.board.log(card, 'say', 'koordinator', confirm, { ...(wish ? { wish } : {}), ...(waits ? { reply: true as const } : {}), ...(input.forwarded ? { forwarded: true as const } : {}) });
+      this.o.board.replyTalk(talk, confirm, lookUp, wish, waits, decision?.agent);
+      if (card) this.o.board.log(card, 'say', 'koordinator', confirm, { agent: decision?.agent, ...(wish ? { wish } : {}), ...(waits ? { reply: true as const } : {}), ...(input.forwarded ? { forwarded: true as const } : {}) });
     };
     let decision: Decision;
     try {
@@ -1197,7 +1198,7 @@ export class Commander {
         finish: (commands, confirm, lookUp, more) => {
           if (decided) return 'Already decided.';
           decided = true;
-          decide({ commands, confirm: confirm.trim(), ...(lookUp ? { lookUp } : {}), ...more });
+          decide({ commands, confirm: confirm.trim(), ...(lookUp ? { lookUp } : {}), ...more, agent: currentAgent() });
           return 'Done. End your turn now.';
         },
         end,

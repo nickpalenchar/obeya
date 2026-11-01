@@ -426,20 +426,22 @@ compiled binary (the app has its own updates) have nothing to pull.
 Ctrl-C, SIGTERM or `POST /api/stop` (the app; Windows has no SIGTERM) stops Obeya the way a restart
 goes, only nothing starts again: workers in a turn are told Obeya is about to stop and pause at a
 safe point, and Obeya ends once none is in a turn (at most 15 minutes). The bar shows it ("Beenden
-wartet auf N Agenten", "Jetzt beenden"), and a second Ctrl-C ends it at once (supervisor and server
-both get the terminal's Ctrl-C, so signals within a second count as one press). A stop does not wait
-for the owner's video or dictation (the owner asked for it), and turns a waiting restart into a stop. The next start resumes
-the stopped workers.
+wartet auf N Agenten", "Jetzt beenden"), and "Jetzt beenden" or a second Ctrl-C forces it: Obeya
+signals its known agent processes without waiting for their ordinary shutdown escalation. This is
+best-effort cleanup, not containment of processes it never observed (see Agents and workspaces).
+Supervisor and server both get the terminal's Ctrl-C, so signals within a second count as one press.
+A stop does not wait for the owner's video or dictation (the owner asked for it), and turns a
+waiting restart into a stop. The next start resumes the stopped workers.
 
 The sidecars (transcription, speech, narration voice), the agents' Claude Code processes, the `ssh`
 of remote sessions and the process keeping the machine awake run outside the terminal's process
 group, so its Ctrl-C reaches none of them: in it, Ctrl-C broke every agent's turn off at once. They
 hear of the stop from Obeya and go on meanwhile. Once Obeya ends, it closes the sidecars' stdin, which
 they finish as a normal end after their current request (one still there after 30 s is killed), and
-sends SIGTERM to each agent's process group, so no agent goes on with a turn nobody hears. On Windows,
-where a detached process opens a console window for every program it starts, the Python sidecars
-ignore Ctrl-C instead, and the agents stay in the console (a stop through the app still waits for
-them).
+ends the agent sessions, so no agent goes on with a turn nobody hears. A forced stop sends an
+immediate kill instead of waiting for their normal exit; Windows uses a best-effort process-tree
+termination. On Windows, where a detached process opens a console window for every program it
+starts, the Python sidecars ignore Ctrl-C instead, and the agents stay in the console.
 
 ### Decisions
 

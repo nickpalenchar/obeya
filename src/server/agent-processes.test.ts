@@ -1,0 +1,174 @@
+import { expect, test } from 'bun:test';
+import { spawn } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { codexConnection } from './codex-rpc';
+import { AgentProcesses, linuxProcessStat } from './agent-processes';
+
+const handlers = { notification() {}, request: async () => ({}) };
+const beat = (file: string) => { try { return Number(readFileSync(file, 'utf8')); } catch { return 0; } };
+async function until(check: () => boolean) {
+  const end = Date.now() + 3000;
+  while (!check()) { if (Date.now() > end) throw new Error('Process cleanup probe timed out'); await Bun.sleep(10); }
+}
+function kill(pid: number | undefined) { if (pid) try { process.kill(pid, 'SIGKILL'); } catch {} }
+
+test('Linux stat parsing handles nested parentheses and uses exact process start ticks', () => {
+  const stat = '42 (name ) with ( spaces) S 10 42 42 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 987654321 0';
+  expect(linuxProcessStat(stat)).toEqual({ pid: 42, parent: 10, group: 42, born: '987654321' });
+  expect(linuxProcessStat('42 (truncated) S 10')).toBeUndefined();
+});
+
+test('a missing initial root is reported, never trusted later', () => {
+  const tracker = new AgentProcesses(90001, () => []);
+  expect(() => tracker.track()).toThrow('Cannot establish agent process ownership');
+});
+
+test('observed identities retain original births without exposing mutable tracker state', () => {
+  const root = { pid: 90001, parent: process.pid, group: 90001, born: 'root' };
+  const child = { pid: 90002, parent: root.pid, group: 90002, born: 'child' };
+  let rows = [root, child];
+  const tracker = new AgentProcesses(root.pid, () => rows);
+  tracker.track();
+  rows = [root, { ...child, parent: process.pid, born: 'replacement' }];
+  tracker.track();
+  const observed = tracker.observed();
+  expect(observed).toEqual([{ pid: root.pid, born: 'root' }, { pid: child.pid, born: 'child' }]);
+  observed[1]!.born = 'changed';
+  expect(tracker.observed()[1]!.born).toBe('child');
+});
+
+test('a reported descendant retains its verified intermediate ancestors', () => {
+  const root = { pid: 90001, parent: process.pid, group: 90001, born: 'root' };
+  const intermediate = { pid: 90002, parent: root.pid, group: 90002, born: 'intermediate' };
+  const leaf = { pid: 90003, parent: intermediate.pid, group: 90003, born: 'leaf' };
+  const unrelated = { pid: 90004, parent: process.pid, group: 90004, born: 'unrelated' };
+  const tracker = new AgentProcesses(root.pid, () => [root, intermediate, leaf, unrelated]);
+  tracker.track([leaf.pid, unrelated.pid]);
+  expect(tracker.observed()).toEqual([
+    { pid: root.pid, born: root.born },
+    { pid: intermediate.pid, born: intermediate.born },
+    { pid: leaf.pid, born: leaf.born },
+  ]);
+});
+
+test('a reused app-server PID does not make an unrelated process its descendant', () => {
+  const root = { pid: 90001, parent: process.pid, group: 90001, born: 'original' };
+  let rows = [root];
+  const tracker = new AgentProcesses(root.pid, () => rows);
+  rows = [{ ...root, born: 'replacement' }, { pid: 90002, parent: root.pid, group: 90002, born: 'child' }];
+  tracker.track();
+  expect((tracker as unknown as { owned: Map<number, unknown> }).owned.size).toBe(0);
+});
+
+test.skipIf(process.platform === 'win32')('a reported leaf keeps its app-server attributable after supervisor death', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'obeya-ancestor-death-'));
+  const appFile = join(dir, 'app');
+  const leafFile = join(dir, 'leaf');
+  const app = `import {spawn} from 'node:child_process';import {writeFileSync} from 'node:fs';
+writeFileSync(${JSON.stringify(appFile)},String(process.pid));
+const leaf=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'});
+writeFileSync(${JSON.stringify(leafFile)},String(leaf.pid));setInterval(()=>{},1000);`;
+  const supervisorCode = `import {spawn} from 'node:child_process';
+spawn(process.execPath,['-e',${JSON.stringify(app)}],{detached:true,stdio:'ignore'});setInterval(()=>{},1000);`;
+  const supervisor = spawn(process.execPath, ['-e', supervisorCode], { detached: true, stdio: 'ignore' });
+  const canary = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' });
+  const tracker = new AgentProcesses(supervisor.pid!);
+  let appPid = 0, leafPid = 0;
+  const filePid = (file: string) => { try { return Number(readFileSync(file, 'utf8')); } catch { return 0; } };
+  const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  try {
+    await until(() => { appPid = filePid(appFile); leafPid = filePid(leafFile); return appPid > 1 && leafPid > 1; });
+    tracker.track([leafPid]);
+    expect(tracker.observed().map((p) => p.pid)).toEqual([supervisor.pid!, appPid, leafPid]);
+    const exited = new Promise<void>((resolve) => supervisor.once('exit', () => resolve()));
+    supervisor.kill('SIGKILL');
+    await exited;
+    tracker.kill();
+    await until(() => !alive(appPid) && !alive(leafPid));
+    expect(alive(canary.pid!)).toBe(true);
+  } finally {
+    supervisor.kill('SIGKILL'); kill(appPid || filePid(appFile)); kill(leafPid || filePid(leafFile)); kill(canary.pid);
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 10_000);
+
+test.skipIf(process.platform === 'win32')('app-server death kills its separately grouped PTY, not an unrelated PID', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'obeya-pty-test-'));
+  const file = join(root, 'heartbeat');
+  const childCode = `let n=0;const fs=await import('node:fs');setInterval(()=>fs.writeFileSync(${JSON.stringify(file)},String(++n)),25);`;
+  const code = `import {spawn} from 'node:child_process'; import {createInterface} from 'node:readline';
+const child=spawn(process.execPath,['-e',${JSON.stringify(childCode)}],{detached:true,stdio:'ignore'});
+createInterface({input:process.stdin}).on('line',line=>process.stdout.write(JSON.stringify({id:JSON.parse(line).id,result:child.pid})+'\\n'));
+setInterval(()=>{},1000);`;
+  const unrelated = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' });
+  const c = codexConnection({ command: process.execPath, args: ['-e', code], cwd: root, env: process.env }, handlers);
+  let pid: number | undefined;
+  try {
+    pid = await c.request<number>('spawn', {});
+    await until(() => beat(file) > 2);
+    c.trackProcesses!([pid, process.pid, unrelated.pid!]);
+    process.kill(c.pid!, 'SIGKILL');
+    await expect(c.done).rejects.toThrow('exited');
+    await Bun.sleep(100);
+    const stopped = beat(file);
+    await Bun.sleep(150);
+    expect(beat(file)).toBe(stopped);
+    expect(process.kill(unrelated.pid!, 0)).toBe(true);
+  } finally {
+    c.close(); await c.done.catch(() => {});
+    kill(pid); kill(unrelated.pid);
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test.skipIf(process.platform === 'win32')('forced shutdown signals an observed detached child and does not wait for escalation', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'obeya-force-test-'));
+  const file = join(root, 'heartbeat');
+  const code = `import {writeFileSync} from 'node:fs';let n=0;process.on('SIGTERM',()=>{});setInterval(()=>writeFileSync(${JSON.stringify(file)},String(++n)),25);`;
+  const server = `import {spawn} from 'node:child_process';import {createInterface} from 'node:readline';
+const child=spawn(process.execPath,['-e',${JSON.stringify(code)}],{detached:true,stdio:'ignore'});
+createInterface({input:process.stdin}).on('line',line=>process.stdout.write(JSON.stringify({id:JSON.parse(line).id,result:child.pid})+'\\n'));
+process.stdin.on('end',()=>{});process.on('SIGTERM',()=>{});setInterval(()=>{},1000);`;
+  const { endCodexHere } = await import('./codex-rpc');
+  const canary = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' });
+  const c = codexConnection({ command: process.execPath, args: ['-e', server], cwd: root, env: process.env }, handlers);
+  let pid: number | undefined;
+  try {
+    pid = await c.request<number>('spawn', {});
+    await until(() => beat(file) > 2);
+    c.trackProcesses!([pid]);
+    // A second stop can arrive after ordinary shutdown has already closed the session.
+    c.close();
+    const start = Date.now();
+    await endCodexHere(true);
+    expect(Date.now() - start).toBeLessThan(1000);
+    await until(() => { try { process.kill(pid!, 0); return false; } catch { return true; } });
+    expect(process.kill(canary.pid!, 0)).toBe(true);
+  } finally {
+    c.close(); await c.done.catch(() => {});
+    kill(pid); kill(canary.pid);
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 10_000);
+
+test('shutdown awaits escalation before exiting, including an EOF/TERM-ignoring subprocess', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'obeya-exit-test-'));
+  const file = join(root, 'heartbeat');
+  const code = `import {writeFileSync} from 'node:fs';let n=0;process.stdin.resume();process.stdin.on('end',()=>{});process.on('SIGTERM',()=>{});setInterval(()=>writeFileSync(${JSON.stringify(file)},String(++n)),25);`;
+  const driver = `import {codexConnection,endCodexHere} from ${JSON.stringify(join(import.meta.dir, 'codex-rpc.ts'))};
+const c=codexConnection({command:process.execPath,args:['-e',${JSON.stringify(code)}],cwd:${JSON.stringify(root)},env:process.env},{notification(){},request:async()=>({})});
+console.log(c.pid);await Bun.sleep(150);await endCodexHere();process.exit(0);`;
+  const p = Bun.spawn([process.execPath, '-e', driver], { stdout: 'pipe', stderr: 'pipe' });
+  let pid: number | undefined;
+  try {
+    const stdout = new Response(p.stdout).text();
+    expect(await p.exited).toBe(0);
+    pid = Number((await stdout).trim());
+    expect(beat(file)).toBeGreaterThan(0);
+    const stopped = beat(file);
+    await Bun.sleep(100);
+    expect(beat(file)).toBe(stopped);
+  } finally { p.kill(); kill(pid); rmSync(root, { recursive: true, force: true }); }
+}, 10_000);

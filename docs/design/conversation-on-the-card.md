@@ -31,6 +31,11 @@ Claude login errors offer „Erneut anmelden“ in the conversation and in a fai
 It opens the same terminal login as Setup, even when the login check still reports an account
 after a session failed to refresh. The error stays visible. The action reports whether a terminal
 opened, offers the manual command, and tells the owner to send the message again after signing in.
+The speaker's role is followed by the harness and model that produced the message, when known.
+This holds for card replies and open questions as well as the Koordinator's reply and a looked-up
+answer, which can come from different models. Attribution is recorded when the agent speaks and
+survives a restart or a later change of defaults; old messages with no known identity stay unlabelled
+rather than taking today's model. The working and reading bubbles do not identify the active model.
 
 Agent words are kept whole up to 12 000 characters (a worker's `reply` is cut at 2000). While the
 worker works, the conversation ends with it at work and its latest step on one line, with its

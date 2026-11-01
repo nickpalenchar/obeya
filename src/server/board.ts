@@ -7,6 +7,7 @@
 // leaves its doc stays stored but is not shown.
 
 import { createHash } from 'node:crypto';
+import type { AgentIdentity } from '../core/types';
 import { existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { arrangeWorkstreams, type Bounds, boundsOf, CARD_SIZE, freeSpotNear, GAP, type Place, PROJECT_HEAD, placeProjects, planDirNoteBox, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
@@ -552,9 +553,9 @@ export class Board {
     kind: CardEvent['kind'],
     author: CardEvent['author'],
     text: string,
-    extra: Partial<Pick<CardEvent, 'code' | 'images' | 'mocks' | 'replyTo' | 'spot' | 'answer' | 'picks' | 'at' | 'wish' | 'reply' | 'forwarded'>> & { unread?: boolean } = {},
+    extra: Partial<Pick<CardEvent, 'code' | 'images' | 'mocks' | 'replyTo' | 'spot' | 'answer' | 'picks' | 'at' | 'wish' | 'reply' | 'forwarded' | 'agent'>> & { unread?: boolean } = {},
   ): CardEvent {
-    const { code, images, mocks, replyTo, spot, answer, picks, at, unread, wish, reply, forwarded } = extra;
+    const { code, images, mocks, replyTo, spot, answer, picks, at, unread, wish, reply, forwarded, agent } = extra;
     const e = this.store.addEvent({
       cardId,
       kind,
@@ -572,6 +573,7 @@ export class Board {
       ...(wish ? { wish } : {}),
       ...(reply ? { reply } : {}),
       ...(forwarded ? { forwarded } : {}),
+      ...('agent' in extra ? { agent } : {}),
     });
     for (const fn of this.eventListeners) fn(e);
     return e;
@@ -1072,8 +1074,9 @@ export class Board {
   }
 
   /** The Koordinator's reply to words it has read, the question it looks up for them, and what a draft for Obeya's makers would start from; `waits`: unread in the sheet until the owner sees it. */
-  replyTalk(id: number, reply: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false) {
-    this.store.replyTalk(id, reply, lookUp, wish, waits);
+  replyTalk(id: number, reply: string, lookUp?: { question: string; about: string | null }, wish?: Wish, waits = false, agent?: AgentIdentity) {
+    if (arguments.length < 6) this.store.replyTalk(id, reply, lookUp, wish, waits);
+    else this.store.replyTalk(id, reply, lookUp, wish, waits, agent);
     this.changed();
   }
 
@@ -1142,8 +1145,9 @@ export class Board {
   }
 
   /** The answer to a question the Koordinator looked up, with the files it comes with. */
-  answerTalk(id: number, answer: string, by: 'koordinator' | 'project', files: AnswerFile[] = []) {
-    this.store.answerTalk(id, answer, by, files);
+  answerTalk(id: number, answer: string, by: 'koordinator' | 'project', files: AnswerFile[] = [], agent?: AgentIdentity) {
+    if (arguments.length < 5) this.store.answerTalk(id, answer, by, files);
+    else this.store.answerTalk(id, answer, by, files, agent);
     this.changed();
   }
 
