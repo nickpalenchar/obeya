@@ -53,6 +53,10 @@ function resources(dir: string) {
   cpSync(join(ROOT, 'docs', 'settings.md'), join(dir, 'docs', 'settings.md'));
   for (const script of ['plugin/skills/demo/lib/recipe.ts', 'plugin/skills/settings/lib/check.ts'])
     run([process.execPath, 'build', script, '--target', 'bun', '--outfile', join(dir, script)]);
+  // A compiled binary's embedded modules cannot be imported by a separate process. Bundle the
+  // liveness supervisor and its dependencies into a real resource executable by Obeya's Bun.
+  mkdirSync(join(dir, 'scripts'), { recursive: true });
+  run([process.execPath, 'build', 'scripts/agent-liveness-prototype.ts', '--target', 'bun', '--outfile', join(dir, 'scripts', 'agent-liveness.js')]);
 }
 
 const started = Date.now();

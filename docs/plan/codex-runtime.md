@@ -143,8 +143,9 @@ test-owned PIDs were cleaned up. Probe source and last report: `/tmp/obeya-keep-
   it launches one child, keeps a private owner pipe out of the child's inherited descriptors, samples
   descendants, and kills the child and observed descendants on owner-pipe EOF or child exit. A
   synthetic macOS test closes the pipe and checks an observed separately grouped child and an
-  unrelated canary; it is not a real harness, owner SIGKILL or Windows test. It is not wired into
-  Obeya or its packaged binary. Its supervisor can itself die, sampling can miss descendants,
+  unrelated canary; it is not a real harness, owner SIGKILL or Windows test. The build bundles the
+  supervisor as a resource; a macOS compiled-binary smoke test ran it using `BUN_BE_BUN=1`, but
+  Obeya does not yet launch its agents through it. Its supervisor can itself die, sampling can miss descendants,
   numeric signalling still races PID reuse, and root exit and startup before the first observation
   leave windows. Do not use it as containment or promise crash recovery. Compare or combine it with
   a boot-aware registry and startup sweep; address concurrent instances, a supervisor's own failure,
