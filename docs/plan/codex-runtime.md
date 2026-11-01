@@ -68,16 +68,61 @@ hiding the workspace pool; only its smallest stage hides them. No Codex usage is
 - The running owner's instance is never a test target; all probe jobs and scratch instances used
   for this pass are stopped after verification.
 
-## Remaining phase 1 acceptance and parity
+## Process cleanup: current work and follow-up
 
-- [ ] Stronger process containment for descendants that escape between observations; native PTY
-  cancellation and shutdown escalation on Windows/Linux as well as macOS. Linux cgroup v2 with
-  atomic placement and `cgroup.kill` requires a delegated writable subtree (not available in a
-  normal Docker container with a read-only cgroup mount). Windows job objects need an atomic
-  suspended start and assignment before the process can fork; nested-job and breakaway behavior
-  require testing. macOS process groups do not contain a descendant that creates a new session.
-  No portable containment boundary has yet been chosen or implemented; avoid treating these
-  mechanisms or synthetic tests as a verified replacement for the current best-effort cleanup.
+Current evidence (2026-10-31): on macOS, the process-tracking, Codex transport and runtime,
+plus simulated parking/demo tests pass (87 tests); typecheck passes. A real Codex app-server
+SIGKILL stopped an observed separately grouped background Python job (heartbeat stopped and its
+PID disappeared). This was a runtime probe, not a full card or app-parking test; it did not test
+Obeya's own death or an unrelated canary. The earlier Linux container tests were synthetic;
+Windows and native Linux Codex remain unverified. An initial broad Codex review timed out; a
+subsequent narrow review identified the already-known snapshot-to-signal PID/PGID reuse race and
+also the unverified app-server group signal after `exit` and `close`, when its numeric group ID may
+have been reused. Neither risk is resolved. An initial test run was blocked by an inaccessible
+stale temporary directory; an isolated TMPDIR allowed the tests to run.
+
+The lifecycle boundary remains open: the tracker kills observed descendants on app-server exit,
+without distinguishing an app protected by `app.keep` from session work. Simulated parking tests
+alone do not establish what happens to a real app launched under Codex on session shutdown.
+Determine the intended lifecycle and exercise it with a real process before treating this as safe.
+
+Paired macOS runtime probes (2026-10-31) launched a real background Python heartbeat under each
+agent in separate scratch repositories. Each heartbeat was in a different process group from its
+agent; an unrelated canary survived all four cases. After SIGKILL of the runtime host, the observed
+Codex app-server and heartbeat exited, while Claude and its heartbeat survived (the heartbeat
+advanced from 40 to 57 in 1.8 seconds). After SIGKILL of the agent, the Codex heartbeat stopped
+and disappeared; Claude's heartbeat survived and advanced from 37 to 54. The short-lived runtime
+host also exited after agent failure, unlike the Obeya server, so these results do not establish
+behavior of a still-running server. All observed test-owned processes were explicitly cleaned up.
+The Codex owner-death result is an observation of this run, not a crash-containment guarantee;
+the Claude result makes crash cleanup relevant to both harnesses. No `app.keep` or real card was
+involved. Probe and detailed output: `/tmp/obeya-runtime-owner-crash.ts` and
+`/tmp/obeya-{owner,agent}-crash-{codex,claude}.log` on the test machine.
+
+- [ ] Finish and review the current process-group and observed-descendant cleanup, including the
+  Linux `/proc` changes. Check normal stop, forced stop and agent death, PID reuse, unrelated
+  canaries and shutdown escalation. Verify how this interacts with app parking and `app.keep`;
+  do not silently replace their existing lifecycle with a card-wide kill switch. Native Windows
+  and Linux Codex behavior remains unverified. Record the actual results and limitations, not a
+  containment guarantee.
+- [ ] Run comparable real Claude and Codex probes on macOS in scratch repositories and an isolated
+  Obeya home: agent death and Obeya death, with a separately grouped background process and an
+  unrelated canary. Check whether the app is meant to remain running, clean up every test-owned
+  process, and report blocked authentication or incomplete runs rather than extrapolating.
+- [ ] Before adding Pi, specify session work, the app governed by parking and `app.keep`, and
+  external operations as distinct lifetimes. Use probe results to design and validate safe
+  recovery of observed processes after an Obeya crash. This is not a Codex preview gate; it is
+  a Pi gate. Recovery must not kill another live Obeya instance's processes or unrelated processes.
+- [ ] Follow up with a liveness-pipe supervisor prototype, compared with or combined with a
+  boot-aware persistent registry and startup sweep. Evaluate crash windows, concurrent instances,
+  PID reuse, a supervisor's own failure, app ownership and cross-platform packaging. Neither
+  sampling nor a registry recovers processes never observed; a supervisor is not containment.
+- [ ] Investigate stronger platform boundaries separately: native Windows Job Objects with a
+  gated launch, and Linux systemd user scopes including no-manager, no-D-Bus and read-only-cgroup
+  fallback. Test native harnesses, nested jobs and breakaway, and preserve app parking semantics.
+  macOS has no selected unprivileged equivalent. Do not claim an untested boundary or platform.
+
+## Remaining phase 1 acceptance and parity
 - [ ] Rerun live mixed-harness cards, rate-limit recovery and longer-running pause/restart scenarios.
 - [ ] Expose the active session's own identity if working and reading bubbles should name its model.
 - [ ] Explicit repository Codex configuration trust and configuration-change checks; until then,
