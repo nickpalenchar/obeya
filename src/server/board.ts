@@ -36,6 +36,7 @@ import {
   type Woke,
   type Idea,
   type Item,
+  type ManualAnchor,
   type Mock,
   type NewCard,
   type NewRepo,
@@ -443,16 +444,18 @@ export class Board {
   }
 
   /** Owner-drawn dependencies, directed from the prerequisite to the waiting card. */
-  manualDependencies(): [string, string][] {
+  manualDependencies(): [string, string, ManualAnchor?][] {
     try { return JSON.parse(this.setting('manual_dependencies') || '[]'); } catch { return []; }
   }
 
-  connect(from: string, to: string, remove = false) {
+  connect(from: string, to: string, remove = false, anchor?: ManualAnchor) {
     const items = this.snapshot().items;
     if (!items.some((i) => i.id === from) || !items.some((i) => i.id === to) || from === to)
       throw new BadRequest('unknownCard', 'invalid dependency');
     if (!remove && items.some((i) => (i.id === from || i.id === to) && (i.source === 'plan' || i.kind === 'project')))
       throw new BadRequest('invalid', 'project dependencies are decided from the plan');
+    if (anchor && (!['top', 'right', 'bottom', 'left'].includes(anchor.fromSide) || !['top', 'right', 'bottom', 'left'].includes(anchor.toSide) || !Number.isFinite(anchor.offset) || anchor.offset < 0 || anchor.offset > 1))
+      throw new BadRequest('invalid', 'invalid dependency attachment');
     const edges = this.manualDependencies().filter(([a, b]) => a !== from || b !== to);
     if (!remove) {
       // A cycle would leave the cards waiting for each other forever.
@@ -465,7 +468,7 @@ export class Board {
         return all.some(([a, b]) => a === id && visit(b));
       };
       if (visit(to)) throw new BadRequest('invalid', 'dependency cycle');
-      edges.push([from, to]);
+      edges.push(anchor ? [from, to, anchor] : [from, to]);
     }
     this.setSetting('manual_dependencies', JSON.stringify(edges));
     this.changed();
@@ -1545,8 +1548,9 @@ export class Board {
     if (manual.length) {
       const eligible = new Set(items.filter((i) => i.source !== 'plan' && i.kind !== 'project').map((i) => i.id));
       items = items.map((i) => {
-        const on = eligible.has(i.id) ? manual.filter(([from, to]) => to === i.id && eligible.has(from)).map(([from]) => from) : [];
-        return on.length ? { ...i, manualDependsOn: on } : i;
+        const edges = eligible.has(i.id) ? manual.filter(([from, to]) => to === i.id && eligible.has(from)) : [];
+        const anchors = Object.fromEntries(edges.flatMap(([from, , anchor]) => anchor ? [[from, anchor]] : []));
+        return edges.length ? { ...i, manualDependsOn: edges.map(([from]) => from), ...(Object.keys(anchors).length ? { manualAnchors: anchors } : {}) } : i;
       });
     }
     items = this.withPrototypes(items);

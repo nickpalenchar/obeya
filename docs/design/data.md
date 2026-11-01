@@ -9,7 +9,9 @@ Persistent (SQLite):
 
 - canvases, their per-canvas settings (home repository, whether the owner paused its agents, the card collecting each repository's
   CLAUDE.md rules, the Rückschau's and Arbeitsrückschau's counts and when they last ran), groups
-  and each card's group; owner-drawn dependencies between cards;
+  and each card's group; owner-drawn dependencies between cards (the canvas setting `manual_dependencies`
+  is a JSON list of `[from, to]` pairs, optionally followed by `{fromSide, toSide, offset}` for the
+  chosen edges and the target's position along its edge; older pairs use automatic routing);
 - cards with everything shown on them or needed to resume them: kind, state, position, parent, the
   card they came from; the agent session with its pinned harness, model and effort (old unqualified
   sessions belong to Claude; Codex locators start `codex:`), workspace, branch and status line; the open question or

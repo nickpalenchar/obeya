@@ -253,6 +253,9 @@ export type TaskAuthor = 'owner' | 'plan' | 'koordinator' | 'idea' | 'proposal';
 export const taskAuthor = (item: Pick<Item, 'source' | 'prototypeOf' | 'retro' | 'proposed' | 'brief'>): TaskAuthor =>
   item.source === 'plan' ? 'plan' : item.prototypeOf || item.brief !== undefined ? 'idea' : item.retro ? 'koordinator' : item.proposed ? 'proposal' : 'owner';
 
+export type EdgeSide = 'top' | 'right' | 'bottom' | 'left';
+export interface ManualAnchor { fromSide: EdgeSide; toSide: EdgeSide; offset: number }
+
 export interface Item {
   id: string;
   kind: CardKind;
@@ -279,6 +282,8 @@ export interface Item {
   buildsOn?: string[];
   /** Cards connected by the owner that must finish before this card starts. */
   manualDependsOn?: string[];
+  /** Saved attachment points of the owner-drawn arrows, keyed by prerequisite. */
+  manualAnchors?: Record<string, ManualAnchor>;
   /** The worker's latest `report`. */
   statusLine?: string;
   /**
