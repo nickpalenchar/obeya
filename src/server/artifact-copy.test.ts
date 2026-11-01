@@ -81,6 +81,16 @@ describe('artifactCopy', () => {
     expect(copy.get('index.html')).toContain('<script type="module" src="app.js"></script>');
   });
 
+  test('bundles ordinary uses of macro, data URLs, and loader names', async () => {
+    const { copy } = await copyOf({
+      'index.html': '<script type="module" src="app.js"></script>',
+      'app.js': `import { label } from './macro.js'; // macro settings\n document.title = label + 'data:image/png;base64,AA' + 'js';`,
+      'macro.js': `export const label = 'ordinary';`,
+    });
+    expect(copy.get('index.html')).not.toContain('src="app.js"');
+    expect(copy.get('index.html')).toContain('ordinary');
+  });
+
   test('a module script that loads an image or a stylesheet stays as it is', async () => {
     const { copy } = await copyOf({
       'index.html': '<script type="module" src="app.js"></script><script type="module" src="style.js"></script>',
@@ -103,6 +113,16 @@ describe('artifactCopy', () => {
     expect(index).toContain(`var data_default = '{"title":"from the file"}';`);
     expect(index).toContain('title: "from the file"');
     expect(index).not.toMatch(/^\/\/ /m);
+  });
+
+  test('bundles legacy import assertions for data', async () => {
+    const { copy } = await copyOf({
+      'index.html': '<script type="module" src="app.js"></script>',
+      'app.js': `import data from './data.json' assert { type: 'json' }; document.title = data.title;`,
+      'data.json': '{"title":"ordinary data"}',
+    });
+    expect(copy.get('index.html')).not.toContain('src="app.js"');
+    expect(copy.get('index.html')).toContain('ordinary data');
   });
 
   test('the files a page names go into it, so it asks the site for none of them', async () => {
@@ -247,6 +267,39 @@ describe('artifactCopy', () => {
       });
       expect(copy.get('index.html')).toContain('<script type="module" src="app.js"></script>');
       expect(copy.get('index.html')).not.toContain('of the owner');
+      expect(existsSync(ran)).toBe(false);
+    });
+
+    test('blocks macros in inline and transitive modules, including escaped import attributes', async () => {
+      const ran = join(root, 'escaped-macro-ran');
+      const macro = `import { writeFileSync } from 'node:fs'; export const steal = () => (writeFileSync(${JSON.stringify(ran)}, 'ran'), 'stolen');`;
+      for (const source of [
+        "import { steal } from './macro.js' with { type: 'm\\u0061cro' }; document.title = steal();",
+        "import { steal } from './macro.js' assert { type: 'macro' }; document.title = steal();",
+        "import { steal } from 'macro:./macro.js'; document.title = steal();",
+        "import './other.txt' with { type: 'js' };",
+        "import 'data:text/javascript,alert(1)';",
+      ]) {
+        const { copy } = await copyOf({
+          'index.html': `<script type="module">import './app.js';</script><script type="module" src="app.js"></script>`,
+          'app.js': source,
+          'macro.js': macro,
+          'other.txt': "import { steal } from './macro.js' with { type: 'macro' }; steal();",
+        });
+        expect(copy.get('index.html')).toContain('src="app.js"');
+        expect(copy.get('index.html')).toContain("import './app.js'");
+        expect(existsSync(ran)).toBe(false);
+      }
+    });
+
+    test('does not execute a macro declared directly in an inline module', async () => {
+      const ran = join(root, 'inline-macro-ran');
+      const source = "import { run } from './worker.js' with { type: 'macro' }; document.title = run();";
+      const { copy } = await copyOf({
+        'index.html': `<script type="module">${source}</script>`,
+        'worker.js': `import { writeFileSync } from 'node:fs'; export const run = () => (writeFileSync(${JSON.stringify(ran)}, ''), 'read');`,
+      });
+      expect(copy.get('index.html')).toContain(source);
       expect(existsSync(ran)).toBe(false);
     });
 
