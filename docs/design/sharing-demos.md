@@ -101,7 +101,10 @@ URLs, and the files its scripts may fetch are embedded, `fetch` and `XMLHttpRequ
 for them. `<base>`, `#` parts and `srcset` are read as browsers read them. A page grows with its
 images and stays under the host's file limit; `data:` URLs stop at 64 MiB a page. A file goes in only
 if its real path lies in the artifact's directory, and a module whose bundle took in code from
-outside stays unbundled; build macros are off. Otherwise a worker steered by what it read could put
+outside stays unbundled. Module sources that could invoke a build macro stay unbundled before Bun
+parses them; this also applies to escaped spellings, data URLs and imports that change a file's
+loader. Imports the check cannot classify, or syntax it cannot parse, stay unbundled. Otherwise a
+worker steered by what it read could put
 an owner's file into a public page. Still not loading: a Web Worker's script, an `import()` of a
 computed path, a font set from a script, and behind a login a file a script names at run time. A
 ZIP's page opened from disk lets the frame keep its origin (`file:` has no site to protect).
