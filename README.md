@@ -157,7 +157,8 @@ Options: `--port <n>` (or `OBEYA_PORT`), `--workspace <path>` (repeatable) or `-
 have workers use clones instead of a worktree per card, `--permission-mode <mode>` for workers
 (default `auto`). Data and worktrees live in `~/.obeya/` (`OBEYA_HOME` to move it), the same for
 the app and a checkout, so canvases, settings, voices, models and paired phones carry over between
-them. One Obeya runs per home: starting the app while a checkout's Obeya runs opens a window on
+them. (`scripts/start.ts`, behind `bun start` in a development checkout, uses `~/.obeya-dev` and
+port 4418 instead, to run beside the stable Obeya.) One Obeya runs per home: starting the app while a checkout's Obeya runs opens a window on
 it, and `bun start` while the app runs says where it runs, with a new link that signs another
 browser in. An Obeya older than the one that last ran on the home (an app not yet updated after a
 newer checkout) leaves the database alone and says to update. Workers run on the Claude Code login

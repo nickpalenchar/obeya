@@ -451,6 +451,8 @@ export class Board {
     const items = this.snapshot().items;
     if (!items.some((i) => i.id === from) || !items.some((i) => i.id === to) || from === to)
       throw new BadRequest('unknownCard', 'invalid dependency');
+    if (!remove && items.some((i) => (i.id === from || i.id === to) && (i.source === 'plan' || i.kind === 'project')))
+      throw new BadRequest('invalid', 'project dependencies are decided from the plan');
     const edges = this.manualDependencies().filter(([a, b]) => a !== from || b !== to);
     if (!remove) {
       // A cycle would leave the cards waiting for each other forever.
@@ -1540,10 +1542,13 @@ export class Board {
       items = toItems(rows, docs, this.home);
     }
     const manual = this.manualDependencies();
-    items = items.map((i) => {
-      const on = manual.filter(([, to]) => to === i.id).map(([from]) => from);
-      return on.length ? { ...i, manualDependsOn: on } : i;
-    });
+    if (manual.length) {
+      const eligible = new Set(items.filter((i) => i.source !== 'plan' && i.kind !== 'project').map((i) => i.id));
+      items = items.map((i) => {
+        const on = eligible.has(i.id) ? manual.filter(([from, to]) => to === i.id && eligible.has(from)).map(([from]) => from) : [];
+        return on.length ? { ...i, manualDependsOn: on } : i;
+      });
+    }
     items = this.withPrototypes(items);
     items = this.withElsewhere(items);
     const inTurn = new Map([...this.turns].flatMap((f) => [...f()]));

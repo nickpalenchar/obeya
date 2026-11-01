@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import type { HookInput, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { type AgentEvent, askOwner, BOUNDED_WAITS, Inbox, backgroundWork, deniedBy, claudeExecutable, cleanEnv, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resetIn, resultFailure, spawnHere, endAgentsHere, usageLimit, withLimitWait, withRepoTrust, withStderr } from './runtime';
+import { type AgentEvent, askOwner, BOUNDED_WAITS, Inbox, backgroundWork, deniedBy, claudeExecutable, cleanEnv, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resetIn, resultFailure, spawnHere, endAgentsHere, usageLimit, withLimitWait, withRepoTrust, withStderr, withTrustedAllow } from './runtime';
 import { FakeRuntime } from './testing';
 import { MESSAGES } from '../core/messages';
 
@@ -274,4 +274,33 @@ test("an agent whose repository's trust takes git to tell starts once it is told
   tell(false);
   await closed.done;
   expect(fake.sessions).toHaveLength(1);
+});
+
+test('a Codex agent is not asked for a command the owner-confirmed allow list covers, and only for that', async () => {
+  const seen: { spec: Parameters<FakeRuntime['start']>[0] }[] = [];
+  const base = { start: (spec: Parameters<FakeRuntime['start']>[0]) => { seen.push({ spec }); return undefined as never; } };
+  const rules = (cwd: string) => (cwd === '/repo' ? ['bun test *', 'bun run typecheck'] : []);
+  const asked: string[] = [];
+  const spec = (over: Record<string, unknown> = {}) => ({ cwd: '/repo', system: '', tools: [], onEvent: () => {}, setting: { harness: 'codex' }, askOwner: async (r: { input: Record<string, unknown> }) => { asked.push(String(r.input.command)); return { allow: false as const, message: 'no' }; }, ...over }) as never;
+  const wrapped = withTrustedAllow(base as never, rules);
+  const answer = async (over: Record<string, unknown>, name: string, input: Record<string, unknown>) => {
+    wrapped.start(spec(over), '', []);
+    return seen.at(-1)!.spec.askOwner!({ name, input }, new AbortController().signal);
+  };
+  expect(await answer({}, 'Bash', { command: "/bin/zsh -lc 'bun run typecheck'" })).toEqual({ allow: true });
+  expect(await answer({}, 'Bash', { command: "/bin/zsh -lc 'bun test a.test.ts'" })).toEqual({ allow: true });
+  expect(asked).toEqual([]);
+  // chained, uncovered, a grant beyond the command, another tool, another repository, held or Claude's own
+  expect((await answer({}, 'Bash', { command: "/bin/zsh -lc 'bun test x; rm -rf y'" })).allow).toBe(false);
+  expect((await answer({}, 'Bash', { command: "/bin/zsh -lc 'git push'" })).allow).toBe(false);
+  expect((await answer({}, 'Bash', { command: "/bin/zsh -lc 'bun run typecheck'", additionalPermissions: { network: true } })).allow).toBe(false);
+  expect((await answer({}, 'Edit', { command: "/bin/zsh -lc 'bun run typecheck'" })).allow).toBe(false);
+  expect((await answer({ cwd: '/other' }, 'Bash', { command: "/bin/zsh -lc 'bun run typecheck'" })).allow).toBe(false);
+  expect(asked).toHaveLength(5);
+  const held = spec({ untrusted: true });
+  wrapped.start(held, '', []);
+  expect(seen.at(-1)!.spec).toBe(held);
+  const claude = spec({ setting: { harness: 'claude' } });
+  wrapped.start(claude, '', []);
+  expect(seen.at(-1)!.spec).toBe(claude);
 });
