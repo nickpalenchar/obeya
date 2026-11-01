@@ -18,7 +18,8 @@
 // elsewhere, or a module import that leads out of it, would publish a file of this machine.
 
 import { readFileSync, realpathSync } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, extname, join, relative, resolve, sep } from 'node:path';
+import { parse } from '@babel/parser';
 import { sealed, withHeightReport } from '../core/frame';
 import { demoFile } from './demo-page';
 
@@ -237,13 +238,44 @@ async function withModules(html: string, dir: string): Promise<string> {
     .transform(html);
 }
 
+/** Whether Bun can parse this module without executing a macro or bypassing the source check. */
+function safeModule(path: string, contents: string): boolean {
+  const extension = extname(path).toLowerCase();
+  let source;
+  try {
+    source = parse(contents, { sourceType: 'module', plugins: ['decorators-legacy', 'decoratorAutoAccessors', 'deprecatedImportAssert', ...(/\.[cm]?tsx?$/.test(extension) ? ['typescript' as const] : []), ...(/\.([jt]sx)$/.test(extension) ? ['jsx' as const] : [])] });
+  } catch {
+    // Do not rely on parser recovery for syntax Bun might interpret differently.
+    return false;
+  }
+  const safeName = (node: any) => node?.type === 'StringLiteral' && !/^(?:macro|data):/i.test(node.value);
+  const safeAttributes = (attributes: any[] | undefined) => !attributes || attributes.every((a) =>
+    (a.key?.name ?? a.key?.value) === 'type' && a.value?.type === 'StringLiteral' && /^(?:json|json5|text|toml|yaml)$/.test(a.value.value));
+  let safe = true;
+  const visit = (node: any) => {
+    if (!node || typeof node !== 'object' || !safe) return;
+    if (node.type === 'ImportDeclaration' || node.type === 'ExportNamedDeclaration' || node.type === 'ExportAllDeclaration') {
+      if ((node.source && !safeName(node.source)) || !safeAttributes(node.attributes)) safe = false;
+    } else if (node.type === 'ImportExpression') {
+      if (node.options || !safeName(node.source)) safe = false;
+    } else if (node.type === 'CallExpression' && (node.callee?.type === 'Import' || (node.callee?.type === 'Identifier' && node.callee.name === 'require'))) {
+      if (node.arguments.length !== 1 || !safeName(node.arguments[0])) safe = false;
+    }
+    for (const value of Object.values(node)) if (Array.isArray(value)) value.forEach(visit); else if (typeof value === 'object') visit(value);
+  };
+  visit(source);
+  return safe;
+}
+
 /**
  * The bundle of a module script, built as Bun builds it for a browser; none where it took in a
  * module whose real path lies outside the artifact's directory (a path out of it, a link, a path a
- * `tsconfig.json` maps a package to). Bun reads those while it builds, but nothing of it leaves.
+ * `tsconfig.json` maps a package to).
  */
 async function bundle(dir: string, entry: string, files?: Record<string, string>): Promise<string | null> {
   try {
+    const root = realpathSync(dir) + sep;
+    if (files && Object.entries(files).some(([path, contents]) => !safeModule(path, contents))) return null;
     const r = await Bun.build({
       entrypoints: [entry],
       ...(files ? { files } : {}),
@@ -252,6 +284,20 @@ async function bundle(dir: string, entry: string, files?: Record<string, string>
       format: 'esm',
       packages: 'external',
       external: ['http://*', 'https://*'],
+      plugins: [{
+        name: 'artifact-sources',
+        setup(build) {
+          build.onLoad({ filter: /(?:\.[cm]?[jt]sx?|[/\\][^/\\.]+)$/i }, ({ path, loader }) => {
+            const virtual = files?.[path];
+            if (virtual === undefined && !realpathSync(path).startsWith(root)) throw new Error('Outside artifact');
+            const contents = virtual ?? readFileSync(path, 'utf8');
+            // Check before Bun parses the source: its macros:false option is not honored by
+            // every supported Bun. Data URLs and code loaders could bypass this load hook.
+            if (!safeModule(path, contents)) throw new Error('Unsafe artifact module');
+            return { contents, loader };
+          });
+        },
+      }],
       // a macro (`import … with { type: 'macro' }`) would run code of the artifact here, at the build
       macros: false,
       metafile: true,
@@ -260,7 +306,6 @@ async function bundle(dir: string, entry: string, files?: Record<string, string>
     // a module that loads a stylesheet or splits into chunks needs files the copy does not have
     if (!r.success || r.outputs.length !== 1 || !r.metafile) return null;
     // the modules it read, relative to the working directory
-    const root = realpathSync(dir) + sep;
     for (const input of Object.keys(r.metafile.inputs)) {
       const path = resolve(input);
       if (files && path === resolve(entry)) continue;
