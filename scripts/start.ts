@@ -1,8 +1,11 @@
-// Starts the Obeya of this checkout on a home and a port of its own, so it runs beside the stable
-// Obeya of another checkout (or the app) without meeting its database: one home serves one Obeya
-// (src/server/instance.ts), and a database written by a newer Obeya is refused by an older one.
+// `bun start` of a development checkout (a directory named `…-dev`) starts its Obeya on a home and
+// a port of its own, so it runs beside the stable Obeya of another checkout (or the app) without
+// meeting its database: one home serves one Obeya (src/server/instance.ts), and a database written
+// by a newer Obeya is refused by an older one. In any other checkout the same command starts
+// Obeya as src/server/main.ts does, on ~/.obeya and port 4417, so the file can travel between
+// the two with a merge.
 //
-//   bun start [<main.ts args>]      # home ~/.obeya-dev, port 4418
+//   bun start [<main.ts args>]      # in a -dev checkout: home ~/.obeya-dev, port 4418
 //   bun run dev [<main.ts args>]    # the same, with hot reload (--hot, --dev)
 //
 // OBEYA_HOME and OBEYA_PORT (or --port) still win when set. A first start without arguments on a
@@ -12,28 +15,35 @@
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 
 const DEFAULT_PORT = '4418';
 const root = resolve(import.meta.dir, '..');
-const hot = process.argv[2] === '--hot';
-const args = process.argv.slice(hot ? 3 : 2);
 
-const home = process.env.OBEYA_HOME ?? join(homedir(), '.obeya-dev');
-const env = { ...process.env, OBEYA_HOME: home, OBEYA_PORT: process.env.OBEYA_PORT ?? DEFAULT_PORT };
+/** Whether `dir` is a development checkout: its name ends in `-dev`. */
+export const isDevCheckout = (dir: string) => /-dev$/.test(basename(dir));
 
-// without arguments the canvases come from the home's canvases.json
-const config = join(home, 'canvases.json');
-if (args.length === 0 && !existsSync(config)) {
-  mkdirSync(home, { recursive: true, mode: 0o700 });
-  writeFileSync(config, JSON.stringify([{ name: 'Obeya', repos: [{ path: root }] }], null, 2) + '\n');
+if (import.meta.main) {
+  const hot = process.argv[2] === '--hot';
+  const args = process.argv.slice(hot ? 3 : 2);
+  const dev = isDevCheckout(root);
+
+  const home = process.env.OBEYA_HOME ?? join(homedir(), dev ? '.obeya-dev' : '.obeya');
+  const env = { ...process.env, ...(dev ? { OBEYA_HOME: home, OBEYA_PORT: process.env.OBEYA_PORT ?? DEFAULT_PORT } : {}) };
+
+  // without arguments the canvases come from the home's canvases.json
+  const config = join(home, 'canvases.json');
+  if (dev && args.length === 0 && !existsSync(config)) {
+    mkdirSync(home, { recursive: true, mode: 0o700 });
+    writeFileSync(config, JSON.stringify([{ name: 'Obeya', repos: [{ path: root }] }], null, 2) + '\n');
+  }
+
+  const child = Bun.spawn(['bun', ...(hot ? ['--hot', join(root, 'src/server/main.ts'), '--dev'] : [join(root, 'src/server/main.ts')]), ...args], {
+    cwd: root,
+    env,
+    stdio: ['inherit', 'inherit', 'inherit'],
+  });
+  // Ctrl-C reaches the whole foreground group already; a kill of this process must reach the server too
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => child.kill(signal));
+  process.exit(await child.exited);
 }
-
-const child = Bun.spawn(['bun', ...(hot ? ['--hot', join(root, 'src/server/main.ts'), '--dev'] : [join(root, 'src/server/main.ts')]), ...args], {
-  cwd: root,
-  env,
-  stdio: ['inherit', 'inherit', 'inherit'],
-});
-// Ctrl-C reaches the whole foreground group already; a kill of this process must reach the server too
-for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => child.kill(signal));
-process.exit(await child.exited);
