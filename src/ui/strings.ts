@@ -1057,6 +1057,16 @@ const de = {
     toSection: 'Geräte und Einstellungen',
   },
   /** The phone view (src/ui/phone.tsx). */
+  /** The inbox the bar's „brauchen dich“ slides out: everything that waits for the owner, on every canvas. */
+  inbox: {
+    title: 'Posteingang',
+    empty: 'Nichts wartet auf dich.',
+    goToCard: 'Zur Karte',
+    goToObeya: 'Zu Obeya',
+    close: 'Schließen',
+    answered: 'Obeya hat geantwortet',
+    pickHint: 'Die Wahl des Agenten',
+  },
   phone: {
     forYou: 'Für dich',
     running: 'Läuft',
@@ -2926,6 +2936,16 @@ const en: Strings = {
     another: 'Connect another device',
     first: 'For your phone to reach Obeya:',
     toSection: 'Devices and settings',
+  },
+  /** The inbox the bar's “need you” slides out: everything that waits for the owner, on every canvas. */
+  inbox: {
+    title: 'Inbox',
+    empty: 'Nothing waits for you.',
+    goToCard: 'Go to card',
+    goToObeya: 'Go to Obeya',
+    close: 'Close',
+    answered: 'Obeya answered',
+    pickHint: 'The agent’s choice',
   },
   phone: {
     forYou: 'For you',
