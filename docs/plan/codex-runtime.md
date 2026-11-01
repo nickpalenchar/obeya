@@ -4,6 +4,66 @@ Obeya owns the canvas, workspaces, conversations and owner decisions. Each harne
 loop. A role (coordinator, worker, explorer or small job) is not a harness or a model. The local
 Codex worker preview is described in the permanent design chapters; this plan tracks what remains.
 
+## Goal
+
+Harden the local Codex worker preview and complete its remaining acceptance and parity work, then add Pi as a harness with the shared Obeya contracts.
+
+## Workstreams
+
+- [ ] **W1:** Process cleanup. Finish and review the current process-group and observed-descendant cleanup, including the
+  Linux `/proc` changes. Check normal stop, forced stop and agent death, PID reuse, unrelated
+  canaries and shutdown escalation. Verify how this interacts with app parking and `app.keep`;
+  distinguish graceful shutdown, explicit forced shutdown and crashes. `app.keep` governs
+  waiting-card parking; do not invent an app-process identity contract merely to keep the app alive
+  through forced shutdown. Check how Codex's semantic background-terminal cleanup and process
+  groups interact with those lifecycle choices. Native Windows and Linux Codex behavior remains
+  unverified. Record the actual results and limitations, not a containment guarantee.
+- [ ] **W2:** Comparable harness crash probes. Run comparable real Claude and Codex probes on macOS in scratch repositories and an isolated
+  Obeya home: agent death and Obeya death, with a separately grouped background process and an
+  unrelated canary. Check whether the app is meant to remain running, clean up every test-owned
+  process, and report blocked authentication or incomplete runs rather than extrapolating.
+- [ ] **W3:** Session lifetimes and crash recovery. Before adding Pi, specify session work, the app governed by parking and `app.keep`, and
+  external operations as distinct lifetimes. Use probe results to design and validate safe
+  recovery of observed processes after an Obeya crash. This is not a Codex preview gate; it is
+  a Pi gate. Recovery must not kill another live Obeya instance's processes or unrelated processes.
+- [ ] **W4:** Liveness-pipe prototype. Evaluate the isolated POSIX liveness-pipe prototype in `scripts/agent-liveness-prototype.ts`:
+  it launches one child, keeps a private owner pipe out of the child's inherited descriptors, samples
+  descendants, and kills the child and observed descendants on owner-pipe EOF or child exit. A
+  synthetic macOS test closes the pipe and checks an observed separately grouped child and an
+  unrelated canary; it is not a real harness, owner SIGKILL or Windows test. The build bundles the
+  supervisor as a resource; a macOS compiled-binary smoke test ran it using `BUN_BE_BUN=1`, but
+  Obeya does not yet launch its agents through it. An initial Codex transport integration was
+  reverted: on a supervisor SIGKILL, the app-server could retain its pipes after being reparented,
+  and a fast app-server exit could leave a same-group child running before sampling observed it.
+  Tracking a reported descendant now also retains each verified intermediate ancestor, rather
+  than only the leaf. A real-process test on macOS and in a Linux ARM64 container kills a synthetic
+  supervisor after reporting a separately grouped leaf, then checks cleanup of both the intermediate
+  app-server and leaf while an unrelated canary survives. This addresses one way the app-server was
+  missed but does not establish full transport recovery or solve the fast-exit case. The transport's process identity must remain distinguishable from the
+  supervisor's, and both failure cases need regression coverage before replacing the direct launch.
+  Its supervisor can itself die, sampling can miss descendants,
+  numeric signalling still races PID reuse, and root exit and startup before the first observation
+  leave windows. Do not use it as containment or promise crash recovery. Compare or combine it with
+  a boot-aware registry and startup sweep; address concurrent instances, a supervisor's own failure,
+  ownership of apps and external work, normal shutdown and cross-platform packaging before adoption.
+- [ ] **W5:** Platform process boundaries. Investigate stronger platform boundaries separately: native Windows Job Objects with a
+  gated launch, and Linux systemd user scopes including no-manager, no-D-Bus and read-only-cgroup
+  fallback. Test native harnesses, nested jobs and breakaway, and preserve app parking semantics.
+  macOS has no selected unprivileged equivalent. Do not claim an untested boundary or platform.
+- [ ] **W6:** Live phase 1 acceptance. Rerun live mixed-harness cards, rate-limit recovery and longer-running pause/restart scenarios.
+- [ ] **W7:** Active session identity. Expose the active session's own identity if working and reading bubbles should name its model.
+- [ ] **W8:** Codex configuration trust. Explicit repository Codex configuration trust and configuration-change checks; until then,
+  project `.codex` is rejected and the user's global Codex configuration is trusted.
+- [ ] **W9:** Foreground-wait guard. Decide whether native Codex pre-command hooks can provide the foreground-wait guard, rather
+  than pretending Claude's hooks apply. Context updates currently use native completion/steering.
+- [ ] **W10:** Transcripts and retrospectives. Portable transcripts and work retrospectives, or continue showing them as unavailable.
+- [ ] **W11:** Feature parity. SSH, non-Git folder undo, contributor reviews and record/replay, each with its own parity tests
+  before removing the current refusal. User/repository skill discovery is separate from bundled
+  file-based skills already supplied to Codex.
+- [ ] **W12:** Other harness roles. Harness selection for other roles once their permission/read-only/continuation contracts are
+  implemented. Keeping the coordinator on Claude is a rollout boundary, not an architectural need.
+- [ ] **W13:** Pi adapter. Implement the phase 2 adapter and its supported role contracts after the phase 1 gates.
+
 ## Verified checkpoint
 
 Installed Codex CLI 0.162.0, on macOS, in scratch repositories and a scratch Obeya home:
@@ -123,47 +183,6 @@ with a real card. All scratch servers stopped and
 test-owned PIDs were cleaned up. Probe source and last report: `/tmp/obeya-keep-card-probe.ts`,
 `/tmp/obeya-keep-card-report.json` on the test machine.
 
-- [ ] Finish and review the current process-group and observed-descendant cleanup, including the
-  Linux `/proc` changes. Check normal stop, forced stop and agent death, PID reuse, unrelated
-  canaries and shutdown escalation. Verify how this interacts with app parking and `app.keep`;
-  distinguish graceful shutdown, explicit forced shutdown and crashes. `app.keep` governs
-  waiting-card parking; do not invent an app-process identity contract merely to keep the app alive
-  through forced shutdown. Check how Codex's semantic background-terminal cleanup and process
-  groups interact with those lifecycle choices. Native Windows and Linux Codex behavior remains
-  unverified. Record the actual results and limitations, not a containment guarantee.
-- [ ] Run comparable real Claude and Codex probes on macOS in scratch repositories and an isolated
-  Obeya home: agent death and Obeya death, with a separately grouped background process and an
-  unrelated canary. Check whether the app is meant to remain running, clean up every test-owned
-  process, and report blocked authentication or incomplete runs rather than extrapolating.
-- [ ] Before adding Pi, specify session work, the app governed by parking and `app.keep`, and
-  external operations as distinct lifetimes. Use probe results to design and validate safe
-  recovery of observed processes after an Obeya crash. This is not a Codex preview gate; it is
-  a Pi gate. Recovery must not kill another live Obeya instance's processes or unrelated processes.
-- [ ] Evaluate the isolated POSIX liveness-pipe prototype in `scripts/agent-liveness-prototype.ts`:
-  it launches one child, keeps a private owner pipe out of the child's inherited descriptors, samples
-  descendants, and kills the child and observed descendants on owner-pipe EOF or child exit. A
-  synthetic macOS test closes the pipe and checks an observed separately grouped child and an
-  unrelated canary; it is not a real harness, owner SIGKILL or Windows test. The build bundles the
-  supervisor as a resource; a macOS compiled-binary smoke test ran it using `BUN_BE_BUN=1`, but
-  Obeya does not yet launch its agents through it. An initial Codex transport integration was
-  reverted: on a supervisor SIGKILL, the app-server could retain its pipes after being reparented,
-  and a fast app-server exit could leave a same-group child running before sampling observed it.
-  Tracking a reported descendant now also retains each verified intermediate ancestor, rather
-  than only the leaf. A real-process test on macOS and in a Linux ARM64 container kills a synthetic
-  supervisor after reporting a separately grouped leaf, then checks cleanup of both the intermediate
-  app-server and leaf while an unrelated canary survives. This addresses one way the app-server was
-  missed but does not establish full transport recovery or solve the fast-exit case. The transport's process identity must remain distinguishable from the
-  supervisor's, and both failure cases need regression coverage before replacing the direct launch.
-  Its supervisor can itself die, sampling can miss descendants,
-  numeric signalling still races PID reuse, and root exit and startup before the first observation
-  leave windows. Do not use it as containment or promise crash recovery. Compare or combine it with
-  a boot-aware registry and startup sweep; address concurrent instances, a supervisor's own failure,
-  ownership of apps and external work, normal shutdown and cross-platform packaging before adoption.
-- [ ] Investigate stronger platform boundaries separately: native Windows Job Objects with a
-  gated launch, and Linux systemd user scopes including no-manager, no-D-Bus and read-only-cgroup
-  fallback. Test native harnesses, nested jobs and breakaway, and preserve app parking semantics.
-  macOS has no selected unprivileged equivalent. Do not claim an untested boundary or platform.
-
 ### Proposed recovery boundary (not implemented)
 
 Use the supervisor and a registry for different failures, not as substitutes. A private liveness
@@ -239,20 +258,6 @@ not a production registry, a startup sweep or proof that an identity is safe to 
   supported OS. A failed or unavailable recovery must be visible and must not silently widen the
   kill scope. Preserve the distinction between a session that can safely resume and one whose old
   writer is still unaccounted for.
-
-## Remaining phase 1 acceptance and parity
-- [ ] Rerun live mixed-harness cards, rate-limit recovery and longer-running pause/restart scenarios.
-- [ ] Expose the active session's own identity if working and reading bubbles should name its model.
-- [ ] Explicit repository Codex configuration trust and configuration-change checks; until then,
-  project `.codex` is rejected and the user's global Codex configuration is trusted.
-- [ ] Decide whether native Codex pre-command hooks can provide the foreground-wait guard, rather
-  than pretending Claude's hooks apply. Context updates currently use native completion/steering.
-- [ ] Portable transcripts and work retrospectives, or continue showing them as unavailable.
-- [ ] SSH, non-Git folder undo, contributor reviews and record/replay, each with its own parity tests
-  before removing the current refusal. User/repository skill discovery is separate from bundled
-  file-based skills already supplied to Codex.
-- [ ] Harness selection for other roles once their permission/read-only/continuation contracts are
-  implemented. Keeping the coordinator on Claude is a rollout boundary, not an architectural need.
 
 ## Phase 2: Pi
 
