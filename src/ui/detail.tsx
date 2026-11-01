@@ -1741,6 +1741,7 @@ function DemoView({
   const artifact = useRef<HTMLIFrameElement>(null);
   const artifactHeight = useReportedHeight(artifact, ARTIFACT_CAP);
   const [now, setNow] = useState(0);
+  const [captionsOn, setCaptionsOn] = useState(true);
   // the video's shape once its metadata is in: until it first plays, Chrome sizes the element by its poster, and
   // by its default 300 × 150 when the poster does not load, a flat strip at full width
   const [shape, setShape] = useState<string>();
@@ -1772,6 +1773,15 @@ function DemoView({
   const seek = useSeekKeys(video);
   const watching = useWatching(cardId, video, comments && demo.kind !== 'html' ? demo.chapters : null, demo.handover);
   const current = chapterAt(demo.chapters, now);
+  useEffect(() => {
+    const tracks = video.current?.textTracks;
+    if (!tracks) return;
+    const sync = () => setCaptionsOn(tracks[0]?.mode === 'showing');
+    tracks.addEventListener('change', sync);
+    tracks.addEventListener('addtrack', sync);
+    sync();
+    return () => { tracks.removeEventListener('change', sync); tracks.removeEventListener('addtrack', sync); };
+  }, [demo.kind, shownN]);
   useEffect(() => {
     if (!earlier.length) return;
     return showsVersions({
@@ -1881,6 +1891,19 @@ function DemoView({
               >
                 <track kind="captions" src={src('captions.vtt')} label={t.demo.captions} default />
               </video>
+              <button
+                type="button"
+                className="captions-toggle"
+                aria-label={t.demo.captions}
+                aria-pressed={captionsOn}
+                title={t.demo.captions}
+                onClick={() => {
+                  const track = video.current?.textTracks[0];
+                  if (track) track.mode = track.mode === 'showing' ? 'disabled' : 'showing';
+                }}
+              >
+                CC
+              </button>
               {seek.hint && (
                 <span className="seek-hint">
                   {t.demo.seekHint} <kbd>←</kbd> <kbd>→</kbd>
