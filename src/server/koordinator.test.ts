@@ -63,6 +63,31 @@ async function scope(files: string[], conflicts: string[] = [], reason = 'Grund.
 }
 
 describe('Koordinator', () => {
+  test('a one-start choice waits in the queue and reaches the worker when forced', async () => {
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    const b = card('B');
+    const chosen = { model: 'sonnet' as const, effort: 'low' as const };
+    k.request(b.id, chosen);
+    await scope(['src/a.ts'], ['K1']);
+    expect(JSON.parse(board.row(b.id).agent_setting!)).toEqual(chosen);
+    k.force(b.id);
+    await settle();
+    expect(workerOf(b.id).spec.setting).toEqual(chosen);
+  });
+
+  test('taking a choice out of the queue and starting normally uses the default', async () => {
+    const a = card('A');
+    k.request(a.id); await scope(['src/a.ts']);
+    const b = card('B');
+    k.request(b.id, { model: 'sonnet', effort: 'low' });
+    await scope(['src/a.ts'], ['K1']);
+    k.dequeue(b.id);
+    k.request(b.id);
+    await scope(['src/b.ts']);
+    expect(workerOf(b.id).spec.setting).toMatchObject({ model: 'opus', effort: 'high' });
+  });
   test('a card with nothing in progress starts at once; its scope is estimated afterwards', async () => {
     const a = card('A');
     k.request(a.id);

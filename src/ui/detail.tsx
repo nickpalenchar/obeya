@@ -38,6 +38,8 @@ import { PageChangeList } from './page-changes';
 import { WishReplyLink } from './wish';
 import { loginError } from './auth';
 import { Reauthenticate } from './reauthenticate';
+import { StartAgent } from './start-agent';
+import type { AgentSetting } from '../core/types';
 
 /**
  * What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open.
@@ -445,7 +447,7 @@ export function Detail(p: Props) {
       <RepoDownBox item={item} />
 
       {item.state === 'proposal' && (
-        <ProposalView item={item} from={p.from} act={act} listener={listener} onRevise={tell('revise')}>
+        <ProposalView item={item} from={p.from} act={act} listener={listener} onRevise={tell('revise')} codexAllowed={!inFolder && !item.contribution}>
           {editable ? (
             <ManualFields item={item} repos={p.repos} choice={choice} onEdit={p.onEdit} grow />
           ) : (
@@ -618,14 +620,13 @@ export function Detail(p: Props) {
             <Armed label={t.repoPick.making(choice.name)} undo={t.undo} onUndo={() => act({ action: 'stayHere' }, { close: false })} />
           ) : (
             !item.snoozed && (
-              <button
-                className="btn primary"
+              item.newRepo ? <button className="btn primary" disabled={!!fresh && !fresh.ready} title={fresh?.hint} onClick={() => act({ action: 'start' }, { close: false })}>{fresh?.button ?? t.start}</button> : <StartAgent
+                label={fresh?.button ?? t.start}
                 disabled={!!fresh && !fresh.ready}
                 title={fresh?.hint ?? (inFolder ? t.folder.startHint : t.startHint)}
-                onClick={() => act({ action: 'start' }, { close: false })}
-              >
-                {fresh?.button ?? t.start}
-              </button>
+                codexAllowed={!inFolder && !item.contribution}
+                onStart={(agent) => act({ action: 'start', ...(agent ? { agent } : {}) }, { close: false })}
+              />
             )
           )}
           <Later item={item} act={act} />
@@ -663,14 +664,10 @@ export function Detail(p: Props) {
       {worked && (running || archivable || halted || rest || snoozable(item)) && (
         <div className="actions">
           {rest && (
-            <button className="btn primary" title={t.landedPart.startHint} onClick={() => act({ action: 'start' }, { close: false })}>
-              {t.landedPart.start}
-            </button>
+            <StartAgent label={t.landedPart.start} title={t.landedPart.startHint} codexAllowed={!inFolder && !item.contribution} onStart={(agent) => act({ action: 'start', ...(agent ? { agent } : {}) }, { close: false })} />
           )}
           {halted && !item.archivedAt && (
-            <button className="btn primary" title={t.startAgainHint} onClick={() => act({ action: 'start' }, { close: false })}>
-              {t.startAgain}
-            </button>
+            <StartAgent label={t.startAgain} title={t.startAgainHint} codexAllowed={!inFolder && !item.contribution} onStart={(agent) => act({ action: 'start', ...(agent ? { agent } : {}) }, { close: false })} />
           )}
           {review ? prototypeActions || approveButton : (running || (halted && !item.archivedAt)) && prototypeActions}
           <Later item={item} act={act} />
@@ -986,6 +983,7 @@ function ProposalView({
   act,
   listener,
   onRevise,
+  codexAllowed,
   children,
 }: {
   item: Item;
@@ -994,6 +992,7 @@ function ProposalView({
   listener?: string;
   /** What should change in it, typed (maybe in reply to a message of its conversation): an agent reworks the proposal by it. */
   onRevise: (text: string, images?: string[], replyTo?: number) => Promise<void>;
+  codexAllowed: boolean;
   children: ReactNode;
 }) {
   const revising = item.proposal?.revising;
@@ -1002,9 +1001,9 @@ function ProposalView({
   const armed = item.proposal?.acceptAfterRevision;
   const later = !idea && !!item.proposal?.startAt;
   // while it is reworked, the click waits for the new text in view; else the panel closes on the accepted card
-  const accept = (start: boolean, asIdea = false) =>
+  const accept = (start: boolean, asIdea = false, agent?: AgentSetting) =>
     act(
-      { action: 'accept', ...(start ? {} : { start: false }), ...(asIdea ? { idea: true } : {}), ...(answer.picked ? { picks: answer.picks } : {}) },
+      { action: 'accept', ...(start ? {} : { start: false }), ...(asIdea ? { idea: true } : {}), ...(agent ? { agent } : {}), ...(answer.picked ? { picks: answer.picks } : {}) },
       (start || asIdea) && !revising
         ? { close: true, ack: idea || asIdea ? t.acceptedIdea : later && Date.parse(item.proposal!.startAt!) > Date.now() ? t.acceptedLater(snoozeWhen(item.proposal!.startAt!)) : t.accepted }
         : { close: false },
@@ -1056,9 +1055,8 @@ function ProposalView({
           <Armed label={t.acceptWaits(idea || armed === 'idea')} undo={t.unaccept} onUndo={() => act({ action: 'unaccept' }, { close: false })} />
         ) : (
           // one to start later is planned and waits until then: taking it on is all there is to it
-          <button className="btn primary" title={later ? t.startAt.accept : undefined} onClick={() => accept(true)}>
-            {idea ? t.acceptIdea : later ? t.acceptOnly : t.accept}
-          </button>
+          !idea && !later && !revising ? <StartAgent label={t.accept} codexAllowed={codexAllowed} onStart={(agent) => accept(true, false, agent)} /> :
+          <button className="btn primary" title={later ? t.startAt.accept : undefined} onClick={() => accept(true)}>{idea ? t.acceptIdea : later ? t.acceptOnly : t.accept}</button>
         )}
         {!later && (
           <button className="btn" disabled={!!revising} onClick={() => accept(false)}>

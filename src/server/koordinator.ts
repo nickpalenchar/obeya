@@ -181,12 +181,16 @@ export class Koordinator {
   }
 
   /** The owner wants the card worked on; a project, all its planned workstreams. */
-  request(cardId: string): void {
+  request(cardId: string, setting?: import('../core/types').AgentSetting): void {
     const card = this.card(cardId);
     if (card.repoDown) throw new BadRequest('repoDown', `the repository ${card.repo} of the card does not run on this canvas`);
-    if (card.kind === 'project') return this.requestAll(card);
+    if (card.kind === 'project') {
+      if (setting) throw new BadRequest('invalid', 'choose an agent for an individual task');
+      return this.requestAll(card);
+    }
     if (card.state !== 'planned') throw new BadRequest('notPlanned', 'only a planned card can be started');
     if (card.queue) throw new BadRequest('queued', 'the card is already with Obeya');
+    this.o.board.work(cardId, { agent_setting: setting ? JSON.stringify(setting) : null });
     this.setQueue(cardId, { checking: true });
     this.serial(() => this.decide(cardId));
   }
@@ -203,7 +207,7 @@ export class Koordinator {
     // one the owner set aside to start later goes with them, so a workstream building on it waits for it
     for (const w of open) if (w.snoozed?.start) this.o.board.unsnooze(w.id, 'owner');
     const now = Date.now();
-    open.forEach((w, n) => this.o.board.work(w.id, { queue: JSON.stringify({ checking: true, together: project.id, since: new Date(now + n).toISOString() }) }));
+    open.forEach((w, n) => this.o.board.work(w.id, { agent_setting: null, queue: JSON.stringify({ checking: true, together: project.id, since: new Date(now + n).toISOString() }) }));
     this.o.board.log(project.id, 'state', 'owner', this.o.board.t.koordinator.allStarted(open.map((w) => w.label ?? w.title).join(', ')));
     setTimeout(() => this.serial(() => this.decideAll(project.id)), this.o.holdMs ?? START_ALL_HOLD_MS);
   }
@@ -767,7 +771,8 @@ export class Koordinator {
     try {
       // git makes its workspace ready in the background; what goes wrong there its card says itself, but that the clone
       // it took was not clean and no other is, which queues it as when there is none at once
-      this.o.repoFor(card).workers.start(cardId).catch(refused);
+      const saved = this.o.board.row(cardId).agent_setting;
+      this.o.repoFor(card).workers.start(cardId, saved ? JSON.parse(saved) : undefined).catch(refused);
     } catch (e) {
       refused(e);
     }

@@ -14,6 +14,7 @@ import type { DemoSite, RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
 import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, type AgentSetting, buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, SNOOZE_LIMIT, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup } from '../core/types';
+import { startAgentSetting } from './settings';
 import { holdsNotes } from '../core/queue';
 import { BadRequest, Board, pathOfRef, replyNote, type StoredContribution } from './board';
 import type { ChangeRoute } from '../core/types';
@@ -1588,10 +1589,11 @@ export class CanvasRuntime {
       throw new BadRequest('emptyText', 'text must be a non-empty string');
     switch (a.action) {
       case 'start':
+        if (a.agent && (card?.newRepo || card?.snoozed?.start)) throw new BadRequest('invalid', 'this start does not support an agent choice');
         if (card?.newRepo) return this.intoNewRepo(cardId);
         // one snoozed to start later starts now
         if (this.board.item(cardId)?.snoozed?.start) return this.wake(cardId, false);
-        return this.koordinator.request(cardId);
+        return this.koordinator.request(cardId, a.agent === undefined ? undefined : startAgentSetting(a.agent));
       case 'stayHere':
         return this.stayHere(cardId);
       case 'name':
@@ -1641,7 +1643,7 @@ export class CanvasRuntime {
       case 'undo':
         return this.repoOf(cardId).workers.undo(cardId);
       case 'accept':
-        return this.accept(cardId, a.picks, a.start !== false, a.idea);
+        return this.accept(cardId, a.picks, a.start !== false, a.idea, a.agent === undefined ? undefined : startAgentSetting(a.agent));
       case 'unaccept':
         return this.unaccept(cardId);
       case 'dismiss':
@@ -1819,11 +1821,12 @@ export class CanvasRuntime {
    * one (`asIdea`), to its exploration agent. Clicked while the proposal is reworked, it is accepted
    * once the new text is there, unless that asks questions.
    */
-  private accept(cardId: string, picks: string[][] | undefined, start: boolean, asIdea?: boolean) {
+  private accept(cardId: string, picks: string[][] | undefined, start: boolean, asIdea?: boolean, setting?: AgentSetting) {
     const card = this.board.item(cardId);
     if (card?.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
     // one the Arbeitsrückschau made before it stored proposal data has none
     const proposal = card.proposal ?? { questions: [] };
+    if (setting && (!start || asIdea || proposal.idea || proposal.revising || (proposal.startAt && Date.parse(proposal.startAt) > Date.now()))) throw new BadRequest('invalid', 'this acceptance does not support an agent choice');
     if ((start || asIdea) && proposal.revising) {
       // the owner knows what comes; the new text still may ask what must be settled first
       if (this.board.acceptAfterRevision(cardId, asIdea ? 'idea' : true))
@@ -1838,7 +1841,7 @@ export class CanvasRuntime {
       this.board.snooze(cardId, { until: proposal.startAt, by: 'agent', start: true, ...(proposal.reason ? { why: clip(oneLine(proposal.reason), 200) } : {}) });
     else if (start) {
       if (proposal.startAt) this.repoOf(cardId).workers.startsAt(cardId, proposal.startAt, 'agent', true);
-      this.koordinator.request(cardId);
+      this.koordinator.request(cardId, setting);
     }
   }
 

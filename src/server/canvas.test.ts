@@ -69,6 +69,14 @@ function refused(cardId: string, a: CardAction): string | undefined {
 }
 
 describe('a canvas with several repositories', () => {
+  test('one-start settings are validated before a task enters the queue', () => {
+    const c = canvas.board.create({ title: 'Choice', x: 0, y: 0 });
+    expect(refused(c.id, { action: 'start', agent: { model: 'opus', effort: 'low', harness: 'codex', codex: { model: '../bad model', effort: 'low' } } })).toBe('invalid');
+    expect(item(c.id).queue).toBeUndefined();
+    const choice = { model: 'haiku' as const, effort: 'low' as const };
+    canvas.act(c.id, { action: 'start', agent: choice });
+    expect(JSON.parse(canvas.board.row(c.id).agent_setting!)).toEqual(choice);
+  });
   test('names itself, lists its repositories, and shows the plan docs of all of them', () => {
     expect(canvas.board.canvas).toMatchObject({ id: 'produkt', name: 'Produkt', repos: [{ id: 'web' }, { id: 'api' }] });
     const projects = canvas.board.snapshot().items.filter((i) => i.kind === 'project');
@@ -192,6 +200,15 @@ describe('a canvas with several repositories', () => {
     await settle();
     expect(item(p.id).state).toBe('working');
     expect(() => canvas.act(p.id, { action: 'accept' })).toThrow();
+  });
+
+  test('accepting a task proposal carries its chosen agent to the worker', async () => {
+    const b = canvas.board.create({ title: 'B', x: 0, y: 0 });
+    const p = canvas.board.propose(b.id, { title: 'Follow-up', task: 'S', reason: 'R' });
+    const agent = { model: 'sonnet' as const, effort: 'low' as const };
+    canvas.act(p.id, { action: 'accept', agent });
+    await settle();
+    expect(runtime.sessions.find((s) => s.spec.role === 'worker')!.spec.setting).toEqual(agent);
   });
 
   test('a note typed while Obeya checks the card waits for its worker and goes with the task', async () => {
