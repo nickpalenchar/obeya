@@ -757,6 +757,7 @@ export class CanvasRuntime {
       workspaces,
       adapter,
       machineSettings: this.settingsOf(rc),
+      allowRules: this.allowRules,
       shares: () => !!repo.ref.share,
       repo: ref.id,
       otherBoards: () => (deps.canvases?.() ?? []).filter((c) => c !== this).map((c) => c.board),

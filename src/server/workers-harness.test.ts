@@ -97,3 +97,26 @@ test('a Claude worker gets no extra directory for the demos', async () => {
     rmSync(demos, { recursive: true, force: true });
   }
 });
+
+/** The names of the tools a worker with this setting starts with. */
+async function toolsWith(choice: AgentSetting) {
+  using(() => choice);
+  await workers.start(manual().id);
+  const spec = runtime.last.spec;
+  workers.shutdown();
+  return { tools: spec.tools.map((t) => t.name), system: spec.system };
+}
+
+test('a Codex worker gets obeya_run and obeya_git, and a note on what its sandbox keeps from it', async () => {
+  const { tools, system } = await toolsWith(codex);
+  expect(tools).toContain('obeya_run');
+  expect(tools).toContain('obeya_git');
+  expect(system).toContain('obeya_run');
+});
+
+test('a Claude worker has neither', async () => {
+  const { tools, system } = await toolsWith(AGENT_DEFAULTS.worker);
+  expect(tools).not.toContain('obeya_run');
+  expect(tools).not.toContain('obeya_git');
+  expect(system).not.toContain('obeya_run');
+});

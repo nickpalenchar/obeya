@@ -44,11 +44,26 @@ what it holds dangerous) and on-request approvals, not Claude's `auto`
 classifier or pre-command hooks. Approvals use the same owner question as Claude (see Refused and
 confirmed tool calls); extended permission profiles are refused. A command that a `Bash` rule of
 the repository's `.claude/settings.json` allow list covers, as the owner last confirmed it, is not
-asked: Claude Code applies that list itself, Obeya applies it to Codex. Only one plain command
-counts, alone or in the shell Codex wraps it in; chaining, redirection, substitution and `..` in a
-path never ride on a rule, and a request for a network or path grant is always asked. The same list
-also gives `.codex/rules/obeya.rules` for Codex's own rule engine (`scripts/codex-rules.ts`), for
-the rules that are literal word prefixes, in a project the owner trusts in Codex.
+asked: Claude Code applies that list itself, Obeya applies it to Codex. A command counts when it is
+plain: one or more programs joined by `&&`, `;` or new lines, each covered by a rule, alone or in
+the shell Codex wraps it in; leading `NAME=value` assignments (not `PATH`, `GIT_*` and the like) and
+output redirected to a file under a temporary directory or `2>&1` are looked through. Pipes, `||`,
+substitution, heredocs, other redirection and `..` in a path never ride on a rule, and a request for
+a network or path grant is always asked. The same list also gives `.codex/rules/obeya.rules` for
+Codex's own rule engine (`scripts/codex-rules.ts`), for the rules that are literal word prefixes, in
+a project the owner trusts in Codex.
+
+What the sandbox keeps from a Codex worker (network, a browser, a local server, git writes in its
+worktree, whose `.git` lies in the main repository, the demos) goes through two tools Obeya runs
+itself with the owner's rights, for workers on this machine that are not review cards:
+`obeya_run` (a shell line; covered by the allow list it runs at once, else the owner is asked as for
+any permission; runs in the workspace, a temporary directory or the demos directory, symlinks and
+`..` resolved; no stdin, a timeout of 300 s by default and 1800 s at most that ends everything the
+command started, output cut to its start and end) and `obeya_git` (add, commit, rebase, merge, reset
+and the other worktree commands, never push, remote, config or options that run a program or move the
+work tree; no question). The gate and the places are the protection, not a sandbox. A call of several
+minutes returns intact (checked with a 200 s command). The worker's prompt says which tools do what
+its own shell cannot.
 Obeya's tools and their card scope are shared. Bundled skills are supplied as readable skill files, not Claude plugins.
 Context changes reach Codex in Obeya tool results or by steering after native command/file-change
 completion; there is no equivalent of Claude's pre-command foreground-wait hook. Background

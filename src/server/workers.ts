@@ -8,6 +8,7 @@ import type { CardDiff } from '../core/diff';
 import { type Language, LANGUAGE_NAMES, LANGUAGES, ownersLanguage, repositoryLanguage } from '../core/locale';
 import { MESSAGES, type Messages, type Pause } from '../core/messages';
 import { existsSync, realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, isAbsolute } from 'node:path';
 import { type CardFile, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
 import { DEFAULT_DEMO_DIRECTORY, expandHome } from '../../plugin/skills/demo/lib/settings.ts';
@@ -22,6 +23,7 @@ import { outsidePlanDir } from './repo';
 import type { InputContext } from './koordinator';
 import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, BACKGROUND_GRACE, BACKGROUND_LIMIT, failureReason, LIMIT_LIFTED, limitLifts, type PermissionAnswer, type PermissionRequest } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
+import { EXEC_LANE_NOTE, execTools } from './exec-tools';
 import { type Forward, HOST_DIR, hostName, remote } from './hosts';
 import { runAppCommand } from './app-command';
 import { readingShared } from '../adapters';
@@ -106,6 +108,8 @@ export interface WorkerOptions {
   env?: Record<string, string>;
   /** The narration language of the demo settings, for a repository that names none for its demos; the conversation language when left out. */
   demoLanguage?: () => Language;
+  /** The `Bash` rules of the allow list the owner confirmed for the repository `cwd` lies in: what a Codex worker's `obeya_run` runs without asking. None when left out. */
+  allowRules?: (cwd: string) => string[];
   /** The directory demos go into on this machine (the demo settings'); `~/demos` when left out. */
   demoDirectory?: () => string;
   /** A card's work ended (landed, closed without a change, a prototype discarded or built): its runs can be read now. */
@@ -2635,7 +2639,7 @@ export class Workers {
         setting,
         ...(dirs.length ? { dirs } : {}),
         ...(review ? { untrusted: true } : {}),
-        system: `${this.system(preferences, !!row.prototype_of, this.o.board.item(cardId))}${notes ? `\n\nThe repository's CLAUDE.md, as its default branch has it:\n\n${notes}` : ''}`,
+        system: `${this.system(preferences, !!row.prototype_of, this.o.board.item(cardId))}${setting.harness === 'codex' && !live.host && !review ? `\n\n${EXEC_LANE_NOTE}` : ''}${notes ? `\n\nThe repository's CLAUDE.md, as its default branch has it:\n\n${notes}` : ''}`,
         tools: this.tools(cardId, live, !!row.prototype_of),
         plugins: [OBEYA_PLUGIN],
         ...(env ? { env } : {}),
@@ -3955,6 +3959,7 @@ export class Workers {
             } satisfies AgentTool,
           ]
         : []),
+      ...this.execLane(cardId, live),
       ...(this.o.toObeya
         ? [
             toObeyaTool((request) => {
@@ -3965,6 +3970,32 @@ export class Workers {
           ]
         : []),
     ]);
+  }
+
+  /**
+   * A Codex worker on this machine gets `obeya_run` and `obeya_git`: Obeya runs what its sandbox
+   * keeps from it (`exec-tools.ts`). Not a review card's worker: its workspace holds a stranger's code.
+   */
+  private execLane(cardId: string, live: Live): AgentTool[] {
+    const row = this.o.board.row(cardId);
+    if (!this.usesExecLane(row, live) || !row.workspace) return [];
+    const workspace = row.workspace;
+    return execTools({
+      workspace,
+      places: () => ['/tmp', '/private/tmp', tmpdir(), expandHome(this.demosDir(cardId))],
+      rules: () => this.o.allowRules?.(workspace) ?? [],
+      ask: (request) => this.askOwner(cardId, live, request, new AbortController().signal),
+      ...(this.env() ? { env: this.env()! } : {}),
+    });
+  }
+
+  private usesExecLane(row: CardRow, live: Live): boolean {
+    if (live.host || contributionOf(row)) return false;
+    try {
+      return (row.agent_setting ? (JSON.parse(row.agent_setting) as AgentSetting) : null)?.harness === 'codex';
+    } catch {
+      return false;
+    }
   }
 
   /**

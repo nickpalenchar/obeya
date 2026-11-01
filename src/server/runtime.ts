@@ -505,6 +505,12 @@ export function spawnHere(stderr: (text: string) => void): (o: SpawnOptions) => 
   };
 }
 
+/** Has `endAgentsHere` end `p` too, with what it runs, as Obeya stops: a command Obeya runs for a Codex agent (`exec-tools.ts`). */
+export function endWithAgents(p: ChildProcess) {
+  here.add(p);
+  p.once('exit', () => here.delete(p));
+}
+
 /** A session's error with what Claude Code said last on stderr, unless the error names it already. */
 export function withStderr(message: string, stderr: string): string {
   const tail = stderr.trim();
