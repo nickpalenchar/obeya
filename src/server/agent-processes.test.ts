@@ -39,6 +39,20 @@ test('observed identities retain original births without exposing mutable tracke
   expect(tracker.observed()[1]!.born).toBe('child');
 });
 
+test('a reported descendant retains its verified intermediate ancestors', () => {
+  const root = { pid: 90001, parent: process.pid, group: 90001, born: 'root' };
+  const intermediate = { pid: 90002, parent: root.pid, group: 90002, born: 'intermediate' };
+  const leaf = { pid: 90003, parent: intermediate.pid, group: 90003, born: 'leaf' };
+  const unrelated = { pid: 90004, parent: process.pid, group: 90004, born: 'unrelated' };
+  const tracker = new AgentProcesses(root.pid, () => [root, intermediate, leaf, unrelated]);
+  tracker.track([leaf.pid, unrelated.pid]);
+  expect(tracker.observed()).toEqual([
+    { pid: root.pid, born: root.born },
+    { pid: intermediate.pid, born: intermediate.born },
+    { pid: leaf.pid, born: leaf.born },
+  ]);
+});
+
 test('a reused app-server PID does not make an unrelated process its descendant', () => {
   const root = { pid: 90001, parent: process.pid, group: 90001, born: 'original' };
   let rows = [root];

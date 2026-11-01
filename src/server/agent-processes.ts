@@ -79,11 +79,17 @@ export class AgentProcesses {
       const info = table.get(pid);
       let p = info;
       const seen = new Set<number>();
+      const chain: ProcessInfo[] = [];
       while (p && !(p.pid === this.parent && this.rootBorn !== undefined && p.born === this.rootBorn) && this.owned.get(p.pid)?.born !== p.born && !seen.has(p.pid)) {
         seen.add(p.pid);
+        chain.push(p);
         p = table.get(p.parent);
       }
-      if (info && p && ((p.pid === this.parent && this.rootBorn !== undefined && p.born === this.rootBorn) || this.owned.get(p.pid)?.born === p.born) && pid !== this.parent) this.owned.set(pid, info);
+      if (info && p && ((p.pid === this.parent && this.rootBorn !== undefined && p.born === this.rootBorn) || this.owned.get(p.pid)?.born === p.born)) {
+        // A reported leaf proves the entire observed path, not just the leaf. Retain that path
+        // so the intermediate processes remain attributable after the root dies.
+        for (const member of chain.reverse()) this.owned.set(member.pid, member);
+      }
     }
     // Keep registered identities until transport exit, including descendants whose leader ended.
   }

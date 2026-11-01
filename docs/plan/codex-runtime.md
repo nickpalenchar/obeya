@@ -145,7 +145,14 @@ test-owned PIDs were cleaned up. Probe source and last report: `/tmp/obeya-keep-
   synthetic macOS test closes the pipe and checks an observed separately grouped child and an
   unrelated canary; it is not a real harness, owner SIGKILL or Windows test. The build bundles the
   supervisor as a resource; a macOS compiled-binary smoke test ran it using `BUN_BE_BUN=1`, but
-  Obeya does not yet launch its agents through it. Its supervisor can itself die, sampling can miss descendants,
+  Obeya does not yet launch its agents through it. An initial Codex transport integration was
+  reverted: on a supervisor SIGKILL, the app-server could retain its pipes after being reparented,
+  and a fast app-server exit could leave a same-group child running before sampling observed it.
+  Tracking a reported descendant now also retains each verified intermediate ancestor, rather
+  than only the leaf; this addresses one way the app-server was missed but does not solve either
+  failure case by itself. The transport's process identity must remain distinguishable from the
+  supervisor's, and both failure cases need regression coverage before replacing the direct launch.
+  Its supervisor can itself die, sampling can miss descendants,
   numeric signalling still races PID reuse, and root exit and startup before the first observation
   leave windows. Do not use it as containment or promise crash recovery. Compare or combine it with
   a boot-aware registry and startup sweep; address concurrent instances, a supervisor's own failure,
