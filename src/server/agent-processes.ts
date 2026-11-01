@@ -116,13 +116,24 @@ export class AgentProcesses {
       changed = false;
       for (const p of table.values()) if (targets.has(p.parent) && !targets.has(p.pid)) { targets.set(p.pid, p); changed = true; }
     }
+    // One refused signal (EPERM) must not leave the rest alive: signal every target, keep the
+    // identities that could not be signalled for a later attempt, and report the first failure.
+    let failure: unknown;
     for (const p of [...targets.values()].reverse()) {
       if (process.platform === 'win32') {
-        spawnSync('taskkill.exe', ['/PID', String(p.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore', timeout: 3000 });
+        // 128: no such process, i.e. it is already gone. Anything else (denied, timed out) is owed.
+        const r = spawnSync('taskkill.exe', ['/PID', String(p.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore', timeout: 3000 });
+        if (r.status !== 0 && r.status !== 128) { failure ??= r.error ?? new Error(`taskkill failed for ${p.pid} (${r.status})`); continue; }
       } else {
-        try { process.kill(p.group === p.pid ? -p.pid : p.pid, 'SIGKILL'); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ESRCH') throw e; }
+        try { process.kill(p.group === p.pid ? -p.pid : p.pid, 'SIGKILL'); } catch (e) {
+          if ((e as NodeJS.ErrnoException).code === 'ESRCH') continue;
+          failure ??= e;
+          continue;
+        }
       }
+      this.owned.delete(p.pid);
     }
-    this.owned.clear();
+    if (failure === undefined) this.owned.clear();
+    else throw failure;
   }
 }

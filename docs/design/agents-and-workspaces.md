@@ -61,6 +61,10 @@ process identities and their creation ticks from `/proc`, without depending on `
 unreadable unrelated processes but fails if it cannot inspect one it already owns. This is cleanup,
 not an OS containment boundary: a process that detaches and loses its ancestry between observations
 may escape tracking. Windows and Linux native-PTY failure cleanup remain preview acceptance gates.
+Observed work ends on a graceful or forced stop and when the app-server dies, whatever `app.keep`
+says: that setting only keeps a waiting card's app from being parked, and an app started as
+session work does not outlive its session. When Obeya itself crashes nothing runs the cleanup, and
+processes Codex did not end itself keep running.
 
 ### Models and effort
 
