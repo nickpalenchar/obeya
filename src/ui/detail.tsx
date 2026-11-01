@@ -9,6 +9,7 @@ import { answerText, toggle } from './answer';
 import { ApiError, api, cardAt, type Field, holdRestart, onCardEvent, onCardEventGone, onReconnect } from './api';
 import { useCopy } from './copy';
 import { firstOpening } from './demoSeen';
+import { captionsEnabled, rememberCaptions } from './captions';
 import { know, known } from './known';
 import { Branch } from './diff';
 import { ResultFiles } from './files';
@@ -1741,7 +1742,7 @@ function DemoView({
   const artifact = useRef<HTMLIFrameElement>(null);
   const artifactHeight = useReportedHeight(artifact, ARTIFACT_CAP);
   const [now, setNow] = useState(0);
-  const [captionsOn, setCaptionsOn] = useState(true);
+  const [captionsOn, setCaptionsOn] = useState(() => captionsEnabled(localStorage));
   // the video's shape once its metadata is in: until it first plays, Chrome sizes the element by its poster, and
   // by its default 300 × 150 when the poster does not load, a flat strip at full width
   const [shape, setShape] = useState<string>();
@@ -1776,11 +1777,17 @@ function DemoView({
   useEffect(() => {
     const tracks = video.current?.textTracks;
     if (!tracks) return;
-    const sync = () => setCaptionsOn(tracks[0]?.mode === 'showing');
+    const apply = () => { if (tracks[0]) tracks[0].mode = captionsEnabled(localStorage) ? 'showing' : 'disabled'; };
+    const sync = () => {
+      if (!tracks[0]) return;
+      const on = tracks[0].mode === 'showing';
+      setCaptionsOn(on);
+      rememberCaptions(localStorage, on);
+    };
     tracks.addEventListener('change', sync);
-    tracks.addEventListener('addtrack', sync);
-    sync();
-    return () => { tracks.removeEventListener('change', sync); tracks.removeEventListener('addtrack', sync); };
+    tracks.addEventListener('addtrack', apply);
+    apply();
+    return () => { tracks.removeEventListener('change', sync); tracks.removeEventListener('addtrack', apply); };
   }, [demo.kind, shownN]);
   useEffect(() => {
     if (!earlier.length) return;
@@ -1889,7 +1896,7 @@ function DemoView({
                   watching.ended();
                 }}
               >
-                <track kind="captions" src={src('captions.vtt')} label={t.demo.captions} default />
+                <track kind="captions" src={src('captions.vtt')} label={t.demo.captions} />
               </video>
               <button
                 type="button"
