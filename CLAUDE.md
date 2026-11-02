@@ -14,6 +14,8 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
 
 - Bun + TypeScript throughout; tests with `bun test --parallel` (a file per process, from Bun 1.4 on;
   older Bun ignores the flag and runs them one after the other), types with `bun run typecheck`.
+  When the suite fails only from machine load or timing, don't ask to rerun it: hand over and say
+  which failing tests were unrelated.
 - `src/core/` is shared by server and UI (types, plan-doc parser, layout); `src/server/` is the
   Bun server with SQLite; `src/ui/` the React canvas; `src/adapters/` what Obeya knows of a repository (its defaults, its settings).
 - Code that drives agents is tested against the fake runtime in `src/server/testing.ts` and real
@@ -85,6 +87,8 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
 - Before UI work goes to the owner, look closely at screenshots of it for visual polish and fix
   what is off: text vertically centred with neighbouring buttons, enough padding to the edges of
   its block, controls (a remove ×, say) where the eye expects them.
+- Links in the UI are blue as well as underlined, so they are recognizable as links.
+- A demo video shows the entire feature from start to finish, not only what changed since the last demo.
 - Before a demo video goes to the owner, watch it for faults of the demo itself and fix them first:
   every dictated text it shows is transcribed completely and correctly (no missing words or
   numbers, no misrecognitions), and what the agents in it say points out no fault (a comment cut
