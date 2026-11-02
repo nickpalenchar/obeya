@@ -321,7 +321,8 @@ A card waiting for the owner (handed over, asked, pull request open), its worker
 its workspace stopped after five minutes, so a quick reply does not pay for a restart
 (`OBEYA_PARK_GRACE`, in seconds, for demos and live checks). Obeya runs the settings' `app.stop`
 there (once the owner trusted it, see Trusting a repository's commands), unless `app.keep` exits 0
-(the app holds data that must stay; the card says it keeps running). An app the owner opened from the
+(the app holds data that must stay; the card says it keeps running, unless the session died and
+took the app with it, see Lifetimes). An app the owner opened from the
 card runs at least 30 minutes (see Trying the app by hand). The card's log says the app was stopped,
 and the next message to the worker tells it to start the app again as the recipe says; a message
 arriving during the stop waits for it. A failed stop is an error on the card; the worker hears
@@ -348,9 +349,10 @@ for another.
   `app.stop`; `app.keep` and the 30 minutes after „App öffnen“ hold it back from parking only.
   Obeya never ends an app by process identity. An app started by a Codex native terminal is session
   work as well as the app, and the shorter lifetime wins: it ends with the session, `app.keep` or
-  not. Parking then still runs `app.keep` and logs that the app keeps running, which was no longer
-  true. An app meant to outlive a session needs a handoff Obeya does not have: no ancestry says
-  which process is meant to stay, so none is specified.
+  not. A session that dies this way is not parked again and its card's app address is cleared, so
+  the card never claims an app keeps running that the session's cleanup ended. An app meant to
+  outlive a session needs a handoff Obeya does not have: no ancestry says which
+  process is meant to stay, so none is specified.
 - **External operations**: pushes and pull requests, deploys, forge calls, and commands run on
   another machine (see Hosts). They are not session work and no cleanup or recovery of Obeya
   touches them; a session ending does not cancel them.

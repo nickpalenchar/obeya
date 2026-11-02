@@ -145,7 +145,7 @@ test('an ambiguous steering failure closes without replaying accepted input', as
   session.send('do not duplicate');
   await session.done;
   expect(wire.n).toBe(1);
-  expect(events).toContainEqual({ type: 'error', message: 'transport dropped after acceptance' });
+  expect(events).toContainEqual({ type: 'error', message: 'transport dropped after acceptance', ended: true });
 });
 
 test('resume preserves harness ownership and relies on Codex restoring persisted tools', async () => {
@@ -240,7 +240,7 @@ test('unknown model, unsupported effort and substitution fail explicitly before 
   wire.override = (method) => method === 'thread/start' ? Promise.resolve({ thread: { id: 'other' }, model: 'silent-fallback' }) : undefined;
   const { events, session } = fixture({}, wire);
   await session.done;
-  expect(events).toContainEqual({ type: 'error', message: 'Codex substituted model silent-fallback for codex-test' });
+  expect(events).toContainEqual({ type: 'error', message: 'Codex substituted model silent-fallback for codex-test', ended: true });
 });
 
 test('unsupported safety contracts fail before spawning a subprocess', () => {
