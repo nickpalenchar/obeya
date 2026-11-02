@@ -18,7 +18,7 @@ Harden the local Codex worker preview and complete its remaining acceptance and 
   through forced shutdown. Check how Codex's semantic background-terminal cleanup and process
   groups interact with those lifecycle choices. Native Windows and Linux Codex behavior remains
   unverified. Record the actual results and limitations, not a containment guarantee.
-- [ ] **W2:** Comparable harness crash probes. Run comparable real Claude and Codex probes on macOS in scratch repositories and an isolated
+- [x] **W2:** Comparable harness crash probes. Run comparable real Claude and Codex probes on macOS in scratch repositories and an isolated
   Obeya home: agent death and Obeya death, with a separately grouped background process and an
   unrelated canary. Check whether the app is meant to remain running, clean up every test-owned
   process, and report blocked authentication or incomplete runs rather than extrapolating.
@@ -210,11 +210,58 @@ escalation timers (a test pins it); the probe itself only signals pids that stil
 Open, by nature of numeric signalling: that one group signal at `exit` and every snapshot-to-signal
 kill can reach a reused number if the group emptied and the number was recycled in between.
 
-Lifecycle summary, as verified: normal and forced stop and agent death end session work (observed
-descendants and the app-server's group), unrelated processes are left alone, and `app.keep` is not
-involved: it only decides whether a waiting card's app is stopped by parking. An app started as
-session work dies with its session on any shutdown, graceful or forced; one the owner wants to
-outlive a shutdown needs a handoff that does not exist (W3). A crash of Obeya runs no cleanup.
+Lifecycle summary, as verified: for Codex, normal and forced stop and agent death end session work
+(observed descendants and the app-server's group), unrelated processes are left alone, and
+`app.keep` is not involved: it only decides whether a waiting card's app is stopped by parking. An
+app started as session work dies with its session on any shutdown, graceful or forced; one the owner
+wants to outlive a shutdown needs a handoff that does not exist (W3). A crash of Obeya runs no
+cleanup. A Claude agent's death ends nothing it started outside its own process group (W2 below).
+
+W2 comparable crash probes (2026-11-02, macOS 26.6.2, Claude Code 2.1.316 through the
+Agent SDK, Codex CLI 0.162.0 app-server, Bun 1.3.14; `scripts/harness-crash-probe.ts`). Each case
+stages its own scratch Obeya with real workers, repository and `OBEYA_HOME`, trusts settings whose
+`app.keep` logs and exits 0 and whose `app.stop` logs and kills the app, and starts one card (Claude
+Sonnet, low effort; Codex account default, low effort). The worker runs `python3 job.py`, which forks
+a heartbeat into a session and process group of its own and keeps it as its child for three
+seconds, then asks a question. Once the card waits and parking (`OBEYA_PARK_GRACE=2`) ran `app.keep`,
+so the app is one Obeya means to keep running while the card waits, the probe SIGKILLs the worker's
+agent process (the `claude` binary, or `codex app-server`) or the Obeya server, and looks 8 s later.
+An unrelated canary in its own session runs throughout. Repetitions: Claude agent death 5, the other
+three cases 3 each (Codex agent death also once more in a trial); every case measured, none blocked.
+
+| Case | App (separate group, kept by `app.keep`) | Agent | Server | Canary | Card |
+| --- | --- | --- | --- | --- | --- |
+| Claude, agent SIGKILL | **kept running** (~80 ticks in 8 s, every time) | gone | alive | alive | still asks; log: "Claude Code process terminated by signal SIGKILL" |
+| Codex, agent SIGKILL | stopped at once (0–1 ticks, pid gone, every time) | gone | alive | alive | still asks; log: "Codex app-server exited (SIGKILL)", then parking's "the app keeps running" |
+| Claude, Obeya SIGKILL | **kept running** | exited (stdin EOF) | gone | alive | unchanged in the database |
+| Codex, Obeya SIGKILL | **kept running** | exited (stdin EOF) | gone | alive | unchanged in the database |
+
+What this says about whether the app is meant to keep running:
+
+- Codex agent death matches the design: observed session work ends whatever `app.keep` says. But
+  parking runs `app.keep` again once the app-server is gone and logs on the card that the app keeps
+  running, after the tracker had already killed it: the card tells the owner the opposite of what
+  happened (in every Codex agent-death run).
+- Claude agent death leaves a separately grouped app running, kept or not: Claude workers have no
+  descendant tracking, and Obeya signals nothing when one dies. The design does not say whether that is
+  meant; it is the same outcome as an Obeya crash, but with Obeya still running and able to clean up.
+  This makes recovery after agent death a W3 question for both harnesses, not only for Codex.
+- Obeya death: both harnesses' agents exit on their own once their stdin closes; the separately
+  grouped app outlives Obeya for both, as the design says of a crash (no cleanup runs). Nothing marks
+  the card: it still asks in the database. In one of three Claude runs another Claude process of the
+  server (not the worker's; most likely the Koordinator's or a small job's) and the MCP servers from
+  the machine's user-level Claude configuration were still alive 8 s after the server's death.
+- In no case did a card show the owner that its worker was gone beyond the error line in its log;
+  what an answer to the still-open question does next (resume, error, a second app) was not tested.
+
+Cleanup: after each case the probe stops the scratch server (`--stop`), kills every heartbeat
+working in the case's directory (found by working directory, not by pid file) and every process it
+saw under the server that still has the same command, then checks that none is left; every case
+reported clean (the first trial run, whose cleanup missed its scratch server, aside: that server was
+gone when checked by hand), and a final `ps` found no probe process. Not covered: Linux and Windows,
+an agent killed mid-turn instead of while waiting, a same-group background job, the app started by a
+native Codex background terminal (W1 covers that through the transport alone), and resuming after
+the crash.
 
 ### Proposed recovery boundary (not implemented)
 

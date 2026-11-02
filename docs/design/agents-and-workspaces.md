@@ -79,7 +79,10 @@ may escape tracking. Windows and Linux native-PTY failure cleanup remain preview
 Observed work ends on a graceful or forced stop and when the app-server dies, whatever `app.keep`
 says: that setting only keeps a waiting card's app from being parked, and an app started as
 session work does not outlive its session. When Obeya itself crashes nothing runs the cleanup, and
-processes Codex did not end itself keep running.
+processes Codex did not end itself keep running. A Claude Code worker has no such tracking: a stop
+ends its process group, but when its process dies on its own, what it started in a group of its own
+keeps running, as after a crash of Obeya (macOS, checked with real agents of both harnesses). With
+Obeya running, a card whose agent died keeps its state, with the agent's exit as an error line in its log.
 
 ### Models and effort
 
