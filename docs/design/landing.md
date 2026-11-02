@@ -158,9 +158,13 @@ keeps them as it keeps nothing else, like an idea's agent its brief: the whole l
 and again whenever the owner's words or a push change one („Befund 2 ist egal“), each by its number,
 with what came of it: open, sent to the contributor (linking the review it went in), fixed by the
 worker, settled (a push fixed it, or it no longer applies), not pursued, a follow-up task (linking
-that task). Above them stand the
-checks on the head and the merge probe („✓ bun test · ✓ konfliktfrei“); on the canvas the card
-shows both on one line („Review: 2 Befunde offen (1 Sicherheit)“). The handover brings the checks'
+that task; several findings may link one). With each the worker names the findings it would make one
+follow-up task with, only what one worker would sensibly do in one go; such a bundle stands in a
+bracket of its own on the card („Befunde 2 + 4: eine Folgeaufgabe“) while its findings are open or
+made one, and picks nothing for the others: the choice stays per finding. Above them stand the
+checks on the head and the merge probe („✓ bun test · ✓ konfliktfrei“), and a collision with
+unpushed commits on the local `main` where there is one (see Unpushed commits the PR collides
+with); on the canvas the card shows them on one line („Review: 2 Befunde offen (1 Sicherheit)“). The handover brings the checks'
 results and the merge probe; a handover without findings recorded (an empty list where there are
 none) is refused. The findings are for the owner: nothing of them reaches the contributor unless the
 owner sends it. Obeya records the head the worker handed over.
@@ -168,8 +172,9 @@ owner sends it. Obeya records the head the worker handed over.
 On each open finding the owner decides „An Beitragenden“, „Selbst ändern“ or „Als Folgeaufgabe“ (a
 second click takes it back), as they pick a question's options: the decisions stand in the card's draft, show above the
 field („Befund 1: An Beitragenden“) and go to the worker with the one Send of every card, with words
-of the owner's or alone. The finding then reads what is under way („Geht an amerlander …“) until
-the worker records what came of it. Words alone that ask the same („schick ihm Befund 1“) count the
+of the owner's or alone; with several chosen as follow-up tasks the field says how many tasks they
+make as bundled („→ 1 Folgeaufgabe“). The finding then reads what is under way („Geht an amerlander
+…“, „Wird Folgeaufgabe …“) until the worker records what came of it. Words alone that ask the same („schick ihm Befund 1“) count the
 same; anything else the owner says (a question, more to look at) stays on the card.
 
 - To the contributor: the worker writes the findings sent as one review asking for changes (GitHub's
@@ -177,19 +182,29 @@ same; anything else the owner says (a question, more to look at) stays on the ca
   account; the findings it names are sent, linking it, and the card waits for the contributor (`in
   PR`, „Wartet auf Beitragenden“), its log linking the review. Their comments since then and a new
   head (once per commit) go to the worker, which reviews again, updates the findings and hands over
-  anew.
+  anew. This goes out at once only while none of the worker's own changes are under way or held
+  (below); otherwise the request goes with them.
 - Itself: only where the PR allows edits by maintainers (GitHub's „Allow edits by maintainers“;
-  otherwise the choice is greyed with the reason). The worker makes the change, pushes it onto the
-  PR's branch in the contributor's fork, writes a short comment on the PR saying what and why, marks
-  the finding fixed and hands over with a new demo. The squash merge keeps the contributor as author.
+  otherwise the choice is greyed with the reason). The worker commits the change on the card's
+  branch, which stands on the PR's head, marks the finding fixed and hands over with a new demo and
+  the text for the PR: what it changed and why, in the PR's language. The worker pushes and posts
+  nothing itself (see Own changes wait for the approval). The squash merge keeps the contributor as
+  author.
 - As a follow-up task: for what is worth doing but no reason to hold the PR up (the same gap in
-  files the PR does not touch, say). With the Send, Obeya makes it a task of its own beside the
-  review card, following up on it, in the planned stock: the finding's title and text, and the PR's
-  link. The finding is settled for the PR and links the task; the worker hears of it with the
-  other decisions and keeps it so in its list, and it goes into no change request.
+  files the PR does not touch, say). The worker makes the tasks with a tool of its own, as tasks
+  (not proposals) beside the review card, following up on it, each started at once and waiting in
+  the queue behind the review card until the PR is merged (see Follow-up tasks of a review).
+  Findings that belong together become one task: as the owner's words with the Send say
+  first („2 und 3 zusammen“, „fasst zusammen, wie ihr wollt“, „alle einzeln“), else as the worker
+  bundled them, a bundle counting only among the findings chosen. It writes each task from what its
+  review knows (the files concerned, the cause), for an agent who has seen neither; Obeya adds the
+  PR's link where the text lacks it. Each such finding is then settled for the PR and links its
+  task, and goes into no change request. Until all of them have a task, Obeya refuses the worker's
+  handover, its reply (which may end its turn) and its change request.
 
 „Mergen (PR #5)“ approves: Obeya reads the PR, and at a head other than the one handed over (the
-contributor pushed since) it merges nothing and the worker reviews the PR as it is. Otherwise the
+contributor pushed since) it pushes, posts and merges nothing, and the worker reviews the PR as it
+is, its own commits not pushed yet put on top of the new head. Otherwise the
 demo goes on its page as with any approval („Demo teilen und am PR verlinken“, see Publishing on
 approval), its link goes into a comment on the PR once the page is online (the description stays the
 contributor's), and Obeya merges with the repository's allowed method, squash first, pinned to the
@@ -198,8 +213,85 @@ Merged, the card is `live`, and where work lands on `main` the checkout pulls th
 does it there. Where neither the repository nor the global git configuration sets a way of pulling
 and the local `main` has commits of its own, it pulls with a rebase, as Obeya brings its own work
 onto `main`; without commits of its own it fast-forwards, uncommitted changes outside the merge
-kept. A pull that stops on a conflict is undone, and the card says so. A PR closed without
-a merge asks the owner whether the card can go; „Ja“ closes it as done.
+kept. A PR closed without a merge asks the owner whether the card can go; „Ja“ closes it as done.
+
+#### Own changes wait for the approval
+
+What Obeya does on a contributor's PR in the owner's name goes out only with the owner's approval of
+the demo, except a request to the contributor alone, which the owner sent with their decision. The
+worker's own commits stay on the card's branch; at a handover Obeya reads the PR's head on the
+forge and counts the commits of the card's branch on top of it. A branch that does not build on that
+head (the contributor pushed, and the worker had not fetched it) cannot be handed over. With commits
+of its own, the handover brings the text that goes onto the PR with them, and the card shows it in
+the PR's block under „Geht mit der Freigabe an PR #5“ with the number of commits; the owner's words
+to the worker change it, and it hands over the new text, the demo standing where nothing else
+changed. Findings decided for the contributor in the same Send as „Selbst ändern“, or while the
+worker's own changes are under way or held, go in the same text as one message, and read „Geht mit
+deinen Änderungen an amerlander“ until the approval; the owner's choice for them is not asked again.
+Follow-up tasks are made at once, as always: they are the owner's, not the contributor's.
+
+The approve button names what it does:
+
+- own changes alone: „Pushen und mergen (PR #5)“; „Später …“ also holds „Nur pushen“, after which the
+  card waits with „Mergen (PR #5)“ again;
+- own changes and requests to the contributor: „Pushen und an amerlander schicken“, which merges
+  nothing: the card then waits for the contributor as after any change request;
+- no own changes: as above.
+
+On the approval Obeya acts, not the worker: it pushes the card's branch onto the PR's branch in the
+contributor's repository (the head repository and branch the forge names), fast-forward only and
+without the workspace's git hooks, since the PR's code ran there; then it posts the text with the
+owner's account, as a comment, or with requests as one review asking for changes, and marks the
+findings fixed or sent, linking the post. A merge after it is pinned to the head just pushed. A push
+the contributor's repository rejects as no fast-forward is a push of theirs that the forge had not
+shown yet: nothing is posted or merged, and the worker reviews the PR as it is now, as for a moved
+head. Any other refusal (rights, the network) stays with the owner, with the reason. A text the
+forge refuses after the push stops it there: nothing is merged, the card waits with „Mergen“ and
+the reason, and the findings it asked the contributor for are open again, to be decided anew.
+
+#### Unpushed commits the PR collides with
+
+Where work lands on `main` without being pushed, the local `main` collects landings nobody pushed
+while others build on the remote's. Obeya tells, without touching the checkout, whether the pull
+after the merge would stop on a conflict with them: it fetches the remote's `main`, merges the
+reviewed head onto it and replays the unpushed commits onto the result one by one as the rebase
+would (as a whole where the owner's git configuration pulls by a merge), all in git's object store
+(`git merge-tree`). It does so when the review is handed over, whenever the local `main` moves
+while the card waits for the owner, at each round of the watcher (the remote's `main` moves with
+others' pushes) and once more on „Mergen“. Commits the remote has already (cherry-picked there) are
+skipped, as the rebase skips them. Where the PR conflicts with the
+remote's `main` itself, that is the forge's to show, and this check says nothing.
+
+A collision shows on the card above the findings: the commit the pull would stop at, the card
+that landed it (a link to it), the files, and the two ways out, each naming whose agent does the
+work. The recommended one is „main pushen und PR anpassen“: after an undo window Obeya pushes the
+local `main` to the remote, never forced (what the remote has of its own pulled first, as above;
+where that would conflict, nothing is pushed and the card says why), and the review card's agent
+brings the PR up to date with it: itself on the card's branch where the contributor allows
+maintainers' edits (pushed with the next approval, as Own changes wait for the approval says),
+else by a change request to them; then it hands over again. The other is to
+merge anyway, which leaves `main` unpushed (below). The approve button then reads „Trotzdem
+mergen (PR #5)“, and the card on the canvas says „⚠ kollidiert mit lokalem main“. A collision the card did
+not show yet when the owner clicks („Mergen“ while a landing just moved `main`) holds the merge
+back once and shows itself; a second click merges.
+
+After the merge, a pull that would stop is not made, and a worker resolves it instead: the worker
+of the card whose landing holds the commit it stops at, else the review card's own, while its
+session can go on (finishing after its landing, or resumed in a fresh workspace as for a question
+after the work). It hears the pull request, the commit, the files and where the local `main` and
+the remote's stood; it rebases the unpushed commits onto the remote's `main` in its workspace,
+resolves the conflict, runs the checks and hands over with `ready_for_review`, without a demo.
+Obeya then puts the local `main` at the worker's `HEAD` with whatever landed on it meanwhile on top,
+without the owner (`git reset --keep`, so uncommitted changes in the checkout survive or stop it);
+those commits were never pushed, so no published history is rewritten. The cards that landed them
+name the rebased commits from then on. Both cards' conversations
+say what happened, and the resolving card's status line names the PR. What is wrong in the
+worker's workspace (its `HEAD` not on the merge, the commits landed meanwhile conflicting with its
+own) goes back to it; what blocks the checkout goes to the owner. A worker that ends its turn
+without handing over is reminded once, then the pull goes to the owner, as it does where no worker
+can take it: the review card says which commit conflicts, in which files, and asks them to pull by
+hand. A pull that fails for another reason (the checkout off `main`, a merge of the owner's under
+way) is undone, and the card says so.
 
 The watcher follows review cards in every repository, also one that lands on `main`. For them the
 PR's author is the contributor: their comments count, and only the owner's (the account Obeya acts
@@ -311,22 +403,59 @@ A card no agent worked on, a prototype or an archived card has no field.
 - **One card per PR, the demo linked in a comment on it** (2026-10-27): each demo gets a page of its
   own, and the description is the contributor's.
 - **Obeya merges only the head the worker reviewed** (2026-10-27).
+- **The worker's own changes to a contributor's PR wait for the owner's approval, and one approval
+  sends everything** (2026-11-02, the review of PR #34: the commits for three findings were pushed
+  onto the contributor's branch and commented on before the owner had seen the demo). Obeya, not the
+  worker, pushes and posts, so nothing goes out in the owner's name that they have not seen; requests
+  to the contributor beside own changes go in the same text, so the contributor gets one message and
+  does not work on a branch that is pushed to afterwards. Rejected: two approvals, one for the push
+  and one for the merge (a round more where the owner merges after their own correction anyway;
+  „Nur pushen“ covers the other case); requests at once and own changes after the approval (two
+  messages to the contributor, who may by then be working on the branch pushed to afterwards).
 - **The findings are an element of the card, decided on one by one, the decisions going with the
   one Send** (2026-10-27, the owner after the first demo). Rejected: a switch below the field for
   where a change request goes (it read as if what is typed into the field went to the contributor or
   the agent); choosing in the conversation alone (a misunderstanding is a public comment or a push
   into a stranger's fork); a click on a choice acting at once, or a button of its own under the list
   (two Sends where every card has one).
-- **„Als Folgeaufgabe“ is a third choice per finding, made by Obeya on the Send** (2026-10-29, the
-  owner: reviews often find something worth fixing that should not hold the PR up). The task is
-  planned, not started: the owner decides when, often after the merge it builds on. Rejected: the
-  worker proposing the card (a second decision for one already made); only asking Obeya for a
-  follow-up in words (it works, but is not found beside the other two choices).
+- **„Als Folgeaufgabe“ is a third choice per finding** (2026-10-29, the owner: reviews often find
+  something worth fixing that should not hold the PR up). Rejected: the worker proposing the card (a
+  second decision for one already made); only asking Obeya for a follow-up in words (it works, but
+  is not found beside the other two choices).
+- **A follow-up task starts at once and waits for the PR's merge** (2026-11-02, the review of PR
+  #34: its three follow-up tasks stood planned, and the owner did not dare start them, unsure
+  whether Obeya would see that they build on the PR). Choosing „Als Folgeaufgabe“ is the decision to
+  do it; what it waits for is known for certain, so Obeya sets it rather than estimating it.
+  Rejected: planned tasks the owner starts after the merge (a second decision, and a wait the owner
+  has to remember); starting them through the Koordinator's estimate (it may miss that a task builds
+  on a PR not merged yet).
+- **The worker bundles findings in its list and makes the follow-up tasks after the Send**
+  (2026-10-31, the review of PR #33: four findings chosen as follow-ups became four tasks at once,
+  and the owner's „fasst zusammen, wie ihr wollt“ reached the worker only after that). The owner
+  sees a bundle before deciding, and their words with the Send still count; the worker knows the
+  review better than a finding's two sentences. The tasks are still made, not proposed (the
+  decision above). Rejected: Obeya making a task per finding on the Send (the words came too late);
+  a bundle choosing for its other findings (the choice stays per finding). What goes wrong anyway
+  Obeya mends by merging or deleting planned tasks (see Commands to the Koordinator).
 - **The pull after a merge rebases where git sets no way of pulling** (2026-10-29): without one,
   git refuses to pull diverged branches. A way the owner set (`pull.rebase`, `pull.ff`,
   `branch.<name>.rebase`) still decides. Rejected: rebasing whatever is set (overrides the owner's
   choice); rebasing also where nothing diverged (git then refuses beside uncommitted changes, which a
   fast-forward keeps); merging (a merge commit on `main` where Obeya otherwise keeps it linear).
+- **A collision with unpushed commits is told before the merge and resolved by a worker after it**
+  (2026-11-02), as an ordinary landing's conflict goes back to its worker. The check runs in git's
+  object store so that it can run at any time beside the owner's checkout. The conflict goes to the
+  agent that made the conflicting commit, which knows what it meant, and lands without a new
+  approval, as any landing fixed after its approval does. Pushing `main` and adapting the PR is
+  the recommended way, offered as a button (the owner, after the first demo): several commits on
+  `main` may collide with one PR, which is cleaner to adapt once than to rebase them all, and a
+  push from the command line does not fit Obeya. Rejected: taking the pull back with a line in the
+  review card's log only (the owner found out late, and had to rebase by hand); naming the push
+  without doing it (the owner would have to leave Obeya for git); refusing the merge while the
+  collision stands (keeping `main` unpushed is the owner's choice); pushing the local `main` before
+  the merge without asking (publishes what the owner has not pushed); the review
+  card's agent alone (it knows the PR, not the change it collides with); a question to the owner
+  for every stopped pull (the agents can do it, and the owner works at the level of requirements).
 - **Landing on main rebases onto the checkout's `main`, not the clone's `origin`** (2026-10-29,
   GitHub issue 23): a clone of the remote rebased onto the remote's `main`, which lacked the
   unpushed landings of other cards, and the fast-forward failed with a raw git error at every

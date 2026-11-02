@@ -6,7 +6,7 @@
 //   bun scripts/scratch-obeya.ts <stage.json> [--port <n>] [--code <commit> | --binary <obeya>] [--real-workers | --record <dir> | --replay <dir>] [--restarts]
 //   bun scripts/scratch-obeya.ts --stop <port>
 //   bun scripts/scratch-obeya.ts --login <port>
-//   bun scripts/scratch-obeya.ts --say <port> <card key> <say|report|talk|question|review|to_obeya|end> <text>
+//   bun scripts/scratch-obeya.ts --say <port> <card key> <say|report|talk|question|review|to_obeya|tool|end> <text>
 //   bun scripts/scratch-obeya.ts --artifact <port> <card key> <file> [<summary>]
 //
 // Prints one JSON line, also kept in <dir>/staged.json:
@@ -29,7 +29,8 @@
 // agent's words between its steps), `report` (its status line), `talk` (a reply), `question` (it
 // asks, and the card waits for the owner), `review` (a handover that keeps the card's demo); besides
 // those, `to_obeya` (it passes the owner's words on to Obeya, whose Koordinator is real and answers
-// on the card) and `end` (the agent's turn ends, which an idle worker's never does by itself).
+// on the card), `tool` (any other tool of the agent's, the text a JSON object `{ "tool", "args" }`)
+// and `end` (the agent's turn ends, which an idle worker's never does by itself).
 // --artifact copies the file into the card's HTML artifact (<dir>/artifacts/<key>, where staging
 // put a copy of the stage's) and hands it over again, as an agent does after rewriting it, with the
 // summary given or "Updated the artifact."; a card without one starts it with an index.html. Each
@@ -71,6 +72,7 @@
 //     "hosts": [{ "name": "Workhorse", "ssh": "me@workhorse.local", "clones": 2, "slots": 2 }],
 //     "files": { "src/cli.ts": "…" },
 //     "pulls": [{ "number": 5, "title": "…", "author": "…", "files": { "src/x.ts": "…" }, "canModify": true }],
+//     "forgeClone": true,
 //     "plans": { "docs/plan/werkzeug.md": "# Werkzeug\n\n## Workstreams\n\n- [ ] **W1:** Konfiguration.\n" },
 //     "cards": [
 //       { "key": "A", "title": "…", "body": "…", "x": 40, "y": 300,
@@ -109,21 +111,23 @@
 // several plan docs "docs/plan/x.md#W1"), which exist already. Then its fields are written straight
 // into the database:
 // state, need, statusLine, summary, question, demo (`kind` defaults to video), queue (`behind` by key; `since` defaults to
-// now), scope (files), branch (a working or waiting card without one gets the branch a start would
-// have given it, which every started card has), createdAgo, archivedAgo, events ([{ kind, author, text, ago?, mocks?, spot? }]; an idea's reply with `mocks` needs code that has them;
+// now), snoozed (`{ on, state?, why? }`: its agent snoozed it until the card with key `on` gets to `state`, done by default), scope (files), branch (a working or waiting card without one gets the branch a start would
+// have given it, which every started card has), createdAgo, archivedAgo, events ([{ kind, author, text, ago?, mocks?, spot?, token? }]; an idea's reply with `mocks` needs code that has them, an error's `token` (its session signed in with a token) too;
 // with events of kind `review`, the demos in `row.demos` and then `demo` go with those handovers in order, and a `spot` (a comment's
 // place in a demo video, `{ at, chapter?, demo? }`) names its demo by its place in that order; earlier demos need code that has them),
 // workspace (true: the card holds the next free clone, for a repository whose settings say clones; with
-// its branch checked out there, holding a commit where `branch` names it, of `branchFiles` too (by path, a text or `{ from }` a file to copy); for one that works in worktrees, a branch is
+// its branch checked out there, holding a commit where `branch` names it, of `branchFiles` (else of a `scratch.txt`; by path, a text or `{ from }` a file to copy); for one that works in worktrees, a branch is
 // required and the card gets a worktree of its own on it), prototypeOf (the key of the idea it is a prototype of),
-// and `row` for any other column of `cards` (objects are stored as JSON). Times: "90s", "15m", "2h",
-// "3d" ago. `mainBranch` is the branch the repositories are on (default `main`). `"setup": true` serves no canvas (no configuration, no repository given): the first start,
+// and `row` for any other column of `cards` (objects are stored as JSON; a
+// review card's `row.contribution` naming one of `pulls` gets that PR's head as `reviewed` where it names none). Times: "90s", "15m", "2h",
+// "3d" ago. `mainBranch` is the branch the repositories are on (default `main`). With `forgeClone`, the forge that plays `pulls` keeps its repository in <dir>/forge, a clone the PRs' heads are in, so that what lands on the local main is not on the forge until pushed; the contributors' repositories are that one too, so a push onto a PR's branch moves its head. `"setup": true` serves no canvas (no configuration, no repository given): the first start,
 // which shows the setup assistant; the repository is still made, for the assistant to pick, and
 // `cards` may be empty. `"git": false` makes the repository a folder without git (a card's `workspace: true` then
 // is the folder itself, and its `changes`, as `[{ "kind": "added", "path": "…" }]` with `from` for a move, are what it
 // changed there: the files are as `files` and `copy` leave them, a changed one without a copy from before), and `copy` copies a directory into it first (documents, binaries). The repository has settings of its own where `files` hold `.obeya/settings.json` (a demo site among them, say). `poolCheckout` makes the repository's checkout a workspace of the pool too
 // (`workspaces` in the configuration), as a pool of clones often has it, with a bare origin in
-// <dir>; with it, the server
+// <dir>; `settings` are the repository's settings on this machine, in the configuration (a plan
+// folder outside the repository, which only they may name); with either, the server
 // starts from a configuration file in <dir>. `slots` caps the workers busy at once on this machine
 // (an idle worker counts as busy). `hosts` are other machines over SSH (as in the configuration;
 // `root` defaults to <dir>/far there): the repository gets a bare origin in <dir>, copied to each
@@ -187,17 +191,19 @@ interface StageCard {
   question?: { text: string; options?: string[]; multiple?: boolean };
   demo?: Record<string, unknown>;
   queue?: { behind?: string[]; reason?: string; since?: string; checking?: true };
+  /** Snoozed by its agent until the card with key `on` gets to `state` (default done). */
+  snoozed?: { on: string; state?: string; why?: string };
   scope?: string[];
   changes?: { kind: 'added' | 'modified' | 'deleted' | 'moved'; path: string; from?: string }[];
   branch?: string;
-  /** Files the card's branch commits beside `scratch.txt`: by path, its text, or `{ from }` a file to copy (a PDF, say). */
+  /** Files the card's branch commits (instead of a `scratch.txt`): by path, its text, or `{ from }` a file to copy (a PDF, say). */
   branchFiles?: Record<string, string | { from: string }>;
   workspace?: boolean;
   /** A prototype of the idea with this key. */
   prototypeOf?: string;
   createdAgo?: string;
   archivedAgo?: string;
-  events?: { kind: string; author: string; text: string; ago?: string; mocks?: { title: string; html: string }[]; spot?: { at: number; chapter?: string; demo?: number } }[];
+  events?: { kind: string; author: string; text: string; ago?: string; mocks?: { title: string; html: string }[]; spot?: { at: number; chapter?: string; demo?: number }; token?: boolean }[];
   row?: Record<string, unknown>;
 }
 
@@ -227,6 +233,8 @@ interface Stage {
   clones?: number;
   /** The repository's checkout is a workspace of the pool too. */
   poolCheckout?: boolean;
+  /** The repository's settings on this machine, in the configuration (a plan folder outside it, say). */
+  settings?: Record<string, unknown>;
   /** Workers busy at once on this machine. */
   slots?: number;
   /** Other machines over SSH, as in the configuration. */
@@ -248,6 +256,11 @@ interface Stage {
    */
   pulls?: { number: number; title: string; author: string; files: Record<string, string>; canModify?: boolean; checks?: { name: string; state: 'pending' | 'success' | 'failure' }[]; body?: string }[];
   forgeRepo?: string;
+  /**
+   * The forge's repository is a clone of the repository (<dir>/forge, the PRs' heads in it) rather
+   * than the repository itself: what lands on the local main is not on the forge until pushed.
+   */
+  forgeClone?: boolean;
   forgeViewer?: string;
   prPoll?: number;
   cards: StageCard[];
@@ -286,6 +299,7 @@ const SAYS = {
   question: (question: string) => ({ tool: 'ask', args: { question } }),
   review: (summary: string) => ({ tool: 'ready_for_review', args: { summary } }),
   to_obeya: (request: string) => ({ tool: 'to_obeya', args: { request } }),
+  tool: (json: string) => ({ args: {}, ...(JSON.parse(json) as { tool: string; args?: Record<string, unknown> }) }) as { tool: string; args: Record<string, unknown> },
   end: () => ({ end: true as const }),
 };
 
@@ -374,6 +388,8 @@ if (stage.poolCheckout || stage.hosts?.length) {
   run('git', ['branch', '-q', '-u', `origin/${mainBranch}`], repo);
 }
 // pull requests of people outside, for the forge the file plays
+const forgeRepo = join(dir, 'forge');
+const prHeads = new Map<number, string>();
 if (stage.pulls?.length) {
   const slug = stage.forgeRepo ?? `acme/${basename(repo)}`;
   const prs = stage.pulls.map((p) => {
@@ -388,9 +404,19 @@ if (stage.pulls?.length) {
     run('git', ['update-ref', `refs/pull/${p.number}/head`, head], repo);
     run('git', ['checkout', '-q', mainBranch], repo);
     run('git', ['branch', '-q', '-D', `pr-${p.number}`], repo);
+    prHeads.set(p.number, head);
     return { url: `https://github.com/${slug}/pull/${p.number}`, number: p.number, title: p.title, author: p.author, head, canModify: p.canModify ?? true, headRepo: `https://github.com/${p.author}/${basename(slug)}.git`, headRef: `pr-${p.number}`, checks: p.checks ?? [], comments: [], ...(p.body ? { body: p.body } : {}) };
   });
-  writeFileSync(join(dir, 'forge.json'), `${JSON.stringify({ repo, viewer: stage.forgeViewer ?? 'owner', prs }, null, 2)}\n`);
+  // a remote of its own, which what lands on the local main reaches only once pushed: a clone with the PRs' heads
+  if (stage.forgeClone) {
+    run('git', ['clone', '-q', repo, forgeRepo], dir);
+    // pushes onto its checked-out main go into its files too, as the forge's merges do
+    run('git', ['config', 'receive.denyCurrentBranch', 'updateInstead'], forgeRepo);
+    // a push onto a PR's branch moves its refs/pull head at once, as on the forge
+    writeFileSync(join(forgeRepo, '.git', 'hooks', 'post-receive'), '#!/bin/sh\nwhile read old new ref; do case "$ref" in refs/heads/pr-*) git update-ref "refs/pull/${ref#refs/heads/pr-}/head" "$new";; esac; done\n', { mode: 0o755 });
+    run('git', ['fetch', '-q', repo, '+refs/pull/*:refs/pull/*'], forgeRepo);
+  }
+  writeFileSync(join(dir, 'forge.json'), `${JSON.stringify({ repo: stage.forgeClone ? forgeRepo : repo, viewer: stage.forgeViewer ?? 'owner', prs }, null, 2)}\n`);
   // its origin is the forge's repository, which git of the scratch Obeya finds in the repository itself
   if (!stage.poolCheckout && !stage.hosts?.length) run('git', ['remote', 'add', 'origin', `git@github.com:${slug}.git`], repo);
 }
@@ -467,15 +493,18 @@ const env = {
     ? {
         OBEYA_FORGE_FILE: join(dir, 'forge.json'),
         OBEYA_PR_POLL: String(stage.prPoll ?? 10),
-        GIT_CONFIG_COUNT: '1',
-        GIT_CONFIG_KEY_0: `url.${repo}.insteadOf`,
-        GIT_CONFIG_VALUE_0: `git@github.com:${stage.forgeRepo ?? `acme/${basename(repo)}`}.git`,
+        ...gitConfig(
+          // the forge's repository is the remote's, and with a clone of its own the contributors' too: a push onto a PR's branch moves its head
+          [`git@github.com:${stage.forgeRepo ?? `acme/${basename(repo)}`}.git`, ...(stage.forgeClone ? stage.pulls.map((p) => `https://github.com/${p.author}/${basename(stage.forgeRepo ?? `acme/${basename(repo)}`)}.git`) : [])].map(
+            (url) => [`url.${stage.forgeClone ? forgeRepo : repo}.insteadOf`, url] as const,
+          ),
+        ),
       }
     : {}),
 };
 // a pool's workspaces live in the configuration, which the command line cannot give
 const configFile = join(dir, 'canvases.json');
-const configured = folder || !!stage.poolCheckout || stage.slots !== undefined || !!stage.hosts?.length || !!stage.name || further.length > 0 || others.length > 0;
+const configured = folder || !!stage.poolCheckout || !!stage.settings || stage.slots !== undefined || !!stage.hosts?.length || !!stage.name || further.length > 0 || others.length > 0;
 if (configured)
   writeFileSync(
     configFile,
@@ -489,6 +518,7 @@ if (configured)
               ...(folder ? { git: false } : {}),
               ...(stage.clones ? { clones: stage.clones } : {}),
               ...(stage.poolCheckout ? { workspaces: [repo] } : {}),
+              ...(stage.settings ? { settings: stage.settings } : {}),
               ...(stage.slots !== undefined ? { slots: stage.slots } : {}),
               ...(stage.hosts?.length ? { hosts: stage.hosts.map(({ gone: _, ...h }) => ({ ...h, root: rootOn(h) })) } : {}),
             },
@@ -618,6 +648,11 @@ for (const [i, c] of stage.cards.entries()) {
       ...(c.queue.behind ? { behind: c.queue.behind.map((k) => ids[k] ?? fail(`card ${c.key ?? i}: queue names ${k}, which does not exist`)) } : {}),
       since: c.queue.since ?? new Date().toISOString(),
     };
+  if (c.snoozed !== undefined) {
+    const on = ids[c.snoozed.on] ?? fail(`card ${c.key ?? i}: snoozed names ${c.snoozed.on}, which does not exist`);
+    const title = stage.cards.find((x) => x.key === c.snoozed!.on)?.title ?? '';
+    row.snoozed = { on: { card: on, title, state: c.snoozed.state ?? 'done' }, by: 'agent', ...(c.snoozed.why ? { why: c.snoozed.why } : {}) };
+  }
   if (c.scope !== undefined) row.scope = { files: c.scope, reason: '' };
   // a card at work or waiting for the owner has the branch its start gave it, as every started card
   // has: without one the card shows neither its conversation's field nor the question it waits on
@@ -652,7 +687,8 @@ for (const [i, c] of stage.cards.entries()) {
     }
     row.workspace = path;
     if (c.branch) {
-      writeFileSync(join(path, 'scratch.txt'), `${c.title ?? c.branch}\n`);
+      // a commit of its own, where the stage names no files for it
+      if (!c.branchFiles || !Object.keys(c.branchFiles).length) writeFileSync(join(path, 'scratch.txt'), `${c.title ?? c.branch}\n`);
       for (const [file, what] of Object.entries(c.branchFiles ?? {})) {
         mkdirSync(dirname(join(path, file)), { recursive: true });
         if (typeof what === 'string') writeFileSync(join(path, file), what);
@@ -666,6 +702,10 @@ for (const [i, c] of stage.cards.entries()) {
   if (c.createdAgo !== undefined) row.created_at = ago(c.createdAgo);
   if (c.archivedAgo !== undefined) row.archived_at = ago(c.archivedAgo);
   Object.assign(row, c.row ?? {});
+  // a review card handed over has reviewed its PR's head, which is all Obeya merges
+  const contribution = row.contribution as { number?: number; reviewed?: string } | undefined;
+  const pull = contribution && !contribution.reviewed && prHeads.get(contribution.number ?? -1);
+  if (pull) row.contribution = { ...contribution, reviewed: pull };
   const keys = Object.keys(row).filter((k) => row[k] !== undefined);
   const missing = keys.filter((k) => !columns.has(k));
   if (missing.length) fail(`card ${c.key ?? i}: this code's database has no column ${missing.join(', ')}`);
@@ -677,9 +717,9 @@ for (const [i, c] of stage.cards.entries()) {
   const reviews: { id: number; at: string }[] = [];
   const spots: [number, NonNullable<StageEvent['spot']>][] = [];
   for (const e of c.events ?? []) {
-    // only code that has mocks has their column
+    // only code that has mocks (an error's token) has their column
     const at = ago(e.ago ?? '0s');
-    const { lastInsertRowid } = db.query(`INSERT INTO events (card_id, at, kind, author, text${e.mocks ? ', mocks' : ''}) VALUES ($c, $at, $kind, $author, $text${e.mocks ? ', $mocks' : ''})`).run({
+    const { lastInsertRowid } = db.query(`INSERT INTO events (card_id, at, kind, author, text${e.mocks ? ', mocks' : ''}${e.token ? ', token' : ''}) VALUES ($c, $at, $kind, $author, $text${e.mocks ? ', $mocks' : ''}${e.token ? ', 1' : ''})`).run({
       c: id,
       at,
       kind: e.kind,
@@ -793,6 +833,11 @@ console.log(JSON.stringify(staged));
 process.exit(0);
 
 /** A git repository at `path` with what is there committed on the main branch. */
+/** Git configuration for the server's git calls, as environment variables. */
+function gitConfig(pairs: (readonly [string, string])[]): Record<string, string> {
+  return Object.fromEntries([['GIT_CONFIG_COUNT', String(pairs.length)], ...pairs.flatMap(([k, v], i) => [[`GIT_CONFIG_KEY_${i}`, k], [`GIT_CONFIG_VALUE_${i}`, v]])]);
+}
+
 function initRepo(path: string) {
   run('git', ['init', '-q', '-b', mainBranch], path);
   run('git', ['add', '-A'], path);

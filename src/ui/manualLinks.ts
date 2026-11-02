@@ -25,11 +25,15 @@ export function edgePoint(b: Bounds, side: EdgeSide, offset = 0.5): Point {
   return { x: b.x + b.w, y: b.y + b.h * t };
 }
 
-/** A rounded route outside both cards, and its centre for the remove button. */
-export function anchoredPath(a: Bounds, b: Bounds, anchor: ManualAnchor): { path: string; mid: Point } {
-  const start = edgePoint(a, anchor.fromSide), end = edgePoint(b, anchor.toSide, anchor.offset);
+/**
+ * A rounded route outside both cards, and its centre for the remove button. With `head`, it stops
+ * that far before the target's edge, where an arrow head drawn on its end points onto the card.
+ */
+export function anchoredPath(a: Bounds, b: Bounds, anchor: ManualAnchor, head = 0): { path: string; mid: Point } {
+  const start = edgePoint(a, anchor.fromSide), edge = edgePoint(b, anchor.toSide, anchor.offset);
   const from = normal[anchor.fromSide], to = normal[anchor.toSide];
-  const gap = 12;
+  const end = { x: edge.x + to.x * head, y: edge.y + to.y * head };
+  const gap = 12 + head;
   const out = { x: start.x + from.x * gap, y: start.y + from.y * gap };
   const into = { x: end.x + to.x * gap, y: end.y + to.y * gap };
   const boxes = [a, b].map((r) => ({ left: r.x - gap, right: r.x + r.w + gap, top: r.y - gap, bottom: r.y + r.h + gap }));

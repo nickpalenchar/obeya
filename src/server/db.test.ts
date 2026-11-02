@@ -95,6 +95,7 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     s.db.run('ALTER TABLE talk DROP COLUMN answer_agent');
     s.db.run('DROP INDEX cards_short');
     s.db.run('ALTER TABLE cards DROP COLUMN short');
+    s.db.run('ALTER TABLE events DROP COLUMN token');
     s.db.run(`PRAGMA user_version = ${RELEASED}`);
     s.db.close();
 
@@ -138,7 +139,9 @@ test('the migration gives the cards there are codes of their own, longer where t
     for (const id of ids) insert.run({ id });
     s.db.run('DROP INDEX cards_short');
     s.db.run('ALTER TABLE cards DROP COLUMN short');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 1}`);
+    // later migrations run again after it: undo what they added
+    s.db.run('ALTER TABLE events DROP COLUMN token');
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.findIndex((m) => m.includes('ADD COLUMN short'))}`);
     s.db.close();
     const after = new Store(path);
     expect(ids.map((id) => after.card(id)!.short)).toEqual(['12345678000040008000000000000001', '12345678000040008000000000000002', '1234aa', 'ffffff']);

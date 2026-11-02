@@ -42,6 +42,8 @@ const de = {
     held: (when: string) => `Das Nutzungslimit ist erreicht. Ich lese das ${when} von selbst.`,
     undone: 'Zurückgenommen.',
     created: 'Per Sprache angelegt.',
+    /** On the task Obeya merged others into: which, by their titles. */
+    merged: (titles: string[]) => `Zusammengeführt mit ${titles.map((t) => `„${t}“`).join(', ')}.`,
   },
   failure: {
     notLoggedIn: 'Claude ist auf diesem Rechner nicht angemeldet: im Terminal „claude“ starten und „/login“ ausführen.',
@@ -70,8 +72,15 @@ const de = {
     reviewStarted: (n: number, author: string) => `Agent gestartet: Er prüft PR #${n} von ${author}.`,
     /** The worker sent the owner's change request to the contributor as a review on the PR. */
     changesRequested: (n: number, author: string) => `Änderungswunsch als Review-Kommentar an PR #${n}. Wartet auf ${author}.`,
-    /** The worker wrote a comment on the contributor's PR (what it changed itself, say). */
-    commented: (n: number) => `Kommentar an PR #${n} geschrieben.`,
+    /** On the owner's approval, Obeya pushed the worker's own commits onto the contributor's PR and posted their text, with a request to them or without. */
+    pushedHeld: (n: number, commits: number, author?: string) =>
+      `${commits === 1 ? '1 Commit' : `${commits} Commits`} auf den Branch von PR #${n} gepusht und ${author ? `mit dem Änderungswunsch an ${author} geschickt. Wartet auf ${author}.` : 'kommentiert.'}`,
+    /** The worker's own commits could not go onto the PR's branch. */
+    pushRefused: (reason: string) => `Nicht gepusht: ${reason}`,
+    /** The contributor pushed after the handover: the worker's own commits are not pushed, posted or merged. */
+    heldMoved: (head: string) => `Nicht gepusht: Der PR steht seit der Übergabe auf einem anderen Stand (${head}). Der Agent setzt seine Commits darauf und prüft das Neue.`,
+    /** Pushed, but the forge refused the text that goes with it. */
+    postFailed: (reason: string) => `Gepusht, aber der Text dazu ließ sich nicht posten: ${reason}`,
     /** Approving a review card: Obeya merges the PR. */
     approvedMerge: (n: number) => `Freigegeben. Obeya mergt PR #${n}.`,
     mergedContribution: (n: number) => `PR #${n} gemergt. Live.`,
@@ -82,6 +91,23 @@ const de = {
     /** Where work lands on the local main: the merge on the forge was pulled into it. */
     pulledMain: (commit: string) => `main aus dem Remote geholt (${commit}).`,
     pullFailed: (reason: string) => `main ließ sich nach dem Merge nicht holen: ${reason}. Bitte selbst holen (git pull).`,
+    /** Before a review card's merge: the local main's unpushed commits collide with the PR, which the owner had not been shown yet. */
+    clashFound: (n: number, subject: string, card?: string) =>
+      `Nicht gemergt: PR #${n} kollidiert mit einem ungepushten Commit auf main („${subject}“${card ? ` von „${card}“` : ''}). Erst main pushen, oder trotzdem mergen: Dann löst ein Agent den Konflikt auf main.`,
+    /** After the merge, pulling it into the local main stopped on a conflict, and a card's agent resolves it. */
+    pullStopped: (subject: string, card: string | null) =>
+      `main ließ sich nach dem Merge nicht holen: Konflikt mit dem ungepushten Commit „${subject}“. Main ist unverändert. ${card ? `Der Agent von „${card}“ löst den Konflikt auf.` : 'Der Agent dieser Karte löst den Konflikt auf.'}`,
+    /** On the card whose agent resolves the conflict. */
+    resolvingPull: (n: number, subject: string) => `Der Merge von PR #${n} kollidiert mit dem ungepushten Commit „${subject}“ auf main. Der Agent setzt main neu auf und löst den Konflikt.`,
+    resolvingStatus: (n: number) => `Löst den Konflikt mit PR #${n} auf main`,
+    resolvedPull: (n: number, commit: string) => `Konflikt mit PR #${n} gelöst: main neu aufgesetzt (${commit}).`,
+    /** The pull stopped on a conflict, and no agent resolves it (none could take it, or it gave up). */
+    pullUnresolved: (subject: string, files: string, why: string) =>
+      `main ließ sich nach dem Merge nicht holen: Konflikt mit dem ungepushten Commit „${subject}“ in ${files}. ${why} Bitte selbst holen (git pull) und den Konflikt lösen.`,
+    noResolver: 'Kein Agent konnte ihn übernehmen.',
+    pushedMain: (commit: string, n: number) => `main gepusht (${commit}). Der Agent dieser Karte bringt PR #${n} auf den neuen Stand.`,
+    pushFailed: (reason: string) => `main ließ sich nicht pushen: ${reason}`,
+    resolverGaveUp: 'Der Agent hat ihn nicht gelöst.',
     contributionClosedQuestion: 'Der Pull Request wurde ohne Merge geschlossen. Kann die Karte weg?',
     closeCard: 'Ja, Karte schließen',
     /** What the owner decided for a finding of a review card, as their message shows it. */
@@ -336,8 +362,14 @@ const de = {
     waitsAhead: (title: string) => `„${title}“ (wartet selbst und ist vorher dran)`,
     likelyConflict: 'Wahrscheinlich Merge-Konflikte mit laufender Arbeit.',
     buildsOn: 'Baut darauf auf; startet, sobald es gelandet ist.',
+    followsReview: (n: number) => `Folgeaufgabe aus dem Review von PR #${n}; startet, sobald der PR gemergt ist.`,
+    reviewClosed: (review: string) => `Zurück auf geplant: Der PR von ${review} wurde ohne Merge geschlossen. Starte die Folgeaufgabe selbst, wenn sie trotzdem gebraucht wird.`,
     notStarted: (name: string) => `${name} (noch nicht gestartet)`,
     waitsFor: (names: string, reason: string) => `Obeya: wartet auf ${names}. ${reason}`,
+    /** Why a card waits that only the owner's arrows hold. */
+    drawn: 'Du hast die Karten verbunden; sie startet, sobald das erledigt ist.',
+    /** After `waitsFor`, the cards the owner's arrows hold it for besides. */
+    drawnToo: (names: string) => `Außerdem wartet sie auf ${names}: Du hast die Karten verbunden.`,
     togetherFailed: (why: string) => `Obeya konnte die Workstreams nicht gemeinsam einplanen (${why}) und prüft sie einzeln.`,
     arrangeFailed: (why: string) => `Obeya konnte nicht lesen, welcher Workstream auf welchem aufbaut (${why}); die Karten bleiben, wo sie stehen.`,
     togetherStarts: 'Gemeinsam mit den anderen Workstreams eingeplant; startet jetzt.',
@@ -351,6 +383,9 @@ const de = {
     canvasPlays: 'Die Agenten dieser Leinwand laufen wieder; es geht los.',
     waitedDone: 'Worauf sie gewartet hat, ist erledigt; es geht los.',
     waitedDoneRecheck: 'Obeya: Worauf sie gewartet hat, ist erledigt; prüft neu gegen die laufende Arbeit.',
+    waitedDoneTogether: 'Obeya: Worauf sie gewartet hat, ist erledigt; prüft sie zusammen mit den anderen Aufgaben, die jetzt frei sind.',
+    freedStarts: 'Zusammen mit den anderen frei gewordenen Aufgaben geprüft; startet jetzt.',
+    freedFailed: (why: string) => `Obeya konnte die frei gewordenen Aufgaben nicht gemeinsam prüfen (${why}) und prüft sie einzeln.`,
     noWorkspace: 'Kein Workspace frei: Alle sind belegt oder es ist keiner eingerichtet. Die Aufgabe startet, sobald einer frei wird.',
     dirtyWorkspaces: 'Kein Workspace frei: Jeder freie hat noch nicht committete Änderungen. Die Aufgabe startet, sobald einer sauber ist.',
     noSlot: 'Kein Slot frei: Auf jedem Rechner mit freiem Workspace arbeiten so viele Agenten, wie er Slots hat. Die Aufgabe startet, sobald einer fertig ist.',
@@ -521,6 +556,7 @@ const en: Messages = {
     held: (when: string) => `The usage limit is reached. I will read this by myself ${when}.`,
     undone: 'Taken back.',
     created: 'Created by voice.',
+    merged: (titles: string[]) => `Merged with ${titles.map((t) => `“${t}”`).join(', ')}.`,
   },
   failure: {
     notLoggedIn: 'Claude is not logged in on this machine: run “claude” in a terminal and then “/login”.',
@@ -546,13 +582,30 @@ const en: Messages = {
     started: (branch: string) => `Agent started on ${branch}.`,
     reviewStarted: (n: number, author: string) => `Agent started: it reviews PR #${n} by ${author}.`,
     changesRequested: (n: number, author: string) => `Change request sent as a review comment on PR #${n}. Waiting for ${author}.`,
-    commented: (n: number) => `Commented on PR #${n}.`,
+    pushedHeld: (n: number, commits: number, author?: string) =>
+      `Pushed ${commits === 1 ? '1 commit' : `${commits} commits`} onto the branch of PR #${n} and ${author ? `sent the change request to ${author}. Waiting for ${author}.` : 'commented.'}`,
+    pushRefused: (reason: string) => `Not pushed: ${reason}`,
+    heldMoved: (head: string) => `Not pushed: the PR is at another commit than at the handover (${head}). The agent puts its commits on top and reviews what is new.`,
+    postFailed: (reason: string) => `Pushed, but the text with it could not be posted: ${reason}`,
     approvedMerge: (n: number) => `Approved. Obeya merges PR #${n}.`,
     mergedContribution: (n: number) => `PR #${n} merged. Live.`,
     unreviewedHead: (head: string) => `Not merged: the PR is at another commit than at the handover (${head}). The agent reviews it.`,
     mergeRefused: (reason: string) => `Not merged: ${reason}`,
     pulledMain: (commit: string) => `Pulled main from the remote (${commit}).`,
     pullFailed: (reason: string) => `Could not pull main after the merge: ${reason}. Please pull it yourself (git pull).`,
+    clashFound: (n: number, subject: string, card?: string) =>
+      `Not merged: PR #${n} collides with an unpushed commit on main (“${subject}”${card ? ` of “${card}”` : ''}). Push main first, or merge anyway: then an agent resolves the conflict on main.`,
+    pullStopped: (subject: string, card: string | null) =>
+      `Could not pull main after the merge: it conflicts with the unpushed commit “${subject}”. Main is unchanged. ${card ? `The agent of “${card}” resolves the conflict.` : 'This card’s agent resolves the conflict.'}`,
+    resolvingPull: (n: number, subject: string) => `Merging PR #${n} conflicts with the unpushed commit “${subject}” on main. The agent rebases main and resolves the conflict.`,
+    resolvingStatus: (n: number) => `Resolving the conflict with PR #${n} on main`,
+    resolvedPull: (n: number, commit: string) => `Conflict with PR #${n} resolved: main rebased (${commit}).`,
+    pullUnresolved: (subject: string, files: string, why: string) =>
+      `Could not pull main after the merge: it conflicts with the unpushed commit “${subject}” in ${files}. ${why} Please pull it yourself (git pull) and resolve the conflict.`,
+    noResolver: 'No agent could take it.',
+    pushedMain: (commit: string, n: number) => `Pushed main (${commit}). This card’s agent brings PR #${n} up to date with it.`,
+    pushFailed: (reason: string) => `Could not push main: ${reason}`,
+    resolverGaveUp: 'The agent did not resolve it.',
     contributionClosedQuestion: 'The pull request was closed without a merge. Can the card go?',
     closeCard: 'Yes, close the card',
     findingDecided: (id: number, title: string, what: string) => `Finding ${id} “${title}”: ${what}`,
@@ -778,8 +831,12 @@ const en: Messages = {
     waitsAhead: (title: string) => `“${title}” (waiting itself, and ahead in the queue)`,
     likelyConflict: 'Likely merge conflicts with work in progress.',
     buildsOn: 'Builds on it; starts once that has landed.',
+    followsReview: (n: number) => `A follow-up task from the review of PR #${n}; starts once the PR is merged.`,
+    reviewClosed: (review: string) => `Back to planned: the PR of ${review} was closed without a merge. Start the follow-up task yourself if it is still needed.`,
     notStarted: (name: string) => `${name} (not started yet)`,
     waitsFor: (names: string, reason: string) => `Obeya: waits for ${names}. ${reason}`,
+    drawn: 'You connected the cards; it starts once that is done.',
+    drawnToo: (names: string) => `It also waits for ${names}: you connected the cards.`,
     togetherFailed: (why: string) => `Obeya could not plan the workstreams together (${why}); it checks them one by one.`,
     arrangeFailed: (why: string) => `Obeya could not read which workstream builds on which (${why}); the cards stay where they are.`,
     togetherStarts: 'Planned together with the other workstreams; starts now.',
@@ -792,6 +849,9 @@ const en: Messages = {
     canvasPlays: "This canvas's agents run again; it starts.",
     waitedDone: 'What it waited for is done; it starts.',
     waitedDoneRecheck: 'Obeya: what it waited for is done; checks it again against the work in progress.',
+    waitedDoneTogether: 'Obeya: what it waited for is done; checks it together with the other tasks free now.',
+    freedStarts: 'Checked together with the other tasks freed at the same time; starts now.',
+    freedFailed: (why: string) => `Obeya could not check the freed tasks together (${why}); it checks them one by one.`,
     noWorkspace: 'No workspace free: all are taken or none is set up. The task starts as soon as one is free.',
     dirtyWorkspaces: 'No workspace free: every free one has uncommitted changes. The task starts as soon as one is clean.',
     noSlot: 'No slot free: every machine with a free workspace has as many agents at work as it has slots. The task starts as soon as one is done.',

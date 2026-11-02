@@ -13,7 +13,7 @@ import { repoName } from '../adapters/generic';
 import type { DemoSite, RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
-import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, type AgentSetting, buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, SNOOZE_LIMIT, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup } from '../core/types';
+import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, type AgentSetting, buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, untouched, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, SNOOZE_LIMIT, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup } from '../core/types';
 import { startAgentSetting } from './settings';
 import { holdsNotes } from '../core/queue';
 import { BadRequest, Board, pathOfRef, replyNote, type StoredContribution } from './board';
@@ -36,6 +36,7 @@ import { ghHosts, onGitHub, outsidePlanDir, readPlanDocs, watchPlanDocs } from '
 import { boundsOf, GAP, type Place, planDirNoteBox, unionBounds } from '../core/layout';
 import { type AgentRuntime, idleRuntime, withAgentSetting, withLimitWait, withRepoTrust, withTrustedAllow } from './runtime';
 import { bashRules } from './allow-rules';
+import { type TagCard, tagCards } from './tag-proposal';
 import { commandsOf, heldGroups, withoutHeld } from './trust';
 import { bundledSkills, Skills } from './skills';
 
@@ -770,6 +771,7 @@ export class CanvasRuntime {
       onApproval: (cardId) => this.sharing.approved(cardId),
       onLanded: (cardId) => void this.sharing.landed(cardId),
       onMerged: () => void read.refresh(),
+      onFollowUpTask: (taskId, reviewId) => this.koordinator.followUp(taskId, reviewId),
       onPrototype: (prototype, summary, demo) => this.prototypeReady(prototype, summary, demo),
       onPrototypeAnswer: (prototype, question, answer) => this.prototypeAnswered(prototype, question, answer),
       // where work lands on the local main, the Lesestand is the checkout and moves with the landing;
@@ -787,7 +789,7 @@ export class CanvasRuntime {
       forge: deps.forge,
       repoPath: info.path,
       remote: originUrl(info),
-      ...(workspaces instanceof Workspaces ? { pullMain: () => (workspaces as Workspaces).pullMain() } : {}),
+      ...(workspaces instanceof Workspaces ? { pulls: workspaces } : {}),
       ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
       ...(deps.workerEnv ? { env: deps.workerEnv } : {}),
       demoLanguage: () => readDemoSettings(deps.home).language,
@@ -1339,6 +1341,30 @@ export class CanvasRuntime {
     return r;
   }
 
+  /**
+   * What a proposal for the tags of the site of the repository at `path` reads on this canvas,
+   * where it runs here: its checkout, the agents' runtime, the language of its demos, and its cards
+   * (`tagCards`), those on the canvas first, then the archive.
+   */
+  tagSource(path: string): { cwd: string; runtime: AgentRuntime; language?: Language; cards: TagCard[] } | null {
+    const r = this.repos.find((x) => resolve(x.info.path) === resolve(path));
+    if (!r) return null;
+    const mine = (i: Item) => i.repo === r.ref.id;
+    const summary = (id: string) => {
+      try {
+        return this.board.summary(id);
+      } catch {
+        return undefined;
+      }
+    };
+    return {
+      cwd: r.info.path,
+      runtime: this.deps.runtime,
+      ...(r.adapter.demo?.language ? { language: r.adapter.demo.language } : {}),
+      cards: tagCards([...this.board.items().filter(mine), ...this.board.archived().filter(mine)], summary),
+    };
+  }
+
   /** Whether the card's repository runs on the canvas. */
   private runs(card: Item | string): boolean {
     const item = typeof card === 'string' ? this.board.card(card) : card;
@@ -1642,6 +1668,12 @@ export class CanvasRuntime {
         return this.repoOf(cardId).workers.approve(cardId, { direct: !!a.direct });
       case 'undo':
         return this.repoOf(cardId).workers.undo(cardId);
+      case 'pushMain':
+        return this.repoOf(cardId).workers.pushMainFor(cardId);
+      case 'keepMain':
+        return this.repoOf(cardId).workers.keepMainFor(cardId);
+      case 'pushChanges':
+        return this.repoOf(cardId).workers.pushContribution(cardId);
       case 'accept':
         return this.accept(cardId, a.picks, a.start !== false, a.idea, a.agent === undefined ? undefined : startAgentSetting(a.agent));
       case 'unaccept':
@@ -2443,7 +2475,28 @@ export class CanvasRuntime {
         return this.board.group(c.cards, null);
       case 'renameGroup':
         return this.board.renameGroup(c.group, c.name);
+      case 'merge':
+        return this.merge(c.card, c.others, c.title);
+      case 'delete':
+        this.untouched(c.card);
+        return this.remove(c.card);
     }
+  }
+
+  /** A planned task nobody has worked on yet, still as when the Koordinator chose it; else why not. */
+  private untouched(cardId: string): Item {
+    const card = this.board.item(cardId);
+    if (!card) throw new BadRequest('unknownCard', 'unknown card');
+    if (!untouched(card)) throw new BadRequest('notUntouched', `„${card.title}“ is no planned task nobody has worked on any more`);
+    return card;
+  }
+
+  /** Planned tasks nobody has worked on merged into the first (`Board.merge`); the others go. */
+  private merge(keep: string, others: string[], title: string) {
+    const cards = [keep, ...others].map((id) => this.untouched(id));
+    if (new Set(cards.map((c) => c.repo)).size > 1) throw new BadRequest('otherRepos', 'only tasks of one repository can be merged');
+    this.board.merge(keep, others, title);
+    for (const id of others) this.remove(id);
   }
 
   /**

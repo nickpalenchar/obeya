@@ -1,14 +1,16 @@
 // The phone view: on a phone the page shows, instead of the canvas, what waits for the owner across
-// every canvas („Für dich“), what runs („Läuft“) and, folded away until opened, what is done but not
+// every canvas („Braucht dich“), what runs („Läuft“) and, folded away until opened, what is done but not
 // archived yet („Erledigt“); Obeya's conversation is a panel of its own that
 // comes up from below. A card opens full screen with the canvas's own detail view (answer options,
 // demo, approve buttons), its conversation in the same panel, and Back returns to the list. The microphone is held by touch; Enter breaks the line, only Send sends;
 // what was typed but not sent survives a reload. It holds one WebSocket per canvas.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { type CanvasInfo, type CanvasSnapshot, type CardPatch, finishedArchivable, type Item, needsYou, openQuestions, unreadAnswers, type Usage } from '../core/types';
+import { type CanvasInfo, type CanvasSnapshot, type CardPatch, finishedArchivable, type Item, needsYou, openQuestions, unreadAnswers, type Usage, waitingOn } from '../core/types';
 import { api, beforeReload, cardsOn, onNotice, phoneInUse, setCanvas, useCanvas, type Where } from './api';
 import { enterBreaksLines } from './composer';
+import { ForYouRows, forYouOf, when } from './forYou';
+import { type QuickReply, sendReply } from './quickReply';
 import { type ActDone, Detail, type Pending, TalkElsewhere, useEvents } from './detail';
 import { cardDraft, fieldOn, focusedDraft, keepDrafts, MIC_DRAFT, obeyaDraft } from './draft';
 import { KoordinatorTalk } from './koordinator';
@@ -19,7 +21,7 @@ import { Cards } from './message';
 import { glide, type Mark, settle, speed, THROWN, thrown } from './panelHeight';
 import { CardFace, cardClass, shownState, TalkIcon } from './parts';
 import { videoOf } from './spot';
-import { clock, failText, forTouch, shortDay, t } from './strings';
+import { failText, forTouch, t } from './strings';
 import { UsagePill } from './usage';
 import { agentWorks, cardTalk, koordinatorReads, obeyaWorks, opensWithTalk, runs, unseen } from './talk';
 import { seenOf } from './seen';
@@ -42,7 +44,8 @@ export function phoneView(): boolean {
 const DRAFTS = '@phone';
 /** The canvas whose Obeya the conversation at the bottom is with, as the owner last picked it. */
 const OBEYA_CANVAS = 'obeya-phone-canvas';
-/** Whether the owner opened „Erledigt“ in this tab; it starts closed. */
+/** Whether the owner opened „Geplant“ or „Erledigt“ in this tab; each starts closed. */
+const PLANNED_OPEN = 'obeya-phone-planned';
 const DONE_OPEN = 'obeya-phone-done';
 /** How long the server may not answer before the view says so: a phone back from its lock screen reconnects within this. */
 const QUIET_MS = 3000;
@@ -150,7 +153,6 @@ function tapOpensKeyboard() {
 }
 
 /** When something began: the time today, else the day. */
-const when = (iso: string | number) => (new Date(iso).toDateString() === new Date().toDateString() ? clock(iso) : shortDay(iso));
 
 export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   keepDrafts(sessionStorage, DRAFTS);
@@ -264,7 +266,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     setOpenState(null);
     setTalk(false);
   };
-  // a tapped push: its card (or „Für dich“ for several) in the app that is open already
+  // a tapped push: its card (or „Braucht dich“ for several) in the app that is open already
   useEffect(() => {
     registerWorker();
     const sw = navigator.serviceWorker;
@@ -292,16 +294,9 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     addEventListener('popstate', pop);
     return () => removeEventListener('popstate', pop);
   }, []);
-  // „Erledigt“ starts closed, and stays as the owner left it while a card is open and over a reload
-  const [doneOpen, setDoneOpen] = useState(() => sessionStorage.getItem(DONE_OPEN) === '1');
-  const toggleDone = () =>
-    setDoneOpen((o) => {
-      try {
-        if (o) sessionStorage.removeItem(DONE_OPEN);
-        else sessionStorage.setItem(DONE_OPEN, '1');
-      } catch {}
-      return !o;
-    });
+  // „Geplant“ and „Erledigt“ start closed, and stay as the owner left them while a card is open and over a reload
+  const [plannedOpen, togglePlanned] = useFolded(PLANNED_OPEN);
+  const [doneOpen, toggleDone] = useFolded(DONE_OPEN);
   // the list keeps where it was scrolled to while a card is open
   const homeRef = useRef<HTMLDivElement>(null);
   const homeScroll = useRef(0);
@@ -325,7 +320,17 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   }, [all]);
   // approved cards the server is still landing: they need the owner no longer
   const [underway, setUnderway] = useState<string[]>([]);
-  useEffect(() => setUnderway((u) => u.filter((id) => byId(id)?.state === 'waiting')), [snaps]);
+  // a card replied to from „Braucht dich“ stays under way while it still waits for the owner
+  useEffect(
+    () =>
+      setUnderway((u) =>
+        u.filter((id) => {
+          const i = byId(id);
+          return !!i && (i.state === 'waiting' || needsYou(i));
+        }),
+      ),
+    [snaps],
+  );
   const opened = open ? all.find((x) => x.item.id === open) : undefined;
 
   // the canvas whose Obeya is spoken to without a card open
@@ -608,6 +613,8 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     openTalk();
   };
   const shown = talk && !closing;
+  // the tasks nobody has started yet (stopped ones and those set to start at a time among them), but nothing the lists above show already
+  const planned = all.filter(({ item }) => plannedLater(item) && !runs(item) && !isUnderway(item.id));
   // what the canvas's „Erledigte archivieren“ would take, but nothing the lists above show already
   const done = all.filter(({ item }) => finishedArchivable(item) && !needsYou(item) && !item.snoozed?.waiting && !runs(item) && !isUnderway(item.id));
   return (
@@ -633,6 +640,13 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
               setObeyaCanvas(id);
               openTalk();
             }}
+            onReply={(c, i, r) =>
+              sendReply(c, i, r, {
+                mark: (id, what) => setUnderway((u) => (what === null ? u.filter((x) => x !== id) : [...u.filter((x) => x !== id), id])),
+                showAck,
+                showWait,
+              })
+            }
           />
         </section>
         <section className="ph-section">
@@ -641,7 +655,8 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
           {/* a snoozed card at the end, after those at work now */}
           {ordered.length > 0 && <Running entries={all.filter(({ item }) => runs(item) || isUnderway(item.id)).sort((a, b) => Number(!!a.item.snoozed) - Number(!!b.item.snoozed))} several={several} onOpen={openCard} />}
         </section>
-        {done.length > 0 && <Done entries={done} several={several} open={doneOpen} onToggle={toggleDone} onOpen={openCard} />}
+        {planned.length > 0 && <Folded label={t.phone.planned} entries={planned} several={several} open={plannedOpen} onToggle={togglePlanned} onOpen={openCard} />}
+        {done.length > 0 && <Folded label={t.phone.done} entries={done} several={several} open={doneOpen} onToggle={toggleDone} onOpen={openCard} />}
       </div>
       {talk && (
         <TalkPanel title={t.koordinator.title} label={t.phone.talkTitle} banner={banner} onClose={closeTalk} leave={leaveTalk} onLeave={() => setClosing(true)}>
@@ -695,6 +710,7 @@ function ForYou({
   underway,
   onOpen,
   onObeya,
+  onReply,
 }: {
   canvases: CanvasInfo[];
   snaps: Record<string, CanvasSnapshot>;
@@ -702,44 +718,21 @@ function ForYou({
   underway: (id: string) => boolean;
   onOpen: (i: Item) => void;
   onObeya: (canvas: string) => void;
+  onReply: (canvas: string, i: Item, r: QuickReply) => void;
 }) {
-  const rows = canvases.flatMap((c) => {
-    const s = snaps[c.id]!;
-    // cards snoozed while they waited for the owner stand at the end, until they come back
-    const cards = [...s.items.filter((i) => needsYou(i) && !underway(i.id)), ...s.items.filter((i) => i.snoozed?.waiting)];
-    const unread = unreadAnswers(s.talk) ? s.talk.filter((x) => x.unread) : [];
-    return [
-      ...cards.map((i) => (
-        <li key={i.id}>
-          <button className={`${cardClass(i)} ph-card`} onClick={() => onOpen(i)}>
-            <CardFace item={i} where={several ? c.name : undefined} since={i.waitingSince ? t.phone.since(when(i.waitingSince)) : undefined} />
-          </button>
-        </li>
-      )),
-      ...(unread.length
-        ? [
-            <li key={`obeya:${c.id}`}>
-              <button className="card s-working ph-card" onClick={() => onObeya(c.id)}>
-                <div className="kind">
-                  <span>{[several && c.name, t.koordinator.title].filter(Boolean).join(' · ')}</span>
-                </div>
-                <div className="ttl">{plain(unread.at(-1)!.question ?? unread.at(-1)!.said)}</div>
-                <div className="state">
-                  {t.phone.obeyaAnswered}
-                  <span className="since"> · {t.phone.since(when(unread.at(-1)!.at))}</span>
-                </div>
-              </button>
-            </li>,
-          ]
-        : []),
-    ];
-  });
   if (!canvases.length) return null;
-  const waits = canvases.some((c) => snaps[c.id]!.items.some(needsYou) || unreadAnswers(snaps[c.id]!.talk) > 0);
+  const waits = canvases.some((c) => waitingOn(snaps[c.id]!) > 0);
+  const rows = canvases.filter((c) => forYouOf(snaps[c.id]!, underway).cards.length || unreadAnswers(snaps[c.id]!.talk));
   return (
     <>
       {!waits && <p className="ph-none">{t.phone.nothingWaits}</p>}
-      {rows.length > 0 && <ul className="ph-list">{rows}</ul>}
+      {rows.length > 0 && (
+        <ul className="ph-list">
+          {rows.map((c) => (
+            <ForYouRows key={c.id} waiting={snaps[c.id]!} canvas={c.id} where={several ? c.name : undefined} underway={underway} repos={c.repos} onOpen={onOpen} onObeya={onObeya} onReply={(i, r) => onReply(c.id, i, r)} />
+          ))}
+        </ul>
+      )}
     </>
   );
 }
@@ -760,11 +753,28 @@ function Running({ entries, several, onOpen }: { entries: { item: Item; canvas: 
   );
 }
 
+/** A task planned and not archived that neither waits for the owner nor got snoozed while it did: the phone's „Geplant“. */
+const plannedLater = (i: Item) => i.kind === 'task' && i.state === 'planned' && !i.archivedAt && !needsYou(i) && !i.snoozed?.waiting;
+
+/** Whether a folded list is open, kept in this tab under `key`, and the toggle that opens and closes it. */
+function useFolded(key: string): [boolean, () => void] {
+  const [open, setOpen] = useState(() => sessionStorage.getItem(key) === '1');
+  const toggle = () =>
+    setOpen((o) => {
+      try {
+        if (o) sessionStorage.removeItem(key);
+        else sessionStorage.setItem(key, '1');
+      } catch {}
+      return !o;
+    });
+  return [open, toggle];
+}
+
 /**
- * The cards that are done but not archived, below the others: a head with their count that opens
- * and closes the list. Opened, the head moves to the top of the screen so the cards below it show.
+ * The cards planned or done, below the others: a head with their count that opens and closes the
+ * list. Opened, the head moves to the top of the screen so the cards below it show.
  */
-function Done({ entries, several, open, onToggle, onOpen }: { entries: { item: Item; canvas: CanvasInfo }[]; several: boolean; open: boolean; onToggle: () => void; onOpen: (i: Item) => void }) {
+function Folded({ label, entries, several, open, onToggle, onOpen }: { label: string; entries: { item: Item; canvas: CanvasInfo }[]; several: boolean; open: boolean; onToggle: () => void; onOpen: (i: Item) => void }) {
   const head = useRef<HTMLElement>(null);
   const opened = useRef(false);
   useEffect(() => {
@@ -772,7 +782,7 @@ function Done({ entries, several, open, onToggle, onOpen }: { entries: { item: I
     opened.current = false;
   }, [open]);
   return (
-    <section className={['ph-section ph-done', open && 'open'].filter(Boolean).join(' ')} ref={head}>
+    <section className={['ph-section ph-fold', open && 'open'].filter(Boolean).join(' ')} ref={head}>
       <h2>
         <button
           aria-expanded={open}
@@ -782,7 +792,7 @@ function Done({ entries, several, open, onToggle, onOpen }: { entries: { item: I
           }}
         >
           <span className="arrow" aria-hidden="true" />
-          <span className="label">{t.phone.done}</span>
+          <span className="label">{label}</span>
           <span className="n">{entries.length}</span>
         </button>
       </h2>

@@ -31,6 +31,7 @@ import type { Messages } from '../core/messages';
 import type { ToolCall, ToolWatch } from './folder';
 import type { AgentEffort, AgentRole, AgentSetting } from '../core/types';
 import { messageOf } from '../core/text';
+import { claudeLoginFailed } from '../core/login';
 
 export interface AgentTool {
   name: string;
@@ -69,9 +70,10 @@ export type AgentEvent =
   | { type: 'lost'; message: string }
   /**
    * The turn failed. `limit` when the account's usage limit stopped it (the five-hour session
-   * limit, say): it lifts again at `resetsAt` (milliseconds) when the API said when.
+   * limit, say): it lifts again at `resetsAt` (milliseconds) when the API said when. `token` when
+   * the session signed in with a token rather than this machine's account (`CardEvent.token`).
    */
-  | { type: 'error'; message: string; limit?: { resetsAt?: number } };
+  | { type: 'error'; message: string; limit?: { resetsAt?: number }; token?: true };
 
 /** Who refused a tool call (`SDKPermissionDeniedMessage.decision_reason_type`, sorted). */
 export type DeniedBy = 'rule' | 'classifier' | 'mode' | 'hook' | 'obeya' | 'owner' | 'other';
@@ -354,6 +356,8 @@ export const sdkRuntime: AgentRuntime = {
     const there = remote(spec.cwd);
     // a session on another machine: whether its connection was lost, rather than the session failing
     let lost = false;
+    // not on this machine's account: on another machine, or here on CLAUDE_CODE_OAUTH_TOKEN
+    const token = there || ({ ...cleanEnv(), ...spec.env }).CLAUDE_CODE_OAUTH_TOKEN ? { token: true as const } : {};
     const files = there ? sessionFiles(there.host.o.home, spec.plugins ?? []) : undefined;
     if (there && files) {
       const dir = there.host.prepare(files);
@@ -464,12 +468,12 @@ export const sdkRuntime: AgentRuntime = {
             const failed = resultFailure(m);
             const limit = failed ? usageLimit(failed, limited, limits) : undefined;
             limited = false;
-            if (failed) spec.onEvent({ type: 'error', message: failed, ...(limit ? { limit } : {}) });
+            if (failed) spec.onEvent({ type: 'error', message: failed, ...(limit ? { limit } : {}), ...token });
             spec.onEvent({ type: 'idle', background: background.length, ...(inbox.taken(m) ? {} : { more: true }) });
           }
         }
       } catch (e) {
-        if (!abort.signal.aborted && !lost) spec.onEvent({ type: 'error', message: withStderr(messageOf(e), stderr) });
+        if (!abort.signal.aborted && !lost) spec.onEvent({ type: 'error', message: withStderr(messageOf(e), stderr), ...token });
       }
       if (lost && !abort.signal.aborted) spec.onEvent({ type: 'lost', message: `the connection to ${there!.host.name} was lost` });
     })();
@@ -655,7 +659,7 @@ export async function askOwner(
 
 /** A session's failure in the owner's words. */
 export function failureReason(message: string, t: Messages): string {
-  if (/not logged in|\/login/i.test(message)) return t.failure.notLoggedIn;
+  if (claudeLoginFailed(message)) return t.failure.notLoggedIn;
   return t.failure.session(message);
 }
 

@@ -24,7 +24,7 @@
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --planned: #a0978a; --working: #1d5fe0; --waiting: #f27405; --approved: #3d9a1f; --inPr: #08888e; --live: #b4ab98; --proposal: #7b4fd6; --idea: #dc2f5e; --question: #4f7896;
   --waiting-rgb: 242,116,5; --on-ink: #fff; --error: #c42b1c; --warn: #a3520a;
-  --container: rgba(255,252,242,.45); --container-line: rgba(120,105,75,.22);
+  --dep-line: #aaa190; --container: rgba(255,252,242,.45); --container-line: rgba(120,105,75,.22);
   --dim: rgba(40,32,18,.34); --panel: #fdfbf5; --chip: #f0ebdf;
   --s: 1;
   /* native controls, and the pages in a frame (prefers-color-scheme), take the look chosen */
@@ -37,7 +37,7 @@
   --lift: inset 0 1px 0 rgba(255,250,235,.06), 0 1px 0 rgba(0,0,0,.7), 3px 7px 0 rgba(0,0,0,.45), 0 18px 30px -10px rgba(0,0,0,.7);
   --planned: #8a8274; --working: #5b95ff; --waiting: #ff8a1c; --approved: #78c448; --inPr: #27b9b6; --live: #5f594e; --proposal: #a587ff; --idea: #ff6289; --question: #8db3cf;
   --waiting-rgb: 255,138,28; --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a;
-  --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
+  --dep-line: #5c564c; --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
   --dim: rgba(0,0,0,.55); --panel: #1f1d1a; --chip: #2c2925;
   color-scheme: dark;
 } }
@@ -47,7 +47,7 @@
   --lift: inset 0 1px 0 rgba(255,250,235,.06), 0 1px 0 rgba(0,0,0,.7), 3px 7px 0 rgba(0,0,0,.45), 0 18px 30px -10px rgba(0,0,0,.7);
   --planned: #8a8274; --working: #5b95ff; --waiting: #ff8a1c; --approved: #78c448; --inPr: #27b9b6; --live: #5f594e; --proposal: #a587ff; --idea: #ff6289; --question: #8db3cf;
   --waiting-rgb: 255,138,28; --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a;
-  --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
+  --dep-line: #5c564c; --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
   --dim: rgba(0,0,0,.55); --panel: #1f1d1a; --chip: #2c2925;
   color-scheme: dark;
 }
@@ -239,8 +239,8 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .z-far .card.chip { opacity: .45; }
 
 /* ---------- chrome ---------- */
-/* a frosted strip the canvas slides under, so cards never run into the pills; it ends at the sheet docked on the right */
-#bar { position: fixed; top: 0; left: 0; right: var(--side, 0px); transition: right .45s cubic-bezier(.3,.9,.3,1); height: 58px; padding: 0 14px; display: flex; align-items: center; gap: 10px; z-index: 20;
+/* a frosted strip the canvas slides under, so cards never run into the pills; it ends at the panels docked at the window's edges */
+#bar { position: fixed; top: 0; left: var(--left, 0px); right: var(--side, 0px); transition: right .45s cubic-bezier(.3,.9,.3,1), left .45s cubic-bezier(.3,.9,.3,1), padding-left .45s cubic-bezier(.3,.9,.3,1); height: 58px; padding: 0 14px; display: flex; align-items: center; gap: 10px; z-index: 20;
   background: color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
   border-bottom: 1px solid var(--line); box-shadow: 0 6px 18px -12px rgba(30,25,15,.18); }
 .pill { background: var(--card); box-shadow: var(--shadow); border-radius: 3px; padding: 7px 14px; display: flex; align-items: center; gap: 8px; font-size: 14px; border: 0; white-space: nowrap; }
@@ -267,29 +267,65 @@ button.pill:hover { box-shadow: var(--lift); }
 .pill.restart .tip ul { margin: 0 0 6px; padding-left: 18px; }
 .pill.restart .tip.risk { border-left: 3px solid var(--waiting); }
 .pill.restart:hover:not(:has(button:hover)) > .tip.why, .pill.restart button:hover > .tip.risk { display: block; }
-.canvas-pill { position: relative; }
-.canvas-pill .switch { cursor: pointer; }
-.canvas-menu { position: absolute; top: calc(100% + 6px); left: 0; min-width: 240px; list-style: none; margin: 0; padding: 6px; background: var(--panel);
-  border-radius: 3px; box-shadow: var(--lift); z-index: 30; }
-.canvas-menu a { display: flex; flex-direction: column; padding: 7px 10px; border-radius: 2px; text-decoration: none; font-size: 13px; }
-.canvas-menu a:hover, .canvas-menu li.on a { background: var(--chip); }
-/* cards on another canvas that need the owner: their count at its menu entry, the sum at the closed pill */
+/* the navigation at the bar's left (src/ui/nav.tsx): the canvas's name, and under it the canvases
+   with what waits for the owner on each, as the phone's „Braucht dich“ shows it */
+.nav-pill { position: relative; }
+.nav-pill .switch { cursor: pointer; }
+.nav-pill .switch.on { background: var(--chip); }
 /* counts of what waits for the owner look like the pin on such a card */
 .waits { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
   background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.4), transparent 50%), var(--waiting); color: var(--on-ink); font-size: 12px; font-weight: 700;
   display: grid; place-items: center; box-sizing: border-box; }
-.canvas-pill .switch .waits.pulse { animation: pulse-in 1.8s ease-out infinite; }
+.nav-pill .switch .waits.pulse { animation: pulse-in 1.8s ease-out infinite; }
 @keyframes pulse-in { 0% { box-shadow: 0 0 0 0 rgba(var(--waiting-rgb),.55); } 70%, 100% { box-shadow: 0 0 0 10px rgba(var(--waiting-rgb),0); } }
-.canvas-menu a { position: relative; padding-right: 40px; }
-.canvas-menu a .waits { position: absolute; top: 50%; right: 10px; transform: translateY(-50%); }
+.nav-menu { position: absolute; top: calc(100% + 6px); left: 0; width: min(360px, calc(100vw - 28px)); max-height: calc(100vh - 80px); overflow: auto; box-sizing: border-box;
+  padding: 14px 14px 16px; background: var(--panel); border-radius: 3px; box-shadow: var(--lift); z-index: 30; }
+/* pinned: a sidebar docked to the window's left edge, from top to bottom, as the sheets are on the right;
+   above the dim of an open card (#dim), so its entries stay in view and open the next card */
+.nav-sheet { position: fixed; top: 0; left: 0; bottom: 0; width: 340px; box-sizing: border-box; background: var(--panel); border-right: 1px solid var(--line);
+  z-index: 31; transform: translateX(calc(-100% - 1px)); visibility: hidden; transition: transform .45s cubic-bezier(.3,.9,.3,1), visibility 0s .45s;
+  overflow: auto; padding: 14px 14px 30px; }
+.nav-sheet.on { transform: none; visibility: visible; transition-delay: 0s; }
+.nav-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.nav-head h2 { margin: 0; font: 600 21px/1.15 var(--serif); }
+.nav-sheet .nav-head { height: 30px; margin: 0 0 12px; }
+/* in the app on a Mac the window's traffic lights sit in its head, as tall as the bar; it stays put as the list scrolls under it
+   (a sticky box keeps clear of its scroller's padding, hence the negative top) */
+.nav-sheet.titlebar .nav-head { position: sticky; top: -14px; z-index: 1; height: 58px; margin: -14px -14px 0; padding: 0 14px 0 92px; background: var(--panel); }
+.nav-pin { margin-left: auto; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 3px;
+  background: var(--chip); color: var(--muted); cursor: pointer; }
+.nav-pin:hover, .nav-pin.on { color: var(--ink); }
+.nav-canvas + .nav-canvas { margin-top: 10px; }
+.nav-row { position: relative; }
+.nav-row a { display: flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: 2px; text-decoration: none; font-size: 13px; color: var(--muted); }
+.nav-row a svg { flex: none; }
+.nav-row a .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-row a:hover { background: var(--chip); }
+.nav-canvas.on > .nav-row a { color: var(--ink); }
+.nav-row:has(.canvas-agents) a { padding-right: 46px; }
+.ph-none + .nav-canvas, :is(.nav-menu, .nav-sheet) > .ph-none { margin-bottom: 6px; }
+:is(.nav-menu, .nav-sheet) .ph-none { font-size: 13.5px; padding: 0 10px; }
+/* its entries are light rows, the title and what it waits for: everything in it waits for the owner,
+   so a waiting card's orange frame would say nothing; the card open now is marked */
+.fy-rows { list-style: none; margin: 0; padding: 0; }
+.nav-canvas > .fy-rows { margin: 1px 0 0 22px; }
+.fy-row { position: relative; display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 6px 10px; border: 0; border-radius: 2px;
+  background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.fy-row:hover { background: var(--chip); }
+.fy-row.on { background: var(--chip); }
+.fy-row.on::before { content: ""; position: absolute; left: -6px; top: 7px; bottom: 7px; width: 3px; border-radius: 2px; background: var(--ink); }
+.fy-ttl { font: 600 14.5px/1.25 var(--serif); }
+.fy-state { font-size: 12px; color: var(--muted); }
+/* the one-click replies under an entry: under a light row in line with its text, under a phone's card face */
+.fy-replies { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 10px 8px; }
+.fy-replies .btn.small { margin-top: 0; padding: 4px 11px; font-size: 12.5px; }
+.ph-list > li:has(> .fy-replies) { flex-direction: column; }
+.ph-list .fy-replies { gap: 8px; padding: 8px 0 0; }
+.ph-list .fy-replies .btn.small { padding: 9px 16px; font-size: 14px; }
 /* a canvas's agents on its row: the moving line while one works there, which turns into a pause for
    all of them while the pointer is on the row; with only paused ones, a play on the same hover */
-.canvas-menu li { position: relative; }
-.canvas-menu li:has(.canvas-agents) a { padding-right: 46px; }
-.canvas-menu li:has(.waits):has(.canvas-agents) a { padding-right: 74px; }
 .canvas-agents { position: absolute; top: 50%; right: 10px; transform: translateY(-50%); width: 26px; height: 20px;
   display: flex; align-items: center; justify-content: center; --c: var(--working); }
-.canvas-menu li:has(.waits) .canvas-agents { right: 38px; }
 .canvas-agents.running::before { content: ""; width: 26px; height: 2px;
   background: linear-gradient(90deg, var(--c) 0 50%, transparent 50%) 0 0 / 200% 100% no-repeat, color-mix(in srgb, var(--c) 22%, transparent);
   animation: draw 1.6s cubic-bezier(.5,0,.3,1) infinite; }
@@ -303,8 +339,8 @@ button.pill:hover { box-shadow: var(--lift); }
 .agents-turn .tip { display: none; position: absolute; left: calc(100% + 16px); top: 50%; transform: translateY(-50%); padding: 6px 10px; border-radius: 3px;
   background: var(--panel); color: var(--ink); box-shadow: var(--lift); white-space: nowrap; font-size: 13px; font-weight: 400; pointer-events: none; z-index: 31; }
 .agents-turn:is(:hover, :focus-visible) .tip { display: block; }
-.canvas-menu li:is(:hover, :focus-within) .agents-turn { display: grid; }
-.canvas-menu li:is(:hover, :focus-within) .canvas-agents::before { display: none; }
+.nav-row:is(:hover, :focus-within) .agents-turn { display: grid; }
+.nav-row:is(:hover, :focus-within) .canvas-agents::before { display: none; }
 @media (hover: none) {
   .agents-turn { display: grid; }
   .canvas-agents::before { display: none; }
@@ -370,8 +406,9 @@ button.pill:hover { box-shadow: var(--lift); }
 .pill.workspaces .ws-menu .hint { font-size: 12px; line-height: 1.4; }
 #bar > svg { flex: none; margin-right: 4px; }
 #bar .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
-/* the traffic lights of the app's window on a Mac sit at the bar's left */
+/* the traffic lights of the app's window on a Mac sit at the bar's left, or in the pinned navigation's head */
 #bar.titlebar { padding-left: 92px; }
+#bar.titlebar.beside-nav { padding-left: 14px; }
 .kpill .n { background: var(--planned); color: var(--on-ink); border-radius: 3px; padding: 0 7px; font-weight: 700; font-size: 12px; }
 .kpill.on { background: var(--ink); color: var(--bg); }
 /* the bar's buttons always fit (src/ui/barFit.ts): narrower than its contents, the bar gives up in steps the
@@ -379,16 +416,16 @@ button.pill:hover { box-shadow: var(--lift); }
    then all but the sheets' buttons and the restart's text */
 #bar > *, #bar .right > * { flex: none; }
 .bar-sign, .bar-icon { display: none; }
-#bar[data-fit~="1"] > svg, #bar[data-fit~="1"] .canvas-pill .lbl, #bar[data-fit~="1"] .pill.restart .hint { display: none; }
+#bar[data-fit~="1"] > svg, #bar[data-fit~="1"] .nav-pill .lbl, #bar[data-fit~="1"] .pill.restart .hint { display: none; }
 #bar[data-fit~="1"] .bar-sign { display: block; line-height: 0; }
 #bar[data-fit~="2"] :is(#workspaces, #usage, .config) .lbl, #bar[data-fit~="3"] :is(.archive, .new-card) .lbl,
-  #bar[data-fit~="4"] :is(.queue, #attention) .lbl { display: none; }
+  #bar[data-fit~="4"] .queue .lbl { display: none; }
 #bar[data-fit~="2"] .config .bar-icon, #bar[data-fit~="3"] .archive .bar-icon, #bar[data-fit~="4"] .queue .bar-icon { display: block; }
 #bar[data-fit~="2"] .config, #bar[data-fit~="3"] :is(.archive .kpill, .new-card), #bar[data-fit~="4"] .queue .kpill { padding-inline: 10px; }
 #bar[data-fit~="5"] #workspaces, #bar[data-fit~="5"] .help { display: none; }
 /* Keep Claude's percentages after the pool gives way; only the very smallest bar drops them. */
 #bar[data-fit~="5"] #usage .face .meter { display: none; }
-#bar[data-fit~="6"] #usage, #bar[data-fit~="6"] .canvas-pill, #bar[data-fit~="6"] .new-card, #bar[data-fit~="6"] .pill.restart .say { display: none; }
+#bar[data-fit~="6"] #usage, #bar[data-fit~="6"] .nav-pill .switch b, #bar[data-fit~="6"] .new-card, #bar[data-fit~="6"] .pill.restart .say { display: none; }
 /* the bar's buttons are one height, whatever they hold: text, an icon, a count */
 #bar .pill, .pill.talk-pill { height: 34px; box-sizing: border-box; padding-block: 0; }
 #bar button.pill.help { width: 34px; height: 34px; }
@@ -444,7 +481,6 @@ button.pill:hover { box-shadow: var(--lift); }
 .pref-new { gap: 6px 10px; }
 .pref-new textarea { min-height: 38px; font-size: 13px; }
 .pref-new .filed, .pref-new .p-error { flex-basis: 100%; }
-#attention .n { background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.4), transparent 50%), var(--waiting); color: var(--on-ink); border-radius: 10px; padding: 0 7px; font-weight: 700; font-size: 12px; }
 .hint { color: var(--muted); font-size: 12px; }
 button.pill.help { width: 32px; height: 32px; padding: 0; justify-content: center; font-weight: 700; font-size: 15px; color: var(--muted); }
 button.pill.help:hover, button.pill.help.on { color: var(--ink); }
@@ -504,7 +540,7 @@ button.pill.help:hover, button.pill.help.on { color: var(--ink); }
 .wish-link:hover { color: var(--ink); }
 .wish-link:hover .w-text { border-color: var(--muted); }
 .wish-link.on-reply { display: flex; margin-top: 6px; }
-.empty { position: fixed; left: calc(50% - var(--side, 0px) / 2); top: 50%; transform: translate(-50%, -50%); color: var(--muted); pointer-events: none; text-align: center; white-space: nowrap; }
+.empty { position: fixed; left: calc(50% + (var(--left, 0px) - var(--side, 0px)) / 2); top: 50%; transform: translate(-50%, -50%); color: var(--muted); pointer-events: none; text-align: center; white-space: nowrap; }
 .empty p { margin: 0; }
 .empty p + p { margin-top: 4px; }
 .empty .none { margin-bottom: 8px; }
@@ -521,7 +557,7 @@ button.pill.help:hover, button.pill.help.on { color: var(--ink); }
   transform: translate(-50%, -50%); white-space: nowrap; border: 0; }
 .edge .arr { width: 20px; height: 20px; border-radius: 50%; background: var(--c); color: var(--on-ink); display: grid; place-items: center; font-size: 12px; }
 
-#minimap { position: fixed; left: 14px; bottom: 14px; width: 210px; height: 130px; background: var(--card); border-radius: 3px;
+#minimap { position: fixed; left: calc(var(--left, 0px) + 14px); transition: left .45s cubic-bezier(.3,.9,.3,1); bottom: 14px; width: 210px; height: 130px; background: var(--card); border-radius: 3px;
   box-shadow: var(--shadow); z-index: 20; cursor: pointer; overflow: hidden; }
 #minimap svg { width: 100%; height: 100%; display: block; }
 
@@ -641,9 +677,6 @@ textarea.p-body:focus { border-color: var(--muted); }
 .p-status { color: var(--muted); font-weight: 500; }
 .p-h { margin: 22px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .p-error { color: var(--error); margin: 12px 0 0; font-size: 13.5px; }
-.p-task { margin-top: 14px; font-size: 13.5px; }
-.p-task summary { cursor: pointer; color: var(--muted); }
-.p-task .p-lead { font-size: 14px; }
 .question { margin: 18px 0 0; padding: 14px 18px; border-radius: 3px; border: 1.5px solid var(--waiting); max-width: 80ch;
   background: color-mix(in srgb, var(--waiting) 9%, transparent); font-size: 15px; }
 .demo-view video { width: 100%; border-radius: 3px; background: #000; display: block; }
@@ -974,6 +1007,11 @@ span.cl-name { color: inherit; cursor: default; }
 .reauthenticate code { overflow-wrap: anywhere; white-space: normal; }
 .reauthenticate > .btn.small { margin-top: 0; color: var(--ink); background: var(--card); border: 1px solid var(--line); }
 .talk .note .reauthenticate { justify-content: center; }
+.reauthenticate-token { display: flex; flex-direction: column; gap: 6px; flex-basis: 100%; font-style: normal; }
+.reauthenticate-token .c-row { display: flex; align-items: center; gap: 8px; }
+.reauthenticate-token input { flex: 1; min-width: 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: 3px; background: var(--card); font-size: 13px; outline: none; }
+.reauthenticate-token input:focus { border-color: var(--muted); }
+.reauthenticate-token .btn.small { margin-top: 0; color: var(--ink); background: var(--card); border: 1px solid var(--line); }
 .talk .note.ev-denied { color: var(--warn); font-style: normal; }
 /* the line where the card was snoozed, while it is: with „Jetzt zurückholen“ and „Ändern“ under it */
 .talk .note.snooze-line { display: flex; flex-direction: column; align-items: center; gap: 2px; border-top: 1px dashed var(--line); padding-top: 8px; font-style: normal; }
@@ -1027,6 +1065,12 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .talk .msg .demo-q.answered b { color: var(--muted); }
 .question.pr { border-color: var(--inPr); background: color-mix(in srgb, var(--inPr) 7%, transparent); }
 .question.pr h4 a { color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 14px; }
+/* on a review card: what goes onto the PR with the approval, the agent's text as the contributor will read it */
+.pr-held { margin-top: 10px; }
+.pr-held h5 { margin: 0 0 4px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.pr-held-text { padding: 6px 10px; border-radius: 6px; background: var(--card); border: 1px solid color-mix(in srgb, var(--inPr) 25%, transparent); font-size: 13px; }
+.pr-held-text .p-lead { margin: 4px 0; }
+.pr-held-asks { margin-top: 6px; font-size: 13px; color: var(--waiting); }
 .checks { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
 .checks li::before { margin-right: 5px; font-weight: 700; }
 .checks li.success::before { content: "✓"; color: var(--approved); }
@@ -1098,7 +1142,6 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .qlist.on-card li.own .hint { font-weight: 400; }
 .qlist.on-card li.own[data-sorting=dragged] { box-shadow: var(--lift); }
 .sorting, .sorting * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
-.p-files { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; }
 .card.queued .state { font-style: italic; }
 .card.queued::before { background: repeating-linear-gradient(90deg, var(--c) 0 8px, transparent 8px 13px); }
 .question h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
@@ -1178,7 +1221,6 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .shot img { height: 88px; max-width: 240px; object-fit: cover; border-radius: 2px; display: block; }
 .talk .msg.by-owner .shots { justify-content: flex-end; }
 /* where a conversation starts, long ones folded to about eight lines */
-.talk .msg.seed .p-task { margin-top: 6px; font-size: 13px; }
 .talk .msg.by-plan .who, .talk .msg.by-proposal .who { color: var(--muted); }
 .fold { font-size: 14px; }
 .fold.folded { max-height: calc(var(--fold-lines, 8) * 1lh + 2px); overflow: hidden; }
@@ -1619,14 +1661,14 @@ button.link:hover { text-decoration: underline; }
 
 /* ---------- push to talk (from the mock) ---------- */
 /* in the middle of the canvas, left of a sheet docked on the right */
-#ptt { position: fixed; left: calc(50% - var(--side, 0px) / 2); transition: left .45s cubic-bezier(.3,.9,.3,1); bottom: 22px; transform: translateX(-50%); z-index: 50; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+#ptt { position: fixed; left: calc(50% + (var(--left, 0px) - var(--side, 0px)) / 2); transition: left .45s cubic-bezier(.3,.9,.3,1); bottom: 22px; transform: translateX(-50%); z-index: 50; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 #mic { width: 58px; height: 58px; border-radius: 50%; border: 0; background: var(--card); box-shadow: var(--lift); cursor: pointer; display: grid; place-items: center; position: relative; touch-action: none; }
 #mic svg { width: 24px; height: 24px; }
 #mic .ring { position: absolute; inset: -6px; border-radius: 50%; border: 3px solid var(--waiting); opacity: 0; transform: scale(var(--lvl, 1)); transition: transform .08s linear, opacity .2s; }
 #ptt.listening #mic { background: var(--waiting); color: var(--on-ink); }
 #ptt.listening #mic .ring { opacity: .8; }
 @keyframes spin { to { transform: rotate(360deg); } }
-#target { font-size: 12px; color: var(--muted); background: var(--card); box-shadow: var(--shadow); border-radius: 3px; padding: 4px 12px; white-space: nowrap; max-width: calc((100vw - var(--side, 0px)) * .6); overflow: hidden; text-overflow: ellipsis; }
+#target { font-size: 12px; color: var(--muted); background: var(--card); box-shadow: var(--shadow); border-radius: 3px; padding: 4px 12px; white-space: nowrap; max-width: calc((100vw - var(--left, 0px) - var(--side, 0px)) * .6); overflow: hidden; text-overflow: ellipsis; }
 #target b { color: var(--ink); font-weight: 600; }
 #target.flat { color: var(--on-ink); background: var(--error); font-weight: 600; }
 #target.into, #target.into b { color: var(--working); }
@@ -1647,7 +1689,7 @@ button.link:hover { text-decoration: underline; }
 .c-file .remove { position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--line);
   background: var(--card); color: var(--ink); font-size: 13px; line-height: 1; cursor: pointer; padding: 0; }
 #ptt.dropping #mic { outline: 2px dashed var(--working); outline-offset: 5px; }
-.ptt-error { font-size: 12px; color: var(--error); background: var(--card); box-shadow: var(--shadow); border-radius: 2px; padding: 4px 10px; max-width: calc((100vw - var(--side, 0px)) * .6); }
+.ptt-error { font-size: 12px; color: var(--error); background: var(--card); box-shadow: var(--shadow); border-radius: 2px; padding: 4px 10px; max-width: calc((100vw - var(--left, 0px) - var(--side, 0px)) * .6); }
 .tell { margin: 4px 0 6px; }
 /* the Koordinator's sheet is a column: the conversation takes the height the sheet has, the field to
    write in under it, then the sections that open and close; an open section takes from the
@@ -1672,8 +1714,8 @@ button.link:hover { text-decoration: underline; }
 .fold-body > .hint:first-child { margin-top: 0; }
 
 /* confirmations, and each command while the Koordinator reads it, stacked above the microphone, newest last */
-#acks { position: fixed; left: calc(50% - var(--side, 0px) / 2); transition: left .45s cubic-bezier(.3,.9,.3,1); bottom: 128px; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
-.ack { background: var(--ink); color: var(--bg); border-radius: 3px; padding: 12px 16px; max-width: min(560px, calc(100vw - var(--side, 0px) - 32px)); font-size: 14px;
+#acks { position: fixed; left: calc(50% + (var(--left, 0px) - var(--side, 0px)) / 2); transition: left .45s cubic-bezier(.3,.9,.3,1); bottom: 128px; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.ack { background: var(--ink); color: var(--bg); border-radius: 3px; padding: 12px 16px; max-width: min(560px, calc(100vw - var(--left, 0px) - var(--side, 0px) - 32px)); font-size: 14px;
   display: flex; gap: 14px; align-items: center; pointer-events: auto; animation: ack-in .25s; }
 @keyframes ack-in { from { opacity: 0; transform: translateY(12px); } }
 .ack b { font-weight: 600; }
@@ -1728,8 +1770,12 @@ button.link:hover { text-decoration: underline; }
 
 /* while the pointer is on a card with waits: the cards it waits for and those waiting for it, over every step */
 #deps { position: absolute; left: 0; top: 0; z-index: 1; overflow: visible; pointer-events: none; }
-#deps path { fill: none; stroke: var(--waiting); stroke-width: 2.5; }
-#deps marker path { fill: var(--waiting); stroke: none; }
+/* every wait as a faint line under the cards; those around the card under the pointer in the waiting
+   colour, as wide as the faint one (the width comes with the path) */
+#deps .faint { fill: none; stroke: var(--dep-line); }
+#deps .lit { fill: none; stroke: var(--waiting); }
+#deps marker.faint path { fill: var(--dep-line); }
+#deps marker.lit path { fill: var(--waiting); }
 .card.dep-self, .card.dep-before, .card.dep-after { box-shadow: 0 0 0 2.5px var(--waiting), var(--lift); }
 /* over a snoozed card's own shadow, hovered or not, in any state (the last `:is` weighs as its heaviest selector, and `*` matches all) */
 .card.snoozed:is(.dep-self, .dep-before, .dep-after):is(:hover, .s-waiting, .s-idea.your-turn, *) { box-shadow: 0 0 0 2.5px var(--waiting), var(--lift); }
@@ -1959,19 +2005,19 @@ button.link:hover { text-decoration: underline; }
 .ph-card .state::after { margin-left: 7px; }
 .ph-card .state .state-text { display: contents; }
 .ph-card .state .since { color: var(--muted); font-weight: 500; white-space: pre; }
-/* everything in „Für dich“ waits for the owner: the heading says so, no pin on each card */
+/* everything in „Braucht dich“ waits for the owner: the heading says so, no pin on each card */
 .ph-card .badge { display: none; }
 .ph-none { margin: 0; color: var(--muted); font-size: 14.5px; }
-/* „Erledigt“ below the lists, closed until its head is tapped; opened, the head stands under the bar */
-.ph-done { scroll-margin-top: 60px; }
-.ph-done h2 button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; margin: -6px 0; padding: 0; border: 0; background: none;
+/* „Geplant“ and „Erledigt“ below the lists, closed until their head is tapped; opened, the head stands under the bar */
+.ph-fold { scroll-margin-top: 60px; }
+.ph-fold h2 button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; margin: -6px 0; padding: 0; border: 0; background: none;
   font: inherit; color: var(--muted); text-align: left; cursor: pointer; }
-.ph-done.open h2 button { color: var(--ink); }
-.ph-done .arrow { width: 9px; height: 9px; margin: 0 3px; flex: none; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(-45deg); transition: transform .15s; }
-.ph-done.open .arrow { transform: rotate(45deg); margin-top: -4px; }
+.ph-fold.open h2 button { color: var(--ink); }
+.ph-fold .arrow { width: 9px; height: 9px; margin: 0 3px; flex: none; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(-45deg); transition: transform .15s; }
+.ph-fold.open .arrow { transform: rotate(45deg); margin-top: -4px; }
 /* the word and the count trimmed to their capitals, so arrow, word and count centre on what the eye sees */
-.ph-done .label { text-box: trim-both cap alphabetic; }
-.ph-done .n { font: 600 13px/1 var(--cond); padding: 6px 8px; border-radius: 3px; background: var(--chip); color: var(--muted); text-box: trim-both cap alphabetic; }
+.ph-fold .label { text-box: trim-both cap alphabetic; }
+.ph-fold .n { font: 600 13px/1 var(--cond); padding: 6px 8px; border-radius: 3px; background: var(--chip); color: var(--muted); text-box: trim-both cap alphabetic; }
 /* the cards snoozed while they waited stand under it, as far off as the cards from each other */
 .ph-none + .ph-list { margin-top: 14px; }
 /* the button for Obeya's conversation (the canvas's talk pill, a finger's size), left of the microphone in
@@ -2084,7 +2130,7 @@ button.link:hover { text-decoration: underline; }
   .ph-quiet { top: 50px; }
   #ph-home .ph-quiet { top: 8px; }
   .ph-section { margin-top: 14px; }
-  .ph-done { scroll-margin-top: 8px; }
+  .ph-fold { scroll-margin-top: 8px; }
   .ph-view ~ #ptt { left: auto; right: env(safe-area-inset-right); width: 112px; top: calc(50% - 34px); bottom: auto; transform: none; }
   /* the clamped lines end at the padding's edge: the space above and below is a border, so no fifth line peeks out */
   .ph-view ~ #ptt #target { max-width: 104px; white-space: normal; text-align: center; padding: 0 8px; border-block: 4px solid var(--card);
@@ -2115,6 +2161,11 @@ button.link:hover { text-decoration: underline; }
 /* a review card: the checks and merge probe, and its findings, each to decide on */
 .findings { margin: 10px 0 12px; font-size: 13px; }
 .findings .rr-checks { font-size: 12.5px; margin-bottom: 6px; }
+.findings .rr-clash { border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: var(--card); line-height: 1.4; }
+.findings .rr-clash b { color: var(--warn); }
+.findings .rr-clash .rr-clash-push { margin-top: 8px; display: flex; align-items: center; gap: 10px; }
+.findings .rr-clash .rr-clash-push span { color: var(--ink); font-size: 12.5px; }
+.findings .rr-clash .rr-clash-what { margin-top: 6px; color: var(--muted); font-size: 12.5px; }
 .findings .ok { color: var(--approved); }
 .findings .bad { color: var(--error); }
 .findings .p-h { margin: 8px 0 6px; }
@@ -2128,7 +2179,11 @@ button.link:hover { text-decoration: underline; }
 .finding .f-status { margin-top: 5px; font-size: 12px; color: var(--muted); }
 .finding .f-status.pending { color: var(--working); }
 .finding .f-choices { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+.f-bundle { border-left: 3px solid var(--waiting); padding-left: 8px; margin-bottom: 8px; }
+.f-bundle .f-bundle-head { font-size: 12px; color: var(--warn); margin-bottom: 4px; }
+.f-bundle .finding:last-child { margin-bottom: 0; }
 .quote.decided { --q: var(--waiting); }
+.decided-lines .decided-tasks { font-size: 12px; color: var(--muted); }
 .decided-lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 5px 9px 6px; }
 .decided-lines .quote-text { color: var(--ink); }
 .tell-hint { display: flex; align-items: center; gap: 4px; margin: -2px 0 8px; font-size: 11px; color: var(--muted); }
@@ -2145,6 +2200,8 @@ button.link:hover { text-decoration: underline; }
 .personal-private { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
 .personal-private li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
 .site-setup { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.cfg-sub > .tag-propose { flex-direction: column; align-items: flex-start; gap: 6px; }
+.tag-propose > .hint { margin: 0; }
 .site-setup > .seg { margin-top: 0; }
 .site-setup > .hint { margin: 0; }
 .personal-actions { display: flex; gap: 8px; align-items: center; margin: 10px 0 4px; }
@@ -2160,13 +2217,19 @@ button.link:hover { text-decoration: underline; }
 
 /* Owner-drawn dependencies and their edge handles. */
 .manual-deps { position: absolute; left: 0; top: 0; overflow: visible; z-index: 3; pointer-events: none; }
-.manual-deps .manual-line, .manual-deps .manual-ghost { fill: none; stroke: var(--waiting); stroke-width: 2.5; }
+.manual-deps .manual-ghost { fill: none; stroke: var(--waiting); }
 .manual-deps marker path { fill: var(--waiting); }
 .manual-deps .manual-ghost { opacity: .55; stroke-dasharray: 7 5; }
-.manual-deps .manual-hit { fill: none; stroke: transparent; stroke-width: 22; pointer-events: stroke; }
+#deps .manual-hit { fill: none; stroke: transparent; pointer-events: stroke; }
 .manual-edge foreignObject { overflow: visible; opacity: 0; pointer-events: none; }
 .manual-edge:hover foreignObject, .manual-edge:focus-within foreignObject { opacity: 1; pointer-events: auto; }
-.manual-edge button { width: 28px; height: 28px; border: 1px solid var(--waiting); border-radius: 50%; background: var(--card); color: var(--waiting); cursor: pointer; }
+/* faint like the other remove buttons, darker under the pointer; sized by its foreignObject, which
+   keeps it the same on screen at every zoom */
+.manual-edge button { display: grid; place-items: center; box-sizing: border-box; width: 100%; height: 100%; padding: 0;
+  border: calc(1px / var(--s)) solid var(--line); border-radius: 50%; background: var(--card); color: var(--muted); cursor: pointer;
+  transition: color .12s, border-color .12s; }
+.manual-edge button svg { width: 54%; height: 54%; }
+.manual-edge button:hover, .manual-edge button:focus-visible { color: var(--ink); border-color: var(--muted); }
 .connection-handles { position: absolute; z-index: 4; pointer-events: none; }
 .connection-handles.target { pointer-events: auto; outline: 3px solid var(--waiting); outline-offset: 3px; border-radius: 4px; }
 .connection-dot { position: absolute; width: 14px; height: 14px; padding: 0; border: 2px solid var(--c); border-radius: 50%; background: var(--card); opacity: 0; pointer-events: none; cursor: pointer; transform: translate(-50%, -50%); }
@@ -2179,6 +2242,9 @@ button.link:hover { text-decoration: underline; }
 .connection-handles.s-waiting.underway { --c: var(--approved); }
 .connection-handles.s-waiting.answering { --c: var(--working); }
 .connection-handles:not(.snoozed):not(.underway):not(.answering):is(.s-waiting, .s-idea.your-turn), .connection-handles.dep-highlight { --c: var(--waiting); }
+/* what an arrow does, beside the pointer while the owner draws their first */
+#dephint { position: fixed; z-index: 40; pointer-events: none; transform: translate(16px, 16px); max-width: 300px; margin: 0; padding: 6px 10px; border-radius: 3px;
+  background: var(--ink); color: var(--bg); font: 13px/1.35 var(--cond); text-align: left; animation: fade .15s ease-out; }
 
 /* A split start button keeps the usual start immediate and the one-off choice discoverable. */
 .start-agent { position: relative; }
@@ -2193,20 +2259,3 @@ button.link:hover { text-decoration: underline; }
   #panel .actions { flex-wrap: wrap; }
   .start-agent-menu { width: min(380px, calc(100vw - 140px)); }
 }
-
-/* the inbox, a docked sheet: what waits for the owner on every canvas */
-#inbox { padding: 20px 14px 30px; }
-#inbox h2 { padding: 0 8px; }
-#inbox ul { list-style: none; margin: 0; padding: 0; }
-#inbox li { padding: 14px 8px; border-top: 1px solid var(--line); }
-#inbox li:first-child { border-top: 0; }
-#inbox .where { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--muted); }
-#inbox .where svg { flex: none; }
-#inbox .where .canvas { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#inbox .where .since { margin-left: auto; flex: none; }
-#inbox .ttl { font-size: 16px; font-weight: 700; line-height: 1.25; margin-top: 4px; }
-#inbox .text { font-weight: 400; font-size: 13px; color: var(--muted); line-height: 1.4; margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
-#inbox .replies { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-#inbox .replies .btn { padding: 5px 12px; font-size: 12.5px; }
-#inbox .empty-inbox { margin: 0; padding: 8px; color: var(--muted); font-size: 13px; }
-#attention.on { background: var(--chip); }

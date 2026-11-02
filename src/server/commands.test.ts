@@ -665,6 +665,17 @@ describe('the Koordinator remembers', () => {
     expect(brief).not.toContain('Read src/app.ts');
   });
 
+  test('review cards stand out from tasks titled like reviews, in the card list and the history', async () => {
+    const contribution = { url: 'https://github.com/acme/shop/pull/4', number: 4, author: 'alice', title: 'Round totals', canModify: true };
+    board.work(board.create({ title: 'PR #4: Round totals', x: 0, y: 0 }).id, { contribution: JSON.stringify(contribution) });
+    board.create({ title: 'Review PR #3', x: 0, y: 0 });
+    const { brief } = await say(commander(), 'was liegt an?', 'reply', { confirm: 'Zwei Karten.' });
+    expect(brief).toContain('"PR #4: Round totals" (review card for PR #4 by alice)');
+    expect(brief).toContain('K1 "PR #4: Round totals": new review card for PR #4');
+    expect(brief).toContain('K2 "Review PR #3": new card');
+    expect(brief).not.toMatch(/"Review PR #3" \(review card/);
+  });
+
   test('a long session makes way for a fresh one that starts from memory', async () => {
     board.create({ title: 'Export', x: 0, y: 0 });
     const k = commander(2);
@@ -1127,6 +1138,43 @@ describe('groups by voice', () => {
       { do: 'group', cards: [a.id], name: 'Neu' },
       { do: 'ungroup', cards: [a.id, b.id] },
       { do: 'renameGroup', group: g.id, name: 'Billing' },
+    ]);
+  });
+});
+
+describe('merging and deleting planned tasks by voice', () => {
+  test('the Koordinator merges planned tasks of one repository nobody has worked on, the first staying, and deletes one; it is refused for others', async () => {
+    const a = board.create({ title: 'Login error', x: 0, y: 0 });
+    const b = board.create({ title: 'Sign in again', x: 400, y: 0 });
+    const c = board.create({ title: 'Same again', x: 800, y: 0 });
+    const started = board.create({ title: 'Started', x: 1200, y: 0 });
+    board.work(started.id, { state: 'working', branch: 'obeya/started' });
+    const stopped = board.create({ title: 'Stopped', x: 1600, y: 0 });
+    board.work(stopped.id, { branch: 'obeya/stopped' });
+    const k = commander();
+    const heard = k.hear('fass Login error und Sign in again zusammen und lösch Same again', {});
+    await settle();
+    const s = runtime.last;
+    expect(s.spec.tools.find((t) => t.name === 'act')!.description).toContain('- merge:');
+    const act = (actions: Record<string, unknown>[]) => s.call('act', { actions, confirm: '…' });
+    expect(act([{ do: 'merge', cards: ['K1'], title: 'X' }])).toContain('at least two cards');
+    expect(act([{ do: 'merge', cards: ['K1', 'K2'] }])).toContain('title is missing');
+    expect(act([{ do: 'merge', cards: ['K1', 'K4'], title: 'X' }])).toContain('K4 "Started" is working');
+    expect(act([{ do: 'delete', card: 'K5' }])).toContain('K5 "Stopped" was worked on already');
+    expect(act([{ do: 'delete', cards: ['K2', 'K3'] }])).toContain('one delete action for each');
+    s.call('act', {
+      actions: [
+        { do: 'merge', cards: ['K1', 'K2'], title: ' Sign in again:  when and where ' },
+        { do: 'delete', card: 'K3' },
+      ],
+      confirm: 'Zusammengeführt und gelöscht.',
+    });
+    s.emit({ type: 'idle' });
+    k.arm((await heard).token!);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(executed).toEqual([
+      { do: 'merge', card: a.id, others: [b.id], title: 'Sign in again: when and where' },
+      { do: 'delete', card: c.id },
     ]);
   });
 });

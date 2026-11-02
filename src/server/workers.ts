@@ -25,10 +25,10 @@ import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { type Forward, HOST_DIR, hostName, remote } from './hosts';
 import { runAppCommand } from './app-command';
 import { readingShared } from '../adapters';
-import { branchName, type CardWorkspaces, type FileAt, gitSteps, type Landed, type Lease, shortageOf, together, WorkspaceError } from './workspaces';
+import { branchName, type CardWorkspaces, type FileAt, gitSteps, type Landed, type Lease, type PullStopped, shortageOf, together, WorkspaceError, type Workspaces } from './workspaces';
 import type { FolderWorkspaces, UndoReport } from './folder';
 import { contributionOf, type PrState, type Shipped, type StoredContribution, type StoredNewRepo } from './board';
-import type { ChangeRoute, Finding, FindingStatus, PageTags } from '../core/types';
+import { type ChangeRoute, type Clash, type Finding, type FindingStatus, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
 import { dimensions, outside, tagsOf } from '../core/page-tags';
 import { gitAsync, gitOrNull } from './workspaces';
 import { defaultBranchCommit } from './read-tree';
@@ -69,6 +69,8 @@ export interface WorkerOptions {
   onApproval?: (cardId: string) => string | null;
   /** The default branch has moved: the card's pull request was merged, or its work pushed there directly. */
   onMerged?: (cardId: string) => void;
+  /** A review card's worker made a follow-up task (`followUpTask`): it goes to the Koordinator, to wait for the PR's merge. */
+  onFollowUpTask?: (taskId: string, reviewId: string) => void;
   /** The card's work landed on the default branch without a pull request (`shipped` says where): its shared page links the commit. */
   onLanded?: (cardId: string) => void;
   /** A prototype was handed over: the idea's agent hears the summary. */
@@ -119,14 +121,26 @@ export interface WorkerOptions {
   /** The URL of the checkout's `origin`, where a review card's PR head is fetched from when it is that repository. */
   remote?: string | null;
   /**
-   * A review card's PR was merged where work lands on the local main: the checkout gets the merge
-   * (`git pull`); returns how main moved, or why it did not.
+   * What happens to the checkout's main around a review card's merge where work lands on it
+   * (`Workspaces`): before the merge, whether its unpushed commits would stop the pull of it; after,
+   * the pull, and where that stops, the landing of the rebase a worker resolved.
    */
-  pullMain?: () => Promise<{ from: string; to: string } | { problem: string }>;
+  pulls?: Pick<Workspaces, 'pullMain' | 'pushMain' | 'clashBeforeMerge' | 'landResolution' | 'landingOf'>;
+  /** How long pushing main for a review card waits for the owner's „Rückgängig“; PUSH_HOLD_MS when left out. */
+  pushHold?: number;
+  /** How long Obeya waits between looks at whether the forge shows a review card's pushed commits as the PR's head; a second when left out. */
+  pushSettle?: number;
 }
 
 /** The owner's comments on places in the demo video that go with their approval, as the worker reads them. */
 type Comments = { text: string; images: string[] };
+
+/** A review card's branch against its pull request: its `head`, the PR's head on the forge (`base`), and the worker's own commits between them. */
+interface OwnCommits {
+  head: string;
+  base: string;
+  commits: number;
+}
 
 /** A comment on a place in the demo video held back while the owner watches (`CardRow.held`). */
 interface HeldComment {
@@ -156,6 +170,21 @@ interface LandedState {
   worktree?: boolean;
   /** The follow-up's worker needs a full clone: without a workspace, it waits for the next free one (`takeClone`). */
   needsClone?: boolean;
+  /**
+   * Not a landing of its own: pulling a review card's merged PR (`card`, PR `pr`) into the local
+   * main stopped on a conflict (`stopped`), and this card's worker resolves it (`resolvePull`).
+   */
+  resolve?: Resolving;
+}
+
+/** A pull after a review card's merge that a worker resolves (`LandedState.resolve`). */
+interface Resolving {
+  card: string;
+  pr: number;
+  url: string;
+  stopped: PullStopped;
+  /** The worker was reminded once that its turn ended with the pull unresolved. */
+  reminded?: true;
 }
 
 /** Landed work's state once what it waited for (the restart) has happened. */
@@ -565,6 +594,8 @@ export class Workers {
   private landing = new Set<string>();
   /** Cards approved while git tells what the approval does (`approve`). */
   private approving = new Set<string>();
+  /** Review cards whose „main pushen“ waits out its undo window (`pushMainFor`), or runs. */
+  private pushingMain = new Map<string, ReturnType<typeof setTimeout> | true>();
   /** Merged cards whose branch git reads the added plan docs of: their workspace goes once it has (`finish`). */
   private reading = new Map<string, Promise<void>>();
   /**
@@ -788,46 +819,58 @@ export class Workers {
 
   /**
    * What the owner decided for findings of a review card (by number: to the contributor, the
-   * worker's own change, or a follow-up task), as the worker reads it above their words. The first
-   * two are marked as decided until the worker records what came of them; a follow-up task Obeya
-   * makes at once, beside the card, and the finding is settled with it. Refuses a finding that is
-   * not open, and the worker's own change where the contributor allows no maintainers' edits.
+   * worker's own change, or a follow-up task), as the worker reads it above their words. Each is
+   * marked as decided until the worker records what came of it; a follow-up task the worker makes
+   * itself (`followUpTask`), bundling the findings as the owner's words say, else as it bundled them.
+   * Refuses a finding that is not open, and the worker's own change where the contributor allows no
+   * maintainers' edits.
    */
   private decide(cardId: string, decisions: Record<number, ChangeRoute>): { note: string; log: string } {
     const c = contributionOf(this.o.board.row(cardId));
     if (!c) throw new BadRequest('notReview', 'only a review card has findings to decide on');
     const t = this.o.board.t.worker;
     const picked = Object.entries(decisions).map(([id, route]) => {
-      const f = c.findings?.find((x) => x.id === Number(id) && x.status === 'open');
+      const f = c.findings?.find((x) => x.id === Number(id) && x.status === 'open' && !x.decided);
       if (!f) throw new BadRequest('noFinding', `finding ${id} is not open`);
       if (route === 'self' && !c.canModify) throw new BadRequest('noEdits', 'the contributor does not allow maintainers to push to the pull request');
       return { f, route };
     });
-    const tasks = new Map(
-      picked
-        .filter((p) => p.route === 'later')
-        .map((p) => {
-          const card = this.o.board.create({ title: p.f.title, body: `${p.f.text}\n\n${t.findingTask(c.number, c.url)}`, from: cardId });
-          this.o.board.log(card.id, 'state', 'owner', t.findingTaskMade(c.number));
-          return [p.f.id, card] as const;
-        }),
-    );
+    const of = (route: ChangeRoute) => picked.filter((p) => p.route === route);
+    // a request to the contributor while the worker's own changes are under way or held goes with them, as one message
+    const changing = of('self').length > 0;
+    const withChanges = changing || !!c.changing || !!c.held;
     const findings = c.findings!.map((f): Finding => {
       const p = picked.find((x) => x.f.id === f.id);
-      if (!p) return f;
-      const task = tasks.get(f.id);
-      return task ? { ...f, status: 'later', card: task.id } : { ...f, decided: p.route as Exclude<ChangeRoute, 'later'> };
+      return p ? { ...f, decided: p.route, ...(p.route === 'contributor' && withChanges ? { withChanges: true as const } : {}) } : f;
     });
-    this.o.board.work(cardId, { contribution: JSON.stringify({ ...c, findings } satisfies StoredContribution) });
-    const of = (route: ChangeRoute) => picked.filter((p) => p.route === route);
+    this.o.board.work(cardId, { contribution: JSON.stringify({ ...c, findings, ...(changing ? { changing: true as const } : {}) } satisfies StoredContribution) });
     const name = (f: Finding) => `#${f.id} „${f.title}“`;
     const what = (p: (typeof picked)[number]) => (p.route === 'self' ? t.findingSelf : p.route === 'later' ? t.findingLater : t.findingTo(c.author));
+    const later = of('later');
+    const ids = new Set(later.map((p) => p.f.id));
+    // the worker's own bundles, as far as they hold among the findings the owner chose for later
+    const bundles = [
+      ...new Set(
+        later
+          .map((p) => [p.f.id, ...(p.f.with ?? []).filter((x) => ids.has(x))].sort((a, b) => a - b))
+          .filter((b) => b.length > 1)
+          .map((b) => b.join(' + ')),
+      ),
+    ];
     return {
       note: [
         'The owner decided on findings of your review, on the card; do it now:',
-        of('contributor').length ? `- To ${c.author}: ${of('contributor').map((p) => name(p.f)).join(', ')}. Write them as one review asking for changes (request_changes, with their numbers).` : '',
-        of('self').length ? `- Yourself: ${of('self').map((p) => name(p.f)).join(', ')}. Make the change, push it onto the PR's branch, comment on the PR what you changed and why (comment_on_pr), mark them fixed (findings), and hand over again with a new demo.` : '',
-        of('later').length ? `- As follow-up tasks: ${of('later').map((p) => name(p.f)).join(', ')}. Obeya made each a task of its own beside your card, which the owner starts when they like; for this PR they are settled (status later in findings), so they go neither to ${c.author} nor into your changes.` : '',
+        of('contributor').length
+          ? withChanges
+            ? `- To ${c.author}: ${of('contributor').map((p) => name(p.f)).join(', ')}. ${changing ? 'They go with your own changes below' : 'Your own changes wait for the owner’s approval, and these go with them'}, as one message: write the request into the same pr_draft as what you changed, and do not send it now. Obeya posts it as one review asking for changes once the owner approves.${changing ? '' : ' Hand over again with that pr_draft; the demo on the card stands.'}`
+            : `- To ${c.author}: ${of('contributor').map((p) => name(p.f)).join(', ')}. Write them as one review asking for changes (request_changes, with their numbers).`
+          : '',
+        changing
+          ? `- Yourself: ${of('self').map((p) => name(p.f)).join(', ')}. Make the change and commit it on your branch, mark them fixed (findings), and hand over again with a new demo and pr_draft. Obeya pushes your commits onto the PR's branch and posts pr_draft once the owner approves.`
+          : '',
+        later.length
+          ? `- As follow-up tasks: ${later.map((p) => name(p.f)).join(', ')}. Make them tasks of their own with follow_up_task, outside this PR, before anything else ends your turn. Findings that belong together become one task: as the owner's words below say first („2 and 3 together“, „combine them as you see fit“, „all separate“); without a word on it, ${bundles.length ? `as you bundled them (${bundles.map((b) => `findings ${b}`).join('; ')}), the others one each` : 'one task each'}. Write each task from what your review knows (the files concerned, the cause, the PR's link). They go neither to ${c.author} nor into your changes.`
+          : '',
       ]
         .filter(Boolean)
         .join('\n'),
@@ -836,24 +879,65 @@ export class Workers {
   }
 
   /**
-   * A review card's findings as its worker writes them: the whole list as it stands, each kept by its
-   * number (a new one gets the next), with what the owner decided while it stays open.
+   * A follow-up task the worker of a review card makes of findings, on the owner's word: beside the
+   * card, following up on it, with the worker's text and the PR's link, and started at once, waiting
+   * in the queue for the PR's merge. The findings are settled for the PR and link it; several may
+   * link one task.
    */
-  private setFindings(cardId: string, given: { id?: number; title: string; text: string; security?: boolean; status?: FindingStatus; url?: string }[]): string {
+  private followUpTask(cardId: string, title: string, task: string, ids: number[]): string {
+    const c = contributionOf(this.o.board.row(cardId));
+    if (!c) return 'Not made: this card reviews no pull request.';
+    if (!title) return 'Not made: the title is missing.';
+    if (!task) return 'Not made: the task is missing.';
+    const named = [...new Set(ids)];
+    if (!named.length) return 'Not made: name the findings it is made of (findings, their numbers).';
+    const missing = named.filter((id) => !c.findings?.some((f) => f.id === id));
+    if (missing.length) return `Not made: there is no finding ${missing.join(', ')}.`;
+    const settled = named.map((id) => c.findings!.find((f) => f.id === id)!).filter((f) => f.status !== 'open');
+    if (settled.length) return `Not made: ${settled.map((f) => `finding ${f.id} is ${f.status}${f.card ? ' (a follow-up task already)' : ''}`).join('; ')}.`;
+    const t = this.o.board.t.worker;
+    const body = clip(task, 19000);
+    const card = this.o.board.create({ title: clip(title, 200), body: body.includes(c.url) ? body : `${body}\n\n${t.findingTask(c.number, c.url)}`, from: cardId });
+    this.o.board.log(card.id, 'state', 'obeya', t.findingTaskMade(c.number));
+    const findings = c.findings!.map((f): Finding => {
+      if (!named.includes(f.id)) return f;
+      const { decided: _, ...rest } = f;
+      return { ...rest, status: 'later', card: card.id };
+    });
+    this.o.board.work(cardId, { contribution: JSON.stringify({ ...c, findings } satisfies StoredContribution) });
+    this.o.onFollowUpTask?.(card.id, cardId);
+    const owed = this.owedTasks(cardId);
+    return `Made: „${card.title}“, beside your card and queued behind it until the PR is merged, linked from ${named.length === 1 ? `finding ${named[0]}` : `findings ${named.join(', ')}`}.${owed ? ` Still to make: ${owed}.` : ''}`;
+  }
+
+  /** The findings of a review card the owner chose as follow-up tasks that have none yet, as the worker reads them; none: undefined. */
+  private owedTasks(cardId: string): string | undefined {
+    const owed = contributionOf(this.o.board.row(cardId))?.findings?.filter((f) => f.status === 'open' && f.decided === 'later') ?? [];
+    return owed.length ? `${owed.length === 1 ? 'finding' : 'findings'} ${owed.map((f) => `#${f.id} „${f.title}“`).join(', ')} (follow_up_task)` : undefined;
+  }
+
+  /**
+   * A review card's findings as its worker writes them: the whole list as it stands, each kept by its
+   * number (a new one gets the next), with what the owner decided while it stays open. `with` names
+   * the findings it would make one follow-up task with, kept in both directions and across a chain.
+   */
+  private setFindings(cardId: string, given: { id?: number; title: string; text: string; security?: boolean; status?: FindingStatus; url?: string; with?: number[] }[]): string {
     const c = contributionOf(this.o.board.row(cardId));
     if (!c) return 'Not recorded: this card reviews no pull request.';
     const had = c.findings ?? [];
     let next = Math.max(0, ...had.map((f) => f.id)) + 1;
     const seen = new Set<number>();
     const findings: Finding[] = [];
+    const named: [number, number[]][] = [];
     for (const g of given.slice(0, 30)) {
       const id = g.id !== undefined && !seen.has(g.id) ? g.id : next++;
       if (id >= next) next = id + 1;
       seen.add(id);
       const before = had.find((f) => f.id === id);
-      // one the owner made a follow-up task stays one
-      const status = before?.status === 'later' ? 'later' : (g.status ?? before?.status ?? 'open');
+      // one the owner made a follow-up task stays one, and only a task made with follow_up_task makes one
+      const status = before?.status === 'later' ? 'later' : g.status === 'later' ? (before?.status ?? 'open') : (g.status ?? before?.status ?? 'open');
       const url = g.url ?? (status === before?.status ? before?.url : undefined);
+      if (g.with?.length) named.push([id, g.with]);
       findings.push({
         id,
         title: clip(String(g.title).trim(), 120),
@@ -862,8 +946,16 @@ export class Workers {
         status,
         ...(url ? { url } : {}),
         ...(status === 'later' && before?.card ? { card: before.card } : {}),
-        ...(status === 'open' && before?.decided ? { decided: before.decided } : {}),
+        ...(status === 'open' && before?.decided ? { decided: before.decided, ...(before.withChanges ? { withChanges: true as const } : {}) } : {}),
       });
+    }
+    // bundles: each finding's group of the findings named together with it, in both directions
+    const root = new Map(findings.map((f) => [f.id, f.id]));
+    const find = (id: number): number => (root.get(id) === id ? id : find(root.get(id)!));
+    for (const [id, others] of named) for (const o of others) if (root.has(o)) root.set(find(o), find(id));
+    for (const f of findings) {
+      const w = findings.filter((o) => o.id !== f.id && find(o.id) === find(f.id)).map((o) => o.id);
+      if (w.length) f.with = w;
     }
     this.o.board.work(cardId, { contribution: JSON.stringify({ ...c, findings } satisfies StoredContribution) });
     return `Recorded: ${findings.length === 1 ? '1 finding' : `${findings.length} findings`}.`;
@@ -953,6 +1045,36 @@ export class Workers {
    */
   private followUp(card: Item, text: string, images: string[], spoken: boolean, replyTo?: number, place?: Spot) {
     const row = this.o.board.row(card.id);
+    const commit = row.shipped ? (JSON.parse(row.shipped) as Shipped).commit : undefined;
+    const stills = this.stills(place);
+    this.resumeFinished(
+      card,
+      {},
+      (path, worktree) =>
+        [
+          this.folder
+            ? `The owner asks about this card${spoken ? ` (${SPOKEN})` : ''}. It is done, and your session had ended; it goes on in the folder ${path}, which other cards and the owner may have changed since.`
+            : `The owner asks about this card${spoken ? ` (${SPOKEN})` : ''}. ${card.state === 'done' ? 'It was closed without a change to the repository' : `Its work is on main${commit ? ` (${commit.slice(0, 7)})` : ''}`}, and your session had ended; it goes on in a fresh workspace ${worktree ? 'at the head of' : 'on'} the branch ${row.branch}, where main may have moved on since.`,
+          this.words(card.id, text, images.slice(stills.length), replyTo, place),
+          this.folder ? FOLLOW_UP_FOLDER : FOLLOW_UP,
+          ...(worktree ? [IN_WORKTREE] : []),
+        ].join('\n\n'),
+      images,
+      () => {
+        this.o.board.log(card.id, 'hint', 'owner', text, { images: images.slice(stills.length), replyTo, spot: place });
+        if (text) this.o.onOwnerInput?.(card, 'note', text);
+      },
+    );
+  }
+
+  /**
+   * Resumes the session of a card whose work is over in a fresh workspace on its branch, a temporary
+   * worktree where no clone is free (the worker hears `message` for it), `extra` in its landed state
+   * (`followUp`). `before` runs once the workspace is taken, before the worker hears anything.
+   * Throws where the card can have no workspace.
+   */
+  private resumeFinished(card: Item, extra: LandedState, message: (path: string, worktree: boolean) => string, images: string[] = [], before?: () => void, failed?: () => void) {
+    const row = this.o.board.row(card.id);
     let lease: Lease;
     let worktree = false;
     try {
@@ -968,31 +1090,23 @@ export class Workers {
     const { path, ready } = lease;
     this.bump(card.id);
     const commit = row.shipped ? (JSON.parse(row.shipped) as Shipped).commit : undefined;
-    const landed: LandedState = { ...(card.state === 'done' ? { unchanged: true } : commit ? { commit } : {}), followUp: true, ...(worktree ? { worktree } : {}) };
+    const landed: LandedState = { ...(card.state === 'done' ? { unchanged: true } : commit ? { commit } : {}), followUp: true, ...(worktree ? { worktree } : {}), ...extra };
     this.o.board.work(card.id, { workspace: path, landed: JSON.stringify(landed), status_line: null, app: null });
-    const stills = this.stills(place);
-    this.o.board.log(card.id, 'hint', 'owner', text, { images: images.slice(stills.length), replyTo, spot: place });
-    if (text) this.o.onOwnerInput?.(card, 'note', text);
-    const message = [
-      this.folder
-        ? `The owner asks about this card${spoken ? ` (${SPOKEN})` : ''}. It is done, and your session had ended; it goes on in the folder ${path}, which other cards and the owner may have changed since.`
-        : `The owner asks about this card${spoken ? ` (${SPOKEN})` : ''}. ${card.state === 'done' ? 'It was closed without a change to the repository' : `Its work is on main${commit ? ` (${commit.slice(0, 7)})` : ''}`}, and your session had ended; it goes on in a fresh workspace ${worktree ? 'at the head of' : 'on'} the branch ${row.branch}, where main may have moved on since.`,
-      this.words(card.id, text, images.slice(stills.length), replyTo, place),
-      this.folder ? FOLLOW_UP_FOLDER : FOLLOW_UP,
-      ...(worktree ? [IN_WORKTREE] : []),
-    ].join('\n\n');
+    before?.();
+    const text = message(path, worktree);
     void this.whenReady(
       card.id,
       ready,
       () => {
         // a card that never reported a session: a new one needs the card first
-        if (row.session_id) this.launch(card.id, message, row.session_id, images);
-        else this.launch(card.id, `You worked on the card „${card.title}“:\n\n${card.body}\n\n${message}`, undefined, [...this.taskImages(card), ...images]);
+        if (row.session_id) this.launch(card.id, text, row.session_id, images);
+        else this.launch(card.id, `You worked on the card „${card.title}“:\n\n${card.body}\n\n${text}`, undefined, [...this.taskImages(card), ...images]);
       },
       // the question stands in the conversation, without a workspace to answer it in
       () => {
         this.o.workspaces.release(card.id);
         this.o.board.work(card.id, { workspace: null, landed: row.landed });
+        failed?.();
       },
     );
   }
@@ -1319,8 +1433,13 @@ export class Workers {
       this.takeHeld(cardId);
       return this.endPrototype(cardId, 'discarded');
     }
+    // approved, a card its worker snoozed on its handover wakes no more: the check it was to make again is done with
+    const unsnooze = () => card.snoozed && this.o.board.work(cardId, { snoozed: null });
     // in a folder without git, what it changed is in the folder already
-    if (this.folder) return void this.close(cardId, 'owner', this.approvalComments(cardId));
+    if (this.folder) {
+      unsnooze();
+      return void this.close(cardId, 'owner', this.approvalComments(cardId));
+    }
     // git tells where the work lands and whether there is any, without blocking the server; the click ends the owner's turn meanwhile,
     // and the comments held back wait for the approval
     clearTimeout(this.holding.get(cardId));
@@ -1344,6 +1463,7 @@ export class Workers {
       if (this.held(cardId).length) this.releaseLater(cardId, this.o.releaseDelay ?? RELEASE_DELAY);
       throw new BadRequest('noDirect', 'this repository lands approved work only through a pull request; its settings do not allow pushing it directly');
     }
+    unsnooze();
     const comments = this.approvalComments(cardId);
     // work that changed nothing (a demo, an analysis) has nothing to land and no pull request to open
     if (!work) return void this.close(cardId, 'owner', comments);
@@ -1376,16 +1496,21 @@ export class Workers {
   /**
    * „Mergen (PR #5)“: the owner approved a review card's demo. Obeya merges the pull request on the
    * forge (the repository's allowed method, squash first), pinned to the head the worker reviewed:
-   * a PR that moved since the handover is not merged, and its worker reviews it anew. Before the
-   * merge the demo goes on its page where the site publishes on approval, and the page's link goes
-   * into a comment on the PR once it is online (`onApproval`; the description stays the
-   * contributor's). A refused merge leaves the card waiting for the owner, with the reason. Merged,
-   * the card is live and, where work lands on the local main, the checkout pulls the merge.
+   * a PR that moved since the handover is not merged, and its worker reviews it anew. Where the
+   * worker's own commits are held (`HeldChanges`), Obeya first pushes them onto the PR's branch,
+   * fast-forward only, and posts their text: as a comment, or with requests to the contributor as
+   * one review asking for changes, after which the card waits for them and nothing is merged;
+   * `merge: false` („Nur pushen“) stops after the post too. Before the merge the demo goes on its
+   * page where the site publishes on approval, and the page's link goes into a comment on the PR
+   * once it is online (`onApproval`; the description stays the contributor's). A refused merge
+   * leaves the card waiting for the owner, with the reason. Merged, the card is live and, where work
+   * lands on the local main, the checkout pulls the merge.
    */
-  private async mergeContribution(cardId: string) {
+  private async mergeContribution(cardId: string, { merge = true }: { merge?: boolean } = {}) {
     const forge = this.o.forge;
     const c = contributionOf(this.o.board.row(cardId));
     if (!forge || !c) throw new BadRequest('notReview', 'the card reviews no pull request');
+    if (!merge && !c.held) throw new BadRequest('notReady', 'nothing of the agent’s waits to be pushed');
     const t = this.o.board.t.worker;
     const generation = this.generation.get(cardId);
     const held = this.held(cardId).length > 0;
@@ -1401,28 +1526,28 @@ export class Workers {
       if (!handedOver(this.card(cardId)) || this.generation.get(cardId) !== generation) throw new BadRequest('notReady', 'the card is not ready for review');
       if (now.state === 'MERGED') return this.merged(cardId, now.mergeCommit, t.mergedContribution(c.number));
       if (now.state === 'CLOSED') throw new BadRequest('prClosed', 'the pull request was closed');
-      if (!c.reviewed || now.head !== c.reviewed) {
-        // what the owner approved is not what would be merged: the worker reviews the PR as it is now
-        const comments = this.approvalComments(cardId);
-        this.o.board.log(cardId, 'state', 'obeya', t.unreviewedHead(now.head.slice(0, 7)));
-        this.o.board.work(cardId, { state: 'working', need: null, detail: null, status_line: null });
-        this.deliver(
-          cardId,
-          [
-            `The owner approved your handover, but the pull request's head is ${now.head.slice(0, 7)} now, not the ${c.reviewed?.slice(0, 7) ?? 'commit'} you handed over, so Obeya did not merge it.`,
-            'Review it as it is now: fetch its head, look at what changed before you run any of it, then the code review, a new demo where the change shows, the checks and the merge probe. Hand over again; if those commits are yours and not pushed yet, push them first.',
-            comments?.text ?? '',
-          ]
-            .filter(Boolean)
-            .join('\n\n'),
-          comments?.images,
-          true,
-        );
-        throw new BadRequest('prMoved', `the pull request is at ${now.head.slice(0, 7)} now, not at the commit handed over`);
+      // the worker's own commits go on top of the head they were made on; already there, only their text is still to post
+      if (!c.reviewed || (now.head !== c.reviewed && now.head !== c.held?.base)) throw this.moved(cardId, c, now.head);
+      // unpushed commits on the local main the pull after the merge would stop at: the owner sees them before the merge
+      const merging = merge && !c.held?.asks.length;
+      if (merging) {
+        const shown = c.clash;
+        const clash = await this.probeClash(cardId);
+        if (this.generation.get(cardId) !== generation || !this.o.board.item(cardId)) return;
+        if (clash && !sameClash(shown, clash)) {
+          this.o.board.log(cardId, 'state', 'obeya', t.clashFound(c.number, clash.subject, clash.card?.title));
+          throw new BadRequest('pullClash', `the pull request collides with unpushed commits on the local main (${clash.commit.slice(0, 7)} ${clash.subject})`);
+        }
+      }
+      if (c.held) {
+        if (now.head !== c.reviewed) await this.pushHeld(cardId, c);
+        if (this.generation.get(cardId) !== generation || !this.o.board.item(cardId)) return;
+        await this.postHeld(cardId, c);
+        if (c.held.asks.length || !merge) return;
       }
       // the comments held back while the owner watched go with the approval
       const comments = this.approvalComments(cardId);
-      this.o.board.work(cardId, { contribution: JSON.stringify({ ...c, approved: true } satisfies StoredContribution) });
+      this.o.board.work(cardId, { contribution: JSON.stringify({ ...(contributionOf(this.o.board.row(cardId)) ?? c), approved: true } satisfies StoredContribution) });
       this.o.board.log(cardId, 'state', 'owner', t.approvedMerge(c.number));
       this.o.onApproval?.(cardId);
       try {
@@ -1441,6 +1566,123 @@ export class Workers {
     } finally {
       this.approving.delete(cardId);
     }
+  }
+
+  /** „Nur pushen“: the worker's own commits held on a review card go onto the PR with their text, and the card waits for the owner's „Mergen“ again. */
+  pushContribution(cardId: string) {
+    const card = this.card(cardId);
+    if (!card.contribution || !handedOver(card) || this.approving.has(cardId)) throw new BadRequest('notReady', 'the card is not ready for review');
+    return this.mergeContribution(cardId, { merge: false });
+  }
+
+  /**
+   * The approval of a review card met a pull request at another head than the one handed over (the
+   * contributor pushed since): Obeya pushes, posts and merges nothing, and the worker reviews the PR
+   * as it is now, its own commits not pushed yet put on top. Returns the refusal to throw.
+   */
+  private moved(cardId: string, c: StoredContribution, head: string): BadRequest {
+    const t = this.o.board.t.worker;
+    const comments = this.approvalComments(cardId);
+    this.o.board.log(cardId, 'state', 'obeya', c.held ? t.heldMoved(head.slice(0, 7)) : t.unreviewedHead(head.slice(0, 7)));
+    this.o.board.work(cardId, { state: 'working', need: null, detail: null, status_line: null });
+    this.deliver(
+      cardId,
+      [
+        c.held
+          ? `The owner approved your handover, but the pull request's head is ${head.slice(0, 7)} now, not the ${c.held.base.slice(0, 7)} your commits build on: ${c.author} pushed meanwhile. So Obeya pushed, posted and merged nothing.`
+          : `The owner approved your handover, but the pull request's head is ${head.slice(0, 7)} now, not the ${c.reviewed?.slice(0, 7) ?? 'commit'} you handed over, so Obeya did not merge it.`,
+        `Review it as it is now: fetch its head, look at what changed before you run any of it, then the code review, a new demo where the change shows, the checks and the merge probe.${c.held ? ' Put your own commits on top of the new head first (rebase; the PR\'s commits stay as they are), and check that pr_draft still says what goes with them.' : ''} Hand over again.`,
+        comments?.text ?? '',
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+      comments?.images,
+      true,
+    );
+    return new BadRequest('prMoved', `the pull request is at ${head.slice(0, 7)} now, not at the commit handed over`);
+  }
+
+  /**
+   * The worker's own commits held on a review card go onto the PR's branch in the contributor's
+   * repository, fast-forward only, from its workspace and without its hooks (the PR's code ran there).
+   * A push the forge rejects as not a fast-forward is a push of the contributor's meanwhile, which
+   * goes back to the worker as a moved head would; any other refusal stays with the owner.
+   */
+  private async pushHeld(cardId: string, c: StoredContribution & { held?: object }): Promise<void> {
+    const t = this.o.board.t.worker;
+    const ws = this.o.board.row(cardId).workspace;
+    const to = pushTarget(c);
+    const refuse = (reason: string) => {
+      this.o.board.log(cardId, 'error', 'obeya', t.pushRefused(reason));
+      return new BadRequest('pushRefused', reason);
+    };
+    if (!ws) throw refuse('the card has no workspace');
+    if (!to) throw refuse('the forge names no branch of the pull request to push to');
+    try {
+      await gitAsync(ws, '-c', 'core.hooksPath=/dev/null', 'push', '--quiet', to.repo, `${c.reviewed}:refs/heads/${to.branch}`);
+    } catch (e) {
+      const why = messageOf(e);
+      if (/non-fast-forward|fetch first|\[rejected\]|stale info/.test(why)) {
+        const head = await this.o.forge!.status(this.forgeCwd(cardId), c.url).then(
+          (s) => s.head,
+          () => '',
+        );
+        throw this.moved(cardId, c, head || 'another commit');
+      }
+      throw refuse(why);
+    }
+    // the forge shows the new head a moment after the push; the merge is pinned to it
+    for (let i = 0; i < 10; i++) {
+      const head = await this.o.forge!.status(this.forgeCwd(cardId), c.url).then(
+        (s) => s.head,
+        () => '',
+      );
+      if (head === c.reviewed) break;
+      await new Promise((r) => setTimeout(r, this.o.pushSettle ?? 1000));
+    }
+  }
+
+  /**
+   * Once the worker's own commits are on the PR's branch, their text goes onto the PR in the owner's
+   * name: a comment, or with requests to the contributor one review asking for changes, after which
+   * the card waits for them. The findings it fixed and those it asks for link it. A text the forge
+   * refuses leaves the card with the owner, its commits pushed and nothing merged, and the findings
+   * it asked for open, to be decided anew.
+   */
+  private async postHeld(cardId: string, c: StoredContribution): Promise<void> {
+    const t = this.o.board.t.worker;
+    const held = c.held!;
+    const asks = held.asks.length > 0;
+    let url: string | undefined;
+    let failed: string | undefined;
+    try {
+      url = (await (asks ? this.o.forge!.requestChanges(this.forgeCwd(cardId), c.url, held.body) : this.o.forge!.comment(this.forgeCwd(cardId), c.url, held.body))) || undefined;
+    } catch (e) {
+      failed = messageOf(e);
+    }
+    const now = contributionOf(this.o.board.row(cardId)) ?? c;
+    const { held: _, changing: __, ...rest } = now;
+    const findings = now.findings?.map((f): Finding => {
+      const { decided: ___, withChanges: ____, ...plain } = f;
+      if (held.asks.includes(f.id) && f.status === 'open') return failed ? plain : { ...plain, status: 'sent', ...(url ? { url } : {}) };
+      if (f.status === 'fixed' && !f.url && url) return { ...f, url };
+      return f;
+    });
+    const sent = asks && !failed;
+    this.o.board.work(cardId, {
+      contribution: JSON.stringify({
+        ...rest,
+        ...(findings ? { findings } : {}),
+        ...(sent ? { requested: { ...(url ? { url } : {}), at: new Date().toISOString() } } : {}),
+      } satisfies StoredContribution),
+      // the state says it: „Wartet auf Beitragenden“
+      ...(sent ? { state: 'inPr', need: null, detail: null, status_line: null } : {}),
+    });
+    if (failed) {
+      this.o.board.log(cardId, 'error', 'obeya', t.postFailed(failed));
+      throw new BadRequest('mergeRefused', `pushed, but the forge refused the text that goes with it (${failed})`);
+    }
+    this.o.board.log(cardId, 'state', 'owner', `${t.pushedHeld(c.number, held.commits, asks ? c.author : undefined)}${url ? ` ${url}` : ''}`);
   }
 
   /**
@@ -1519,19 +1761,65 @@ export class Workers {
     return undefined;
   }
 
-  /** A comment of the worker's on the contributor's pull request, in the owner's name; the card's log links it. */
-  private async commentOnPr(cardId: string, body: string): Promise<string> {
-    const c = contributionOf(this.o.board.row(cardId));
-    if (!this.o.forge || !c) return 'Not written: this card reviews no pull request.';
-    if (!body.trim()) return 'Not written: the comment has no text.';
-    let url: string | void;
+  /**
+   * Where a review card's branch stands against its pull request at a handover: its head, the PR's
+   * head on the forge (`base`) and how many commits of the worker's own go on top of it. Why it
+   * cannot be handed over, where the branch does not build on the PR's head: the contributor pushed
+   * since the worker fetched, or the branch was rewritten.
+   */
+  private async ownCommits(cardId: string, c: StoredContribution): Promise<OwnCommits | string> {
+    const ws = this.o.board.row(cardId).workspace ?? '';
+    let head: string;
     try {
-      url = await this.o.forge.comment(this.forgeCwd(cardId), c.url, body.trim());
+      head = await gitAsync(ws, 'rev-parse', 'HEAD');
     } catch (e) {
-      return `Not written: the forge refused it (${messageOf(e)}).`;
+      return `Not handed over: Obeya could not read your branch's head (${messageOf(e)}). Check the workspace, then call ready_for_review again.`;
     }
-    this.o.board.log(cardId, 'state', 'worker', `${this.o.board.t.worker.commented(c.number)}${url ? ` ${url}` : ''}`);
-    return `Written${url ? `: ${url}` : ''}.`;
+    if (!this.o.forge) return { head, base: head, commits: 0 };
+    let base: string;
+    try {
+      base = (await this.o.forge.status(this.forgeCwd(cardId), c.url)).head;
+    } catch (e) {
+      return `Not handed over: Obeya could not read the pull request's head from the forge (${messageOf(e)}). Call ready_for_review again in a moment.`;
+    }
+    if (!base || base === head) return { head, base: head, commits: 0 };
+    const on = await gitAsync(ws, 'merge-base', '--is-ancestor', base, head).then(
+      () => true,
+      () => false,
+    );
+    if (!on)
+      return `Not handed over: the pull request's head is ${base.slice(0, 7)}, and your branch does not build on it (${c.author} pushed since you fetched it, or your branch was rewritten). Fetch refs/pull/${c.number}/head from ${this.prSource(c)} and look at what changed before you run any of it; put the commits of your own that are not on the PR yet on top of it (rebase; the PR's commits stay as they are), review what is new, then hand over again.`;
+    // a merge of main into it counts once, not with each commit it brings
+    const commits = Number(await gitAsync(ws, 'rev-list', '--count', '--first-parent', `${base}..${head}`).catch(() => '0')) || 0;
+    return { head, base, commits };
+  }
+
+  /**
+   * What a review card's handover holds back for the owner's approval: the worker's own commits on
+   * top of the PR's head, the text that goes onto the PR with them (`draft`, else the one handed over
+   * before) and the findings decided for the contributor meanwhile, which go in the same text. None
+   * where the branch holds no commits of its own; why it cannot be handed over, as the worker reads it.
+   */
+  private heldAt(cardId: string, mine: OwnCommits, draft: string | undefined): (HeldChanges & { base: string }) | string | undefined {
+    const c = contributionOf(this.o.board.row(cardId))!;
+    const asks = (c.findings ?? []).filter((f) => f.status === 'open' && f.decided === 'contributor');
+    if (!mine.commits) {
+      const waiting = asks.filter((f) => f.withChanges);
+      if (!c.changing && !c.held && !waiting.length) return undefined;
+      // nothing of its own to push after all: a request that waited for it goes out now, alone
+      const { changing: _, held: __, ...rest } = c;
+      const findings = c.findings?.map((f) => (f.withChanges ? (({ withChanges: ___, ...x }) => x)(f) : f));
+      this.o.board.work(cardId, { contribution: JSON.stringify({ ...rest, ...(findings ? { findings } : {}) } satisfies StoredContribution) });
+      return waiting.length
+        ? `Not handed over: your branch holds no commits beyond the pull request's head, so nothing of yours waits to be pushed, and ${waiting.map((f) => `#${f.id}`).join(', ')} for ${c.author} would wait for nothing. Send ${waiting.length === 1 ? 'it' : 'them'} now with request_changes.`
+        : undefined;
+    }
+    if (!c.canModify)
+      return `Not handed over: your branch holds ${mine.commits === 1 ? 'a commit' : `${mine.commits} commits`} beyond the pull request's head ${mine.base.slice(0, 7)}, and ${c.author} does not allow maintainers' edits, so nothing can go onto the PR's branch. Put your branch back on the PR's head (git reset --hard ${mine.base.slice(0, 7)}), then hand over again.`;
+    const body = clip((draft ?? '').trim() || c.held?.body || '', 20000);
+    if (!body)
+      return `Not handed over: your branch holds ${mine.commits === 1 ? 'a commit' : `${mine.commits} commits`} of your own that ${mine.commits === 1 ? 'is' : 'are'} not on the pull request yet. Give pr_draft: the text Obeya posts on the PR once the owner approves, after pushing them (what you changed and why${asks.length ? `, and the request for ${asks.map((f) => `#${f.id}`).join(', ')} to ${c.author}` : ''}). Then call ready_for_review again.`;
+    return { body, commits: mine.commits, asks: asks.map((f) => f.id), base: mine.base };
   }
 
   /**
@@ -1664,6 +1952,7 @@ export class Workers {
     const sw = result.switched;
     if (sw) this.o.board.log(cardId, 'state', 'obeya', t.switchedToMain(sw.branch, sw.commit));
     if (direct) this.o.onMerged?.(cardId);
+    else this.reprobeClashes();
     this.o.onLanded?.(cardId);
     this.afterLanding(
       cardId,
@@ -1979,7 +2268,7 @@ export class Workers {
     this.bump(cardId);
     this.refuseAsked(cardId, 'meanwhile your pull request was merged, and the card is live.');
     // a review card's PR where work lands on the local main: the checkout gets the merge, as the owner would pull it
-    if (contributionOf(this.o.board.row(cardId)) && this.o.adapter.land === 'main' && this.o.remote && this.o.pullMain) void this.pullAfterMerge(cardId);
+    if (contributionOf(this.o.board.row(cardId)) && this.pulls()) void this.pullAfterMerge(cardId);
     // git reads them without blocking the server; the workspace goes only once it has (`finish`)
     const added = this.planDocsAdded(cardId).then((a) => this.o.board.planDocsLanded(cardId, a));
     this.reading.set(cardId, added);
@@ -2007,16 +2296,263 @@ export class Workers {
     );
   }
 
-  /** The local main gets a review card's merge from the remote; the card's log says how it went. */
+  /**
+   * The checkout's main around a review card's merge (`WorkerOptions.pulls`), where work lands on
+   * the local main of a repository with a remote; none elsewhere.
+   */
+  private pulls() {
+    return this.o.adapter.land === 'main' && this.o.remote ? this.o.pulls : undefined;
+  }
+
+  /**
+   * The local main gets a review card's merge from the remote; the card's log says how it went.
+   * Where its unpushed commits stop the pull on a conflict, a worker resolves it (`resolvePull`).
+   */
   private async pullAfterMerge(cardId: string) {
     const t = this.o.board.t.worker;
-    const r = await this.o.pullMain!().catch((e: unknown) => ({ problem: messageOf(e) }));
+    const r = await this.pulls()!.pullMain().catch((e: unknown) => ({ problem: messageOf(e) }));
     if (!this.o.board.card(cardId)) return;
+    if ('stopped' in r) return this.resolvePull(cardId, r.stopped);
     if ('problem' in r) this.o.board.log(cardId, 'error', 'obeya', t.pullFailed(r.problem));
-    else {
-      this.o.board.log(cardId, 'state', 'obeya', t.pulledMain(r.to.slice(0, 7)));
-      this.o.onMerged?.(cardId);
+    else this.pulled(cardId, r.to);
+  }
+
+  /** The local main has a review card's merge now: its log says so, the Lesestand reads it, and the other review cards look again at what the move means for them. */
+  private pulled(cardId: string, commit: string) {
+    this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.pulledMain(commit.slice(0, 7)));
+    this.o.onMerged?.(cardId);
+    this.reprobeClashes();
+  }
+
+  /**
+   * Whether pulling a review card's PR, once merged, into the local main would stop on a conflict
+   * with its unpushed commits (`Workspaces.clashBeforeMerge`), named with the card that landed the
+   * commit it stops at. Kept on the card for the owner to see before the merge; undefined where it
+   * cannot tell (no head reviewed yet, git failed), which leaves what the card shows.
+   */
+  private async probeClash(cardId: string): Promise<Clash | null | undefined> {
+    const pulls = this.pulls();
+    const c = contributionOf(this.o.board.row(cardId));
+    if (!pulls || !c?.reviewed) return undefined;
+    let clash: Clash | null;
+    try {
+      const found = await pulls.clashBeforeMerge(cardId, c.reviewed);
+      clash = found && { ...found, ...(await this.landedBy(found.commit)) };
+    } catch (e) {
+      console.error(`probing ${cardId}'s pull request against the local main:`, messageOf(e));
+      return undefined;
     }
+    const now = this.o.board.card(cardId) && contributionOf(this.o.board.row(cardId));
+    if (!now || now.reviewed !== c.reviewed) return clash;
+    if (!sameClash(now.clash, clash)) {
+      const { clash: _, ...rest } = now;
+      this.o.board.work(cardId, { contribution: JSON.stringify({ ...rest, ...(clash ? { clash } : {}) } satisfies StoredContribution) });
+    }
+    return clash;
+  }
+
+  /**
+   * „main pushen und PR anpassen“ on a review card whose PR collides with unpushed commits on the
+   * local main: once the undo window is through (`keepMainFor` takes it back), the local main goes
+   * to `origin` (`Workspaces.pushMain`), so the PR now conflicts there, and the card's worker brings
+   * the PR up to date with it, itself where the contributor allows maintainers' edits, else by a
+   * change request to them. A push that fails says why on the card, which stays with the owner.
+   */
+  pushMainFor(cardId: string) {
+    const i = this.o.board.item(cardId);
+    const c = contributionOf(this.o.board.row(cardId));
+    if (!i || !c?.clash || !handedOver(i) || !this.pulls()) throw new BadRequest('noClash', 'the card’s pull request collides with nothing unpushed on main');
+    if (this.pushingMain.has(cardId) || this.approving.has(cardId)) throw new BadRequest('notReady', 'the card is busy with main already');
+    this.pushingMain.set(
+      cardId,
+      setTimeout(() => {
+        this.pushingMain.set(cardId, true);
+        void this.pushMainNow(cardId).finally(() => this.pushingMain.delete(cardId));
+      }, this.o.pushHold ?? PUSH_HOLD_MS),
+    );
+  }
+
+  /** The owner takes back „main pushen“ within its undo window: nothing happened. */
+  keepMainFor(cardId: string) {
+    const held = this.pushingMain.get(cardId);
+    if (!held || held === true) throw new BadRequest('noClash', 'main is not waiting to be pushed for this card');
+    clearTimeout(held);
+    this.pushingMain.delete(cardId);
+  }
+
+  private async pushMainNow(cardId: string) {
+    const t = this.o.board.t.worker;
+    const r = await this.pulls()!.pushMain().catch((e: unknown) => ({ problem: messageOf(e) }));
+    if (!this.o.board.item(cardId)) return;
+    if ('problem' in r) {
+      this.o.board.log(cardId, 'error', 'obeya', t.pushFailed(r.problem));
+      return;
+    }
+    this.o.onMerged?.(cardId);
+    this.reprobeClashes();
+    const c = contributionOf(this.o.board.row(cardId));
+    if (!c) return;
+    const files = c.clash?.files ?? [];
+    const { clash: _, ...rest } = c;
+    this.o.board.work(cardId, { contribution: JSON.stringify({ ...rest, ...(c.canModify ? { changing: true as const } : {}) } satisfies StoredContribution), state: 'working', need: null, detail: null, status_line: null });
+    this.o.board.log(cardId, 'state', 'owner', t.pushedMain(r.to.slice(0, 7), c.number));
+    this.deliver(
+      cardId,
+      [
+        `The owner had Obeya push the local main to origin (${r.to.slice(0, 7)} there now): its commits nobody had pushed yet collide with this pull request${files.length ? ` in ${files.join(', ')}` : ''}, so the pull request now conflicts with origin's main. Bring it up to date with origin's main, so that both changes keep working.`,
+        c.canModify
+          ? `${c.author} allows maintainers' edits: merge origin's main into your branch, which is the PR's head (a merge, not a rebase: Obeya pushes onto the PR's branch only what builds on its head), resolve the conflict, run the checks and commit. Then review the new head as before (the checks, the merge probe; a new demo only where what the pull request does looks different now) and hand over again with pr_draft saying what you changed and why: Obeya pushes it onto the PR's branch and posts the text once the owner approves.`
+          : `${c.author} does not allow maintainers' edits: ask them with request_changes, in the PR's language, to bring the PR up to date with main${files.length ? ` (the conflict is in ${files.join(', ')})` : ''}. The card then waits for them, and you review their push as any other.`,
+      ].join('\n\n'),
+      [],
+      true,
+    );
+  }
+
+  /** A review card waiting for the owner looks again at whether its PR collides with what is unpushed on the local main (`probeClash`), as each round of the PR watcher has it do. */
+  recheckClash(cardId: string) {
+    const i = this.o.board.item(cardId);
+    if (i && handedOver(i) && !answering(i) && !this.approving.has(cardId)) void this.probeClash(cardId);
+  }
+
+  /**
+   * The local main moved, or may have while Obeya was not running: each review card waiting for the
+   * owner looks again at whether its PR collides with what is unpushed on it.
+   */
+  private reprobeClashes() {
+    if (!this.pulls()) return;
+    for (const i of this.o.board.items()) if (i.contribution && (!this.o.repo || i.repo === this.o.repo) && handedOver(i) && !answering(i)) void this.probeClash(i.id);
+  }
+
+  /** The card whose landing put `commit` on the default branch, where one did. */
+  private async landedBy(commit: string): Promise<{ card?: { id: string; title: string } }> {
+    const landed = this.o.board
+      .items()
+      .filter((i) => finished(i.state) && !i.contribution && (!this.o.repo || i.repo === this.o.repo))
+      .flatMap((i) => {
+        const row = this.o.board.row(i.id);
+        const s = row.shipped ? (JSON.parse(row.shipped) as Shipped) : null;
+        return s?.commit && s.base && !s.pr ? [{ card: i, base: s.base, commit: s.commit, at: row.updated_at }] : [];
+      })
+      // the cards touched last first: unpushed commits are recent
+      .sort((a, b) => b.at.localeCompare(a.at))
+      .slice(0, 100);
+    const at = await this.pulls()!.landingOf(commit, landed);
+    const card = landed[at]?.card;
+    return card ? { card: { id: card.id, title: card.title } } : {};
+  }
+
+  /**
+   * Pulling review card `reviewId`'s merged PR into the local main stopped on a conflict with its
+   * unpushed commits (`stopped`), and was taken back. Those commits were never pushed, so a worker
+   * may rebase them onto the remote's main: the worker of the card whose commit conflicts, else the
+   * review card's own, each while its session can go on (finishing after its landing, or resumed in
+   * a fresh workspace as for a question). It hands over the resolution, which lands without the
+   * owner (`landResolved`). Where no worker can take it, the review card says what is left to do.
+   */
+  private async resolvePull(reviewId: string, stopped: PullStopped) {
+    const t = this.o.board.t.worker;
+    const c = contributionOf(this.o.board.row(reviewId));
+    if (!c) return;
+    const { card } = await this.landedBy(stopped.commit);
+    const resolving: Resolving = { card: reviewId, pr: c.number, url: c.url, stopped };
+    // a card resolving one already is busy with that
+    const takes = (id: string) => {
+      const i = this.o.board.item(id);
+      const l = i && landedOf(this.o.board.row(id));
+      return !!i && i.kind === 'task' && !i.prototypeOf && !i.archivedAt && !l?.resolve && ((!!l && !!i.finishing) || askable(i));
+    };
+    const resolver = [card?.id, reviewId].find((id) => !!id && takes(id));
+    if (!resolver) {
+      this.o.board.log(reviewId, 'error', 'obeya', t.pullUnresolved(stopped.subject, stopped.files.join(', '), t.noResolver));
+      return;
+    }
+    const own = resolver !== reviewId;
+    this.o.board.log(reviewId, 'state', 'obeya', t.pullStopped(stopped.subject, own ? this.card(resolver).title : null));
+    if (own) this.o.board.log(resolver, 'state', 'obeya', t.resolvingPull(c.number, stopped.subject));
+    const message = (path: string) => this.resolveMessage(resolving, own, path);
+    const item = this.card(resolver);
+    const landed = landedOf(this.o.board.row(resolver));
+    if (landed && item.finishing) {
+      this.o.board.work(resolver, { landed: JSON.stringify({ ...landed, resolve: resolving } satisfies LandedState), status_line: t.resolvingStatus(c.number) });
+      this.deliver(resolver, message(this.o.board.row(resolver).workspace ?? ''));
+      return;
+    }
+    // no workspace to resolve it in: the owner pulls by hand
+    const failed = () => {
+      if (this.o.board.card(resolver)) this.o.board.work(resolver, { status_line: null });
+      if (this.o.board.card(reviewId)) this.o.board.log(reviewId, 'error', 'obeya', t.pullUnresolved(stopped.subject, stopped.files.join(', '), t.noResolver));
+    };
+    try {
+      this.resumeFinished(item, { resolve: resolving }, (path, worktree) => [message(path), ...(worktree ? [IN_WORKTREE] : [])].join('\n\n'), [], undefined, failed);
+      this.o.board.work(resolver, { status_line: t.resolvingStatus(c.number) });
+    } catch (e) {
+      console.error(`resuming ${resolver} to resolve the pull:`, messageOf(e));
+      failed();
+    }
+  }
+
+  /** What the worker that resolves a stopped pull hears: what stopped, and how to rebase and hand it over. */
+  private resolveMessage(r: Resolving, own: boolean, path: string): string {
+    const s = r.stopped;
+    const repo = this.o.repoPath ?? 'the Obeya checkout';
+    const checks = this.o.adapter.checks ?? [];
+    const commits = s.unpushed === 1 ? 'one commit' : `${s.unpushed} commits`;
+    return [
+      `Obeya merged pull request #${r.pr} (${r.url}) on the forge, but pulling the merge into the local main of the Obeya checkout (${repo}) stopped on a conflict: the local main has ${commits} nobody pushed yet, and ${own ? 'the commit of your card' : 'its commit'} ${s.commit.slice(0, 7)} (“${s.subject}”) conflicts with the pull request in ${s.files.join(', ')}. Obeya took the pull back: the local main is as it was, at ${s.main.slice(0, 7)}.`,
+      `Those commits were never pushed, so you may rebase them: that rewrites no published history. Resolve it in your workspace (${path}):`,
+      [
+        `1. Put a branch of your own at the local main as it stood: git checkout -B <branch> ${s.main}. Commit what you still have in the workspace first. Where the workspace lacks those commits, fetch them from the checkout first: git fetch ${repo} ${s.main} ${s.upstream}.`,
+        `2. Rebase it onto ${s.upstream}, origin's main with the merge: git rebase ${s.upstream}. Resolve each conflict so that both the pull request's change and the local commits keep doing what they did.`,
+        `3. Run ${checks.length ? `the checks (${checks.map((x) => `\`${x}\``).join(', ')})` : 'the repository’s checks'}.`,
+        '4. Call ready_for_review with a summary of how you resolved it, without a demo. Obeya then puts the local main at your HEAD, with whatever landed on it meanwhile on top. Do not push.',
+      ].join('\n'),
+      'Where the two changes contradict each other so that resolving it is a product decision, ask the owner.',
+    ].join('\n\n');
+  }
+
+  /** The unpushed commits on the local main were rebased (`rewritten`, each old commit by its new one): the cards that landed them name the new ones. */
+  private reshipped(rewritten: Record<string, string>) {
+    for (const i of this.o.board.items()) {
+      if (this.o.repo && i.repo !== this.o.repo) continue;
+      const row = this.o.board.row(i.id);
+      const s = row.shipped ? (JSON.parse(row.shipped) as Shipped) : null;
+      const commit = s?.commit && rewritten[s.commit];
+      if (!s || !commit) continue;
+      this.o.board.work(i.id, { shipped: JSON.stringify({ ...s, commit, ...(s.base && rewritten[s.base] ? { base: rewritten[s.base] } : {}) } satisfies Shipped) });
+    }
+  }
+
+  /**
+   * The worker handed over the stopped pull it resolved (`resolvePull`): the checkout's main goes to
+   * its workspace's `HEAD`, and the review card's log says main has its merge. Returns what the
+   * worker hears; what is in its workspace's way it fixes, what is in the checkout's goes to the owner.
+   */
+  private async landResolved(cardId: string, r: Resolving): Promise<string> {
+    const t = this.o.board.t.worker;
+    const row = this.o.board.row(cardId);
+    const res = await this.pulls()!.landResolution(row.workspace ?? '', { main: r.stopped.main, upstream: r.stopped.upstream });
+    const landed = landedOf(this.o.board.row(cardId));
+    const { resolve: _, ...rest } = landed ?? {};
+    const done = () => this.o.board.work(cardId, { landed: JSON.stringify(rest satisfies LandedState), status_line: null });
+    if ('code' in res) {
+      if (res.worker) {
+        if (res.main && landed?.resolve) this.o.board.work(cardId, { landed: JSON.stringify({ ...landed, resolve: { ...landed.resolve, stopped: { ...landed.resolve.stopped, main: res.main } } } satisfies LandedState) });
+        return `Not landed: ${res.detail}. Fix that, then call ready_for_review again.`;
+      }
+      done();
+      if (this.o.board.card(r.card)) this.o.board.log(r.card, 'error', 'obeya', t.pullFailed(res.detail));
+      this.o.board.log(cardId, 'error', 'obeya', t.pullFailed(res.detail));
+      return `Not landed: ${res.detail}. That is in the Obeya checkout, not in your work: the owner sees it on the card. End your turn.`;
+    }
+    done();
+    if ('rewritten' in res) this.reshipped(res.rewritten);
+    const to = 'already' in res ? res.already : res.to;
+    if (!('already' in res)) this.o.board.log(cardId, 'state', 'worker', t.resolvedPull(r.pr, to.slice(0, 7)));
+    if (this.o.board.card(r.card)) this.pulled(r.card, to);
+    return 'already' in res
+      ? `The local main has the merge already (${to.slice(0, 7)}): someone pulled it meanwhile, so nothing of yours is needed. End your turn.`
+      : `Landed: the local main is at ${to.slice(0, 7)} now, the pull request's merge under its unpushed commits. End your turn.`;
   }
 
   /** Passes what happened on the pull request to the worker; the owner's log gets `note`. */
@@ -2349,6 +2885,7 @@ export class Workers {
   /** After a restart (`repo`: of this repository's agents alone): resume every card whose worker was in the middle of a turn. */
   resumeAll(repo = false) {
     const restarted = repo ? REPO_RESTARTED : RESTARTED;
+    this.reprobeClashes();
     for (const i of this.o.board.items()) {
       if (this.o.repo && i.repo !== this.o.repo) continue;
       // the page reloaded: the owner may watch on, or have gone
@@ -2678,6 +3215,9 @@ export class Workers {
       this.o.board.unsnooze(cardId, met ? { met } : timeUp ? 'time' : owner ? 'owner' : 'news');
       const live = this.live.get(cardId);
       if (live) live.snoozed = false;
+      // snoozed on its handover, it goes on towards what it told the owner: the card is at work again
+      const card = this.o.board.item(cardId);
+      if (card && handedOver(card)) this.takingIn(cardId, true);
     }
     const wokeText = woke ? wokeNote(woke, timeUp, owner, !!text, met) : '';
     // the owner's words let a worker about to pause go on, as they do a paused one
@@ -2949,7 +3489,7 @@ export class Workers {
           break;
         }
         live.failed = e.message;
-        this.o.board.log(cardId, 'error', 'obeya', e.message);
+        this.o.board.log(cardId, 'error', 'obeya', e.message, { token: e.token });
         break;
       case 'lost':
         this.lost(cardId, live);
@@ -3005,8 +3545,12 @@ export class Workers {
     if (!card) return;
     if (closing !== undefined) this.o.board.log(cardId, 'closing', 'worker', closing);
     const row = this.o.board.row(cardId);
-    // it snoozed: its session ends (its background work with it), and Obeya resumes it at the time
-    if (snoozed && !handedOver && !more && row.snoozed) return this.end(cardId);
+    // it snoozed: its session ends (its background work with it), and Obeya resumes it at the time;
+    // on its handover the snooze answers the owner's words, so waking it is at work again
+    if (snoozed && !handedOver && !more && row.snoozed) {
+      if (answering(card)) this.answerTaken(cardId, true);
+      return this.end(cardId);
+    }
     if (row.pausing && !more) {
       // it paused at a safe point, as the owner asked: its session ends, and it goes on once they let it
       if (!background) return this.pausedAtSafePoint(cardId, card, !!row.approved_at, handedOver, spoke);
@@ -3056,6 +3600,7 @@ export class Workers {
         return;
       }
       if (landed.needsClone) return this.awaitClone(cardId);
+      if (landed.resolve && !live.failed && !live.limited && !(this.restart && live.toldRestart)) return this.unresolved(cardId, live, landed.resolve);
       // it paused for the restart, which resumes it with its workspace
       if (this.restart && live.toldRestart && !live.failed) return this.pausedForRestart(cardId, live);
       if (live.limited) return this.waitForLimit(cardId, live, live.limited);
@@ -3087,6 +3632,28 @@ export class Workers {
     // a session that fails again after the nudge cannot go on by itself: the owner hears why, not its last words
     const text = live.failed ? failureReason(clip(live.failed, 1200), this.o.board.t) : live.lastText ? clip(live.lastText, 1200) : this.o.board.t.worker.stalled;
     this.toOwner(cardId, { text, options: [], stuck: true });
+  }
+
+  /**
+   * The worker resolving a stopped pull (`resolvePull`) ended its turn without handing the
+   * resolution over: it is reminded once; ending again, it gives the pull up, and the review card
+   * says what is left to do.
+   */
+  private unresolved(cardId: string, live: Live, r: Resolving) {
+    const landed = landedOf(this.o.board.row(cardId))!;
+    if (!r.reminded) {
+      this.o.board.work(cardId, { landed: JSON.stringify({ ...landed, resolve: { ...r, reminded: true } } satisfies LandedState) });
+      this.setBusy(live, true);
+      live.session.send(
+        `Your turn ended, and the pull of pull request #${r.pr} into the local main is still stopped: resolve it and hand it over with ready_for_review, or ask the owner where it needs their decision. Should you end your turn again like this, Obeya leaves the pull to the owner.`,
+      );
+      return;
+    }
+    const { resolve: _, ...rest } = landed;
+    this.o.board.work(cardId, { landed: JSON.stringify(rest satisfies LandedState), status_line: null });
+    const t = this.o.board.t.worker;
+    if (this.o.board.card(r.card)) this.o.board.log(r.card, 'error', 'obeya', t.pullUnresolved(r.stopped.subject, r.stopped.files.join(', '), t.resolverGaveUp));
+    this.finish(cardId);
   }
 
   /**
@@ -3480,6 +4047,9 @@ export class Workers {
         run: ({ text }) => {
           const s = clip(String(text).trim(), 2000);
           if (!s) return 'Not shown: the reply is empty.';
+          // a reply may end the turn on a handover: what the owner chose for later is made before it
+          const owed = this.owedTasks(cardId);
+          if (owed) return `Not shown: first make the follow-up tasks the owner chose, for ${owed}; then reply.`;
           this.o.board.log(cardId, 'talk', 'worker', s);
           live.answered = true;
           live.spoke = true;
@@ -3601,7 +4171,7 @@ export class Workers {
         ? ([
             {
               name: 'findings',
-              description: `Record your review's findings for the owner, the whole list as it stands now (you keep it like a brief: call it after your review, and again whenever a finding changes, from the owner's words or a push). Each: a short title, a sentence or two in ${language}, whether it is about security, and its status: open; sent (to the contributor, with the review's url); fixed (by you, pushed onto the PR's branch); resolved (a push of the contributor's fixed it, or it no longer applies); dropped (the owner does not pursue it); later (the owner made it a follow-up task, which Obeya keeps as it is). Give the id of a finding you had; a new one gets the next. The card shows them beside the demo, and the owner decides on each there.`,
+              description: `Record your review's findings for the owner, the whole list as it stands now (you keep it like a brief: call it after your review, and again whenever a finding changes, from the owner's words or a push). Each: a short title, a sentence or two in ${language}, whether it is about security, and its status: open; sent (to the contributor, with the review's url); fixed (by you, committed on your branch; Obeya pushes it with the owner's approval); resolved (a push of the contributor's fixed it, or it no longer applies); dropped (the owner does not pursue it); later (a follow-up task you made with follow_up_task, which Obeya keeps as it is). Give the id of a finding you had; a new one gets the next free number, in the order of the list. with: the ids of the other findings it would make one follow-up task with, should the owner choose that for them: only what one worker would sensibly do in one go (the same cause, the same files), else none. The card shows them beside the demo, bundles together, and the owner decides on each there.`,
               schema: {
                 findings: z.array(
                   z.object({
@@ -3611,16 +4181,28 @@ export class Workers {
                     security: z.boolean().optional(),
                     status: z.enum(['open', 'sent', 'fixed', 'resolved', 'dropped', 'later']).optional(),
                     url: z.string().optional(),
+                    with: z.array(z.number().int()).optional(),
                   }),
                 ),
               },
               run: ({ findings }) => this.setFindings(cardId, findings as Parameters<Workers['setFindings']>[1]),
             },
             {
+              name: 'follow_up_task',
+              description: `Make findings the owner chose as follow-up tasks (or asked for in words) a task of its own, beside your card and following up on it, outside this PR; it waits in the queue behind your card and starts once the PR is merged. findings: the numbers of the findings it is made of, one or several that belong together; title: short and precise, in ${language}; task: what is to be done, in ${language}, written for the agent who will take it on and has seen neither this PR nor your review: what is wrong and why, the files concerned, what done looks like, and the PR's link (${review.url}). Obeya marks those findings later, linking the task.`,
+              schema: { findings: z.array(z.number().int()), title: z.string(), task: z.string() },
+              run: ({ findings, title, task }) => this.followUpTask(cardId, String(title).trim(), String(task).trim(), (findings as number[]) ?? []),
+            },
+            {
               name: 'request_changes',
               description: `Send change requests to ${review.author} as one review of the pull request that asks for changes, posted with the owner's account. body: in the PR's language, as the owner's words to the contributor; findings: the numbers of the findings it holds, which Obeya marks as sent. Then end your turn: the card waits for ${review.author}.`,
               schema: { body: z.string(), findings: z.array(z.number().int()).optional() },
               run: async ({ body, findings }) => {
+                const owed = this.owedTasks(cardId);
+                if (owed) return `Not sent: first make the follow-up tasks the owner chose, for ${owed}; then call request_changes again.`;
+                const own = contributionOf(this.o.board.row(cardId));
+                if (own?.changing || own?.held)
+                  return `Not sent: your own changes to the PR wait for the owner's approval, and a request to ${review.author} goes with them as one message. Write it into pr_draft with your handover (ready_for_review): Obeya posts it once the owner approves.`;
                 const sent = await this.requestChanges(cardId, String(body), (findings as number[] | undefined) ?? []);
                 if (sent) return sent;
                 handOver();
@@ -3630,12 +4212,6 @@ export class Workers {
                   'a change request in them goes to the contributor the same way, or to you as their switch says',
                 );
               },
-            },
-            {
-              name: 'comment_on_pr',
-              description: "Write a comment on the pull request with the owner's account (after pushing a change of your own onto its branch: what you changed and why). body: in the PR's language.",
-              schema: { body: z.string() },
-              run: ({ body }) => this.commentOnPr(cardId, String(body)),
             },
           ] satisfies AgentTool[])
         : []),
@@ -3721,6 +4297,12 @@ export class Workers {
                   })
                   .optional()
                   .describe("required: the checks on the PR's head and your merge probe; the findings you record with findings"),
+                pr_draft: z
+                  .string()
+                  .optional()
+                  .describe(
+                    "when your branch holds commits of your own that are not on the PR yet: the text Obeya posts on the PR once the owner approves, after pushing them onto its branch. What you changed and why, in the PR's language, as the owner's words to the contributor, without mentioning Obeya or agents; with findings the owner sends the contributor along with your changes, the request for them in the same text. The card shows it to the owner first. Without it, the text of your last handover stands.",
+                  ),
               }
             : {}),
           files: z
@@ -3731,19 +4313,30 @@ export class Workers {
               `the files ${this.folder ? 'in the folder' : 'of your branch'} that are the result for the owner (a document, a report, a spreadsheet, a page; not the code or configuration behind it), each with its path and a one-line caption in ${language}. The card shows them beside the demo: Markdown formatted, a PDF in the browser's viewer, any other file to open on the owner's computer. Without them, the ones named at your last handover stand.`,
             ),
         },
-        run: ({ summary, demo, files, review: results }) => {
+        run: ({ summary, demo, files, review: results, pr_draft: draft }) => {
+          // a stopped pull this worker resolved lands as it hands it over, without the owner
+          const resolving = landedOf(this.o.board.row(cardId))?.resolve;
+          if (resolving) return this.landResolved(cardId, resolving);
           type Demo = { kind?: DemoKind; dir: string; chapters?: string[]; question?: { text: string } & Omit<Asked, 'question'>; page?: DemoPage; follows?: 'replaces' | 'supplements' };
           const given = demo as Demo | undefined;
           // whether the branch holds work and decides where it lands, which git tells without blocking the server
           // a review card hands over the PR's head it reviewed, which is all Obeya ever merges
+          // with the commits of its own on top of the PR's head, which Obeya pushes on the owner's approval
           const handOverWork = (d: Demo | undefined, named: CardFile[] | undefined, shows: boolean): Promise<string> =>
             review
-              ? gitAsync(this.o.board.row(cardId).workspace ?? '', 'rev-parse', 'HEAD').then(
-                  (head) => handOverNow(d, named, shows, true, undefined, head),
-                  (e: unknown) => `Not handed over: Obeya could not read your branch's head (${messageOf(e)}). Check the workspace, then call ready_for_review again.`,
-                )
-              : Promise.all([this.o.workspaces.hasWork(cardId), this.landingOf(cardId)]).then(([work, { own }]) => handOverNow(d, named, shows, work, own));
-          const handOverNow = (d: Demo | undefined, named: CardFile[] | undefined, shows: boolean, work: boolean, own: CardLanding | undefined, head?: string): string => {
+              ? this.ownCommits(cardId, review).then((mine) => (typeof mine === 'string' ? mine : handOverNow(d, named, shows, true, undefined, mine)))
+              : Promise.all([this.o.workspaces.hasWork(cardId), this.landingOf(cardId)]).then(async ([work, { own }]) =>
+                  handOverNow(d, named, shows, work, own, undefined, work && !this.folder ? await this.o.workspaces.changedFiles(cardId) : undefined),
+                );
+          const handOverNow = (
+            d: Demo | undefined,
+            named: CardFile[] | undefined,
+            shows: boolean,
+            work: boolean,
+            own: CardLanding | undefined,
+            mine?: OwnCommits,
+            changed?: string[],
+          ): string => {
             // reading what the change shows takes a while, in which the owner may stop or replace the session
             if (this.live.get(cardId) !== live && !live.standIn) return 'This session has ended. Stop working and end your turn.';
             const s = clip(String(summary), 6000);
@@ -3753,6 +4346,11 @@ export class Workers {
             const checked = results as { checks: { name: string; passed: boolean }[]; mergeable: boolean } | undefined;
             if (review && !checked) return "Not handed over: a review card's handover says what the checks and the merge probe found (review). Call ready_for_review again with it.";
             if (review && !contributionOf(row)?.findings) return 'Not handed over: record your findings first (findings; an empty list where your review found nothing), then call ready_for_review again.';
+            const owed = review && this.owedTasks(cardId);
+            if (owed) return `Not handed over: first make the follow-up tasks the owner chose, for ${owed}; then call ready_for_review again.`;
+            // what goes onto the PR with the owner's approval: the worker's own commits and their text, with the requests to the contributor decided meanwhile
+            const held = review && mine ? this.heldAt(cardId, mine, typeof draft === 'string' ? draft : undefined) : undefined;
+            if (typeof held === 'string') return held;
             // approved work that could not land comes back to be landed, not reviewed: its demo stands
             const approved = !!row.approved_at;
             // a handover in answer to the owner's words that brings no new demo is an answer to them, not a demo to watch
@@ -3793,9 +4391,15 @@ export class Workers {
             handOver();
             if (review && checked) {
               const now = contributionOf(this.o.board.row(cardId)) ?? review;
-              const { requested: _, ...rest } = now;
+              const { requested: _, held: __, changing: ___, ...rest } = now;
               const results = { checks: checked.checks.slice(0, 20).map((c) => ({ name: clip(c.name, 60), passed: !!c.passed })), mergeable: !!checked.mergeable };
-              this.o.board.work(cardId, { contribution: JSON.stringify({ ...rest, reviewed: head, results } satisfies StoredContribution), ...(row.state === 'inPr' ? { state: 'working' } : {}) });
+              const findings = held && rest.findings?.map((f) => (held.asks.includes(f.id) ? { ...f, withChanges: true as const } : f));
+              this.o.board.work(cardId, {
+                contribution: JSON.stringify({ ...rest, reviewed: mine?.head, results, ...(held ? { held, ...(findings ? { findings } : {}) } : {}) } satisfies StoredContribution),
+                ...(row.state === 'inPr' ? { state: 'working' } : {}),
+              });
+              // what the pull after the merge would run into on the local main, for the owner to see before approving
+              void this.probeClash(cardId);
             }
             const report = this.report(cardId, s);
             const e = this.o.board.log(cardId, 'review', 'worker', s);
@@ -3830,7 +4434,16 @@ export class Workers {
                 'Recorded: once your turn has ended, Obeya lands your work on main.',
                 'a change to the work is to be committed by then',
               );
-            return ending(END_TURN, "Recorded: your handover waits for the owner's approval.", 'if they change what you handed over, hand it over again');
+            // what the owner's button does, as Obeya sees the branch: the worker may know of no commit on it but its own
+            const lands =
+              review || this.folder
+                ? ''
+                : !work
+                  ? ' Obeya sees no change on your branch: approving closes the card, and nothing lands.'
+                  : changed?.length
+                    ? ` Approving lands your branch's change to ${changed.length === 1 ? '1 file' : `${changed.length} files`}: ${changed.slice(0, 8).join(', ')}${changed.length > 8 ? ', …' : ''}.`
+                    : '';
+            return ending(`${END_TURN}${lands}`, `Recorded: your handover waits for the owner's approval.${lands}`, 'if they change what you handed over, hand it over again');
           };
           // a demo made on another machine is served and shared from its copy here
           const handOverWith = (named?: CardFile[]): string | Promise<string> => {
@@ -3895,7 +4508,8 @@ export class Workers {
           const card = this.o.board.item(cardId);
           if (!card) return 'Not snoozed: the card is gone.';
           if (live.handedOver) return 'Not snoozed: you asked or handed over in this turn, so the card waits for the owner.';
-          if (!(card.state === 'working' || card.state === 'inPr' || card.finishing)) return 'Not snoozed: the card waits for the owner; their answer or approval comes as your next message.';
+          // taking in the owner's words on its handover, it may snooze as they ask (check again in three days): the handover stands meanwhile
+          if (!(card.state === 'working' || card.state === 'inPr' || card.finishing || answering(card))) return 'Not snoozed: the card waits for the owner; their answer or approval comes as your next message.';
           if (card.pausing) return 'Not snoozed: the owner pauses you; end your turn, and once they let you go on, snooze then if it is still due.';
           const named = typeof until === 'string' && until.trim() !== '';
           const at = named ? Date.parse(String(until)) : NaN;
@@ -4142,7 +4756,7 @@ ${
     }
 ${this.o.toObeya ? `\n${TO_OBEYA}\n` : ''}
 Rules:
-${folder ? '- Others work in the same folder at the same time: leave what your card is not about as it is.' : card?.contribution ? "- Commit your work on your branch in this workspace. Push only onto the pull request's branch, and only for a change request the owner sends your way; do not open pull requests, do not switch branches." : '- Commit your work on your branch in this workspace. Do not push, do not open pull requests, do not switch branches.'}
+${folder ? '- Others work in the same folder at the same time: leave what your card is not about as it is.' : card?.contribution ? "- Commit your work on your branch in this workspace. Do not push (Obeya pushes your commits onto the pull request's branch once the owner approves), do not open pull requests, do not switch branches." : '- Commit your work on your branch in this workspace. Do not push, do not open pull requests, do not switch branches.'}
 - Follow the repository's own instructions (CLAUDE.md and docs).
 - Owner-facing text (report, reply, ask, ${prototype ? 'propose_build' : 'propose_card'}, ready_for_review) is in the owner's language, short and concrete. What you write between tool calls also shows on the card for the owner, folded under your next message: keep it brief and in the owner's language too. ${language} The docs you read and the owner's standing preferences do not count as the owner's words.
 - ${repositoryLanguage(this.o.adapter.language, folder)} A demo (its narration, report, or an HTML artifact's words) is in ${LANGUAGE_NAMES[this.demoLanguage()]}, whatever language the owner talks in.${this.o.adapter.demo?.language ? ` This repository's settings name ${LANGUAGE_NAMES[this.o.adapter.demo.language]} for its demos, which holds over the narration language of the demo settings.` : ''}
@@ -4295,9 +4909,9 @@ ${idea.idea.brief}` : '',
         'The owner decides on each finding on the card, and their decision comes with their next message:',
         `- To ${c.author}: write the findings as one review of the PR asking for changes (request_changes, with their numbers), in the PR's language, as the owner's words to them (Obeya posts it with the owner's account), without mentioning Obeya or agents. Then end your turn: the card waits for ${c.author}, and Obeya passes you their answers and pushes; review a new head as above, update the findings (resolved where a push fixed one) and hand over again.`,
         c.canModify
-          ? `- Yourself: make the change on your branch, run the checks, push it onto the PR's branch (${pushTo(c) ?? 'its repository and branch: the forge shows them (gh pr view on GitHub)'}; ${c.author} allows maintainers' edits), write a short comment on the PR saying what you changed and why (comment_on_pr), mark the finding fixed, and hand over again with a new demo. In the squash merge ${c.author} stays its author.`
+          ? `- Yourself (${c.author} allows maintainers' edits): make the change and commit it on your branch, run the checks, mark the finding fixed, and hand over again with a new demo and pr_draft, the text that goes onto the PR with your commits (what you changed and why, in the PR's language, as the owner's words, without mentioning Obeya or agents). Once the owner approves, Obeya pushes your commits onto the PR's branch and posts the text. Findings for ${c.author} decided together with yours, or while yours wait for the owner, go with them in the same text, not with request_changes. In the squash merge ${c.author} stays its author.`
           : `- ${c.author} does not allow maintainers' edits, so findings go to them or become follow-up tasks.`,
-        '- As a follow-up task: Obeya makes it a task of its own beside your card, outside this PR, and marks it later in your findings.',
+        '- As a follow-up task: you make it a task of its own beside your card, outside this PR (follow_up_task), which marks it later in your findings. Findings that belong together become one task: as the owner\'s words say first, else as you bundled them in your findings (with), so bundle there only what one worker would sensibly do in one go.',
         'Words of the owner\'s that ask the same in so many words („send them finding 1“, „fix that yourself“) count the same. Anything else they say (a question, more to look at) you answer or do on the card, and nothing goes to the PR.',
       ].join('\n'),
     ];
@@ -4344,14 +4958,21 @@ ${idea.idea.brief}` : '',
   }
 }
 
+/** Whether two clashes a review card's PR has with the local main are the same, to the owner: none, or the same commit with the same files. */
+function sameClash(a: Clash | null | undefined, b: Clash | null | undefined): boolean {
+  if (!a || !b) return !a && !b;
+  return a.commit === b.commit && a.files.join('\n') === b.files.join('\n');
+}
+
 /**
- * The push onto a review card's PR branch as its worker runs it, where the branch's repository and
- * name are plain: both come from the contributor, and a branch name may hold what a shell runs.
+ * Where Obeya pushes a review card's held commits: the PR's branch in its repository, both as the
+ * forge names them and from the contributor, so taken only in a plain form (an https address, or a
+ * repository on this machine, as a scratch Obeya's played forge has it; a branch name git takes).
  */
-function pushTo(c: StoredContribution): string | null {
-  const repo = c.headRepo && /^https:\/\/[\w.-]+(:\d+)?(\/[\w.-]+)+$/.test(c.headRepo) ? c.headRepo : null;
-  const branch = c.headRef && /^[\w][\w./-]*$/.test(c.headRef) && !c.headRef.includes('..') ? c.headRef : null;
-  return repo && branch ? `git push ${repo} HEAD:${branch}` : null;
+function pushTarget(c: StoredContribution): { repo: string; branch: string } | null {
+  const repo = c.headRepo && (/^https:\/\/[\w.-]+(:\d+)?(\/[\w.-]+)+$/.test(c.headRepo) || isAbsolute(c.headRepo)) ? c.headRepo : null;
+  const branch = c.headRef && /^[\w][\w./-]*$/.test(c.headRef) && !c.headRef.includes('..') && !c.headRef.endsWith('.lock') ? c.headRef : null;
+  return repo && branch ? { repo, branch } : null;
 }
 
 /** The mocks of an idea's brief as a worker reads them, after the brief they belong to. */
