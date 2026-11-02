@@ -90,9 +90,9 @@ export function trustTakenOver(trusted: RepoCommands | null, after: SharedSettin
   return changed ? next : null;
 }
 
-/** A file's contents as git names them (its blob's object id), so that a workspace's file compares with one read from a commit. */
-function blobId(bytes: Uint8Array): string {
-  return new Bun.CryptoHasher('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+/** A file's contents as git names them (its blob's object id; SHA-256 in a repository whose ids are that long), so that a workspace's file compares with one read from a commit. */
+function blobId(bytes: Uint8Array, sha256: boolean): string {
+  return new Bun.CryptoHasher(sha256 ? 'sha256' : 'sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
 }
 
 /**
@@ -104,6 +104,7 @@ function blobId(bytes: Uint8Array): string {
  */
 export function codexAsTrusted(dir: string, trusted: Record<string, ClaudeFile> | undefined): boolean {
   if (!trusted || !Object.keys(trusted).length) return false;
+  const sha256 = Object.values(trusted).some((f) => f.id.length === 64);
   const files = new Map<string, string>();
   const add = (rel: string) => {
     const abs = join(dir, rel);
@@ -111,7 +112,7 @@ export function codexAsTrusted(dir: string, trusted: Record<string, ClaudeFile> 
     if (!stat) return;
     if (stat.isSymbolicLink()) throw new Error(`${rel} is a symbolic link`);
     if (stat.isDirectory()) for (const name of readdirSync(abs)) add(`${rel}/${name}`);
-    else files.set(rel, blobId(readFileSync(abs)));
+    else files.set(rel, blobId(readFileSync(abs), sha256));
   };
   try {
     for (const p of CODEX_PATHS) add(p);

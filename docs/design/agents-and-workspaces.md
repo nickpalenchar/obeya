@@ -43,6 +43,9 @@ before any thread runs checks Codex's own account of the layers it reads (`confi
 layer it should not load ends the start. Codex reads no project layer above the checkout's top level
 (Codex CLI 0.162.0). Codex's sandbox keeps a worker from writing `.codex/` itself; a change there
 reaches the workspace through the owner (a granted command, a rebase) and counts once trusted.
+What Obeya compares and what Codex then reads are two reads: a process outside the sandbox that
+swaps a file between them is not caught. Instructions (`AGENTS.md`) and repository skills are not
+configuration and are not held, as a repository's CLAUDE.md is not.
 Decided 2026-11-02: stricter than for Claude, whose workspace changes count while the main branch's
 are trusted, since Codex's configuration runs outside the sandbox Obeya relies on; rejected:
 refusing any `.codex/` (it stopped Codex workers in every repository with one, Obeya's own
