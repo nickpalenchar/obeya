@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, centre, onCanvas, type Place, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
-import { type CanvasInfo, type CanvasSnapshot, type CardPatch, type ConfigProblem, finished, type Group, type Item, nameless, needsYou, openPerGroup, type PendingRestart, type PlanDir, EVICT_HOLD_MS, START_ALL_HOLD_MS, titleFrom, type AppUpdate, type SourceUpdate, unreadAnswers, unreadPerProject, type Usage } from '../core/types';
-import { api, ApiError, beforeReload, cardsOn, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas } from './api';
+import { type CanvasInfo, type CanvasSnapshot, type CardPatch, type ConfigProblem, finished, type Group, type Item, nameless, needsYou, openPerGroup, type PendingRestart, type PlanDir, EVICT_HOLD_MS, START_ALL_HOLD_MS, titleFrom, type AppUpdate, type SourceUpdate, unreadAnswers, unreadPerProject, type Usage, type Waiting, waitingIn } from '../core/types';
+import { api, ApiError, beforeReload, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas } from './api';
 import { GroupNames, growFrom, inside, Lasso, MarkHint, Marked, Ring, TerritoryLayer, useTerritories } from './groups';
-import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, placeIn, shows, stopFlight, TOP, toWorld } from './camera';
+import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, midX, MIN_ZOOM, NO_SIDES, overviewCam, placeIn, shows, type Sides, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
+import { clip } from '../core/text';
 import { type ActDone, Detail, type Pending } from './detail';
 import { Cards, KoordinatorAgent } from './message';
 import type { Heard, Where } from './api';
@@ -20,10 +21,10 @@ import { PhoneDialog } from './access';
 import { Setup } from './setup';
 import { Phone, phoneView } from './phone';
 import { KoordinatorSheet } from './koordinator';
-import { QueuePill } from './queue';
-import { depsOf, manualPrerequisites, visibleDotSides } from './deps';
-import { anchoredPath, edgePoint, nearestEdge } from './manualLinks';
-import type { EdgeSide, ManualAnchor } from '../core/types';
+import { forcedText, QueuePill } from './queue';
+import { depsOf, handleAt, manualPrerequisites, nearestHandle, type Side, SIDES, waitsAmong } from './deps';
+import { anchoredPath, nearestEdge } from './manualLinks';
+import type { ManualAnchor } from '../core/types';
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
 import { Sign, Wordmark } from './logo';
 import { DOUBLE_CLICK_KNOWN, Help, HelpButton, HELP_KEY_KNOWN, NewCardHint } from './help';
@@ -36,14 +37,14 @@ import { attachTo, imageFiles } from './shots';
 import { cardDraft, drafted, fieldOn, focusedDraft, keepDrafts, MIC_DRAFT, OBEYA_DRAFT, takesImages } from './draft';
 import { HoldToTalk, PushToTalk, SPACE_SHOWS_MS, TAP_MS, ToldList, usePushToTalk, useTold } from './voice';
 import { videoOf } from './spot';
-import { CanvasPill, CardView, cardClass, shownState, DepLinks, linkPath, Edges, Links, Minimap, OldBunPill, ProjectView, RestartPill, Sheet, SourcePill, TalkIcon, UpdatePill, WorkspacesPill } from './parts';
+import { CardView, cardClass, shownState, DepLinks, depHead, depWidth, linkPath, linkSpot, Edges, Links, Minimap, OldBunPill, ProjectView, RestartPill, Sheet, SourcePill, TalkIcon, UpdatePill, WorkspacesPill } from './parts';
 import { clampWidth, loadWidths, saveWidths, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { failText, t } from './strings';
+import { loadPinned, NAV_CANVAS_MIN, NAV_W, NavPill, NavSheet, savePinned } from './nav';
 import { canvasPath, cardPath, named, queryWithout, readAddress } from './address';
-import { Inbox, entryKey, type QuickReply } from './inbox';
-import type { InboxEntry } from '../core/inbox';
+import { type QuickReply, sendReply } from './quickReply';
 import { beingWritten, split, talkAlone } from './talk';
-import { noticeLine, tellers, useAck, voiceTarget } from './tell';
+import { ACK_MS, noticeLine, tellers, useAck, voiceTarget } from './tell';
 
 export function App() {
   const [phone] = useState(phoneView);
@@ -108,6 +109,8 @@ function NoCanvas() {
 /** While the page loads, and after a restart until the canvas is back: the sign in the middle, above "offline" when the server cannot be reached. */
 /** The canvases the phone view last had, for when the machine does not answer. */
 const KEPT_CANVASES = 'obeya-phone-canvases';
+/** Set once the owner has drawn their first arrow between cards: what an arrow does no longer shows while drawing. */
+const DEP_KNOWN = 'obeya-dep-known';
 function keepCanvases(list: CanvasInfo[]) {
   try {
     localStorage.setItem(KEPT_CANVASES, JSON.stringify(list));
@@ -132,14 +135,14 @@ function Splash({ offline }: { offline: boolean }) {
 }
 
 function Live({ canvases: loaded }: { canvases: CanvasInfo[] }) {
-  const { snapshot, online, restart, update, source, usage, waiting, inbox, oldBun, canvases } = useCanvas();
+  const { snapshot, online, restart, update, source, usage, waiting, oldBun, canvases } = useCanvas();
   if (!snapshot) return <Splash offline={!online} />;
   // a canvas started, stopped or renamed while the page is open: the switcher follows
-  return <Canvas snapshot={snapshot} online={online} restart={restart} update={update} source={source} usage={usage} canvases={canvases ?? loaded} waiting={waiting} inbox={inbox} oldBun={oldBun} />;
+  return <Canvas snapshot={snapshot} online={online} restart={restart} update={update} source={source} usage={usage} canvases={canvases ?? loaded} waiting={waiting} oldBun={oldBun} />;
 }
 
-/** What is open, and the view to go back to: `prevCam` laid out beside a sheet `prevSide` wide. */
-type Focus = { type: 'project'; id: string; prevCam: Cam; prevSide: number } | { type: 'card'; id: string; prevCam: Cam; prevSide: number; project: Focus | null };
+/** What is open, and the view to go back to: `prevCam` laid out beside the panels `prevSide`. */
+type Focus = { type: 'project'; id: string; prevCam: Cam; prevSide: Sides } | { type: 'card'; id: string; prevCam: Cam; prevSide: Sides; project: Focus | null };
 type Pos = { x: number; y: number };
 
 // opening a card takes FLY_MS + UNFOLD_MS (300 ms) and closing the same: fast, yet still a visible move
@@ -169,7 +172,6 @@ function Canvas({
   usage,
   canvases,
   waiting,
-  inbox,
   oldBun,
 }: {
   snapshot: CanvasSnapshot;
@@ -180,9 +182,7 @@ function Canvas({
   /** The plan's usage limits, while the bar shows them. */
   usage: Usage | null;
   canvases: CanvasInfo[];
-  waiting: Record<string, number>;
-  /** Everything that waits for the owner, on every canvas. */
-  inbox: InboxEntry[];
+  waiting: Record<string, Waiting>;
   /** The Bun the server runs on, when it is too old for it (docs/design/distribution.md, Builds). */
   oldBun: string | null;
 }) {
@@ -212,11 +212,16 @@ function Canvas({
       return keep.length === Object.keys(f).length ? f : Object.fromEntries(keep);
     });
     setPending((p) => (p.some((i) => byId.has(i.id)) ? p.filter((i) => !byId.has(i.id)) : p));
+    // a card replied to from „Braucht dich“ stays under way while it still waits for the owner, also one on another canvas
+    const elsewhere = (id: string) => Object.entries(waiting).find(([c]) => c !== snapshot.canvas.id && waiting[c]!.items.some((i) => i.id === id))?.[1].items.find((i) => i.id === id);
     setUnderway((u) => {
-      const keep = Object.entries(u).filter(([id]) => byId.get(id)?.state === 'waiting');
+      const keep = Object.entries(u).filter(([id]) => {
+        const i = byId.get(id) ?? elsewhere(id);
+        return !!i && (i.state === 'waiting' || needsYou(i));
+      });
       return keep.length === Object.keys(u).length ? u : Object.fromEntries(keep);
     });
-  }, [snapshot]);
+  }, [snapshot, waiting]);
 
   const items = useMemo((): Item[] => {
     // the snapshot may carry a new card before its creation answers: then it is there once
@@ -282,9 +287,9 @@ function Canvas({
     } catch {}
     return centreOn(all, 1);
   });
-  // the width of the sheet docked on the right that the camera is laid out for: a sheet that opens,
+  // the panels docked at the window's edges that the camera is laid out for: a sheet that opens,
   // closes or is dragged wider moves the view by half the difference, so its middle stays the middle
-  const camSide = useRef(0);
+  const camSide = useRef<Sides>(NO_SIDES);
   /** Flies to `to`, laid out for the sheets as they are now. */
   const fly = (to: Cam, ms?: number) => {
     camSide.current = sideNow();
@@ -298,7 +303,7 @@ function Canvas({
     if (focusRef.current) return;
     const h = setTimeout(() => {
       try {
-        localStorage.setItem(camKey(snapshot.canvas.id), JSON.stringify(besideSheet(cam, camSide.current, 0)));
+        localStorage.setItem(camKey(snapshot.canvas.id), JSON.stringify(besideSheet(cam, camSide.current, NO_SIDES)));
       } catch {}
     }, 300);
     return () => clearTimeout(h);
@@ -324,24 +329,28 @@ function Canvas({
   const sheetWRef = useRef(sheetW);
   sheetWRef.current = sheetW;
   const [kOn, setKOn, kOnRef] = useLive(false);
-  // the inbox, a docked sheet like Obeya's: only one of them is open
-  const [inboxOn, setInboxOn, inboxOnRef] = useLive(false);
   const [aOn, setAOn, aOnRef] = useLive(false);
   const [cOn, setCOn, cOnRef] = useLive(false);
+  // the navigation pinned as a sidebar on the left (src/ui/nav.tsx)
+  const [pinned, setPinned, pinnedRef] = useLive(loadPinned);
+  const pin = (on: boolean) => {
+    setPinned(on);
+    savePinned(on);
+  };
   /**
-   * How wide the sheet docked on the right is, as just set: the canvas is what remains to its left.
-   * A narrow window lays the sheet over the canvas instead (styles.css).
+   * What the panels docked at the window's edges take of it, as just set: the sheet on the right and
+   * the pinned navigation on the left; the canvas is what remains between them. A narrow window lays
+   * the sheet over the canvas instead (styles.css), and the navigation stays under its button, as it
+   * does where it would leave the canvas too little room beside the sheet: the two never stack.
    */
-  const sideNow = () =>
-    matchMedia(NARROW).matches || !(kOnRef.current || inboxOnRef.current || sheetOnRef.current)
-      ? 0
-      : sheetOnRef.current && readingRef.current
-        ? sheetWRef.current.read
-        : sheetWRef.current.sheet;
+  const sideNow = (): Sides => {
+    const narrow = matchMedia(NARROW).matches;
+    const right = narrow || !(kOnRef.current || sheetOnRef.current) ? 0 : sheetOnRef.current && readingRef.current ? sheetWRef.current.read : sheetWRef.current.sheet;
+    return { left: !narrow && pinnedRef.current && innerWidth - NAV_W - right >= NAV_CANVAS_MIN ? NAV_W : 0, right };
+  };
   /** Opens Obeya's sheet or closes it; an open project closes. */
   const toggleKoordinator = () => {
     setKOn(!kOn);
-    if (!kOn) setInboxOn(false);
     if (!kOn && focusRef.current?.type === 'project') closeProject(false);
   };
   /** The sheet as the owner opens it to talk (its button, `C`): the field under the conversation takes the cursor. */
@@ -598,7 +607,6 @@ function Canvas({
     setReading(r);
     setSheetOn(true);
     setKOn(false);
-    setInboxOn(false);
     setAOn(false);
     if (inView) await flyOrJump(camFor(bounds(p), sideNow()), 700, quick);
   }
@@ -640,7 +648,7 @@ function Canvas({
     });
     await open(card);
   }
-  const createAtCentre = () => createAt(toWorld(camRef.current, (innerWidth - sideNow()) / 2, innerHeight / 2));
+  const createAtCentre = () => createAt(toWorld(camRef.current, midX(sideNow()), innerHeight / 2));
 
   // ---------------------------------------------------------------- kept across a restart
   // a restart reloads the page: what was open comes back as it was, without the flights
@@ -649,7 +657,7 @@ function Canvas({
     flushEdit().catch(console.error);
     const f = focusRef.current;
     const project = f?.type === 'project' ? f.id : f?.type === 'card' ? f.project?.id : undefined;
-    const sheet: SideSheet | undefined = kOn ? 'koordinator' : inboxOn ? 'inbox' : aOn ? 'archive' : undefined;
+    const sheet: SideSheet | undefined = kOn ? 'koordinator' : aOn ? 'archive' : undefined;
     keep(sessionStorage, snapshot.canvas.id, {
       at: Date.now(),
       ...(f?.type === 'card' ? { card: f.id } : {}),
@@ -672,11 +680,13 @@ function Canvas({
     // the canvas's own address, where the page came without one or with another canvas's
     const a = readAddress();
     const code = !a.canvas || a.canvas === snapshot.canvas.id ? a.card : undefined;
-    history.replaceState(history.state, '', `${code ? cardPath(snapshot.canvas.id, code) : canvasPath(snapshot.canvas.id)}${queryWithout(location.search, 'c', 'card')}`);
+    // Obeya's sheet (`?talk`, its answer in another canvas's navigation) opens once, as the card does
+    const talk = new URLSearchParams(location.search).has('talk');
+    history.replaceState(history.state, '', `${code ? cardPath(snapshot.canvas.id, code) : canvasPath(snapshot.canvas.id)}${queryWithout(location.search, 'c', 'card', 'talk')}`);
     // what comes back takes the address it had in place: no step in the history
     const restored = () => void (addressMode.current = 'push');
     if (k) return void reopen(k).catch(console.error).finally(restored);
-    if (sheetLeft) {
+    if (sheetLeft || talk) {
       // beside the sheet at once, as the canvas comes back
       quickSide.current = Date.now() + 2000;
       setKOn(true);
@@ -738,7 +748,6 @@ function Canvas({
     // the sheet that comes back sets the camera beside it at once, as the rest comes back without flights
     quickSide.current = Date.now() + 2000;
     if (k.sheet === 'koordinator') setKOn(true);
-    else if (k.sheet === 'inbox') setInboxOn(true);
     else if (k.sheet === 'archive') setAOn(true);
     if (k.config) setCOn(true);
     let gone: Item[] | undefined;
@@ -763,7 +772,7 @@ function Canvas({
       const waiting = i.queue ? manualPrerequisites(i, items) : [];
       if (waiting.length && !window.confirm(t.queue.confirmManualStart(waiting.map((card) => plain(card.title)).join(', ')))) return;
       await api.act(i.id, { action: i.queue ? 'force' : 'start' });
-      if (i.queue) showAck(waiting.length ? t.queue.forcedManual : t.queue.forced);
+      if (i.queue) showAck(forcedText(i.queue));
     } catch (e) {
       fail(e);
     }
@@ -889,7 +898,10 @@ function Canvas({
     };
   }, []);
   /** The canvas on the screen: beside the sheets, below the top bar and above the microphone. */
-  const viewNow = () => ({ left: 0, top: TOP, right: innerWidth - sideNow(), bottom: innerHeight - BOTTOM });
+  const viewNow = () => {
+    const side = sideNow();
+    return { left: side.left, top: TOP, right: innerWidth - side.right, bottom: innerHeight - BOTTOM };
+  };
   /**
    * Where a card a command makes goes: under the pointer on the canvas, else in the middle of the
    * view (`pointer` false: always there); with a card or project open, in the view it goes back to.
@@ -1049,9 +1061,55 @@ function Canvas({
   const [dragWith, setDragWith] = useState<string[]>([]);
   // the card the pointer is on, for the waits around it
   const [hoverId, setHoverId] = useState<string | null>(null);
-  const [connection, setConnection] = useState<{ from: string; side: EdgeSide; x: number; y: number; target?: string; anchor?: ManualAnchor } | null>(null);
-  const [handles, setHandles] = useState<string[]>([]);
+  const [connection, setConnection] = useState<{ from: string; side: Side; x: number; y: number; target?: string; anchor?: ManualAnchor } | null>(null);
+  // the dot under the pointer: the canvas renders again only when it changes
+  const [handle, setHandle] = useState<{ id: string; side: Side } | null>(null);
+  const handleRef = useRef(handle);
+  const showHandle = (h: { id: string; side: Side } | null) => {
+    const was = handleRef.current;
+    if (was?.id === h?.id && was?.side === h?.side) return;
+    handleRef.current = h;
+    setHandle(h);
+  };
   const connectable = (item: Item) => item.source !== 'plan' && item.kind !== 'project';
+  // what covers an arrow's trash button: the cards, which lie above the arrows
+  // an arrow the owner drew at chosen edges follows its own route between them
+  const routeOf = (from: string, to: string, a: Bounds, b: Bounds, head: number) => {
+    const anchor = byId(to)?.manualAnchors?.[from];
+    return anchor ? anchoredPath(a, b, anchor, head).path : undefined;
+  };
+  const cardBoxes = useMemo(() => placed.flatMap(({ item, b }) => (item.kind === 'project' ? [] : [b])), [placed]);
+  const titleOf = (id: string) => {
+    const i = byId(id);
+    return clip(i ? plain(i.title) || titleFrom(i.body) || t.titlePlaceholder : '…', 50);
+  };
+  // what an arrow does shows while the owner draws one, until they have drawn their first
+  const [depKnown, setDepKnown] = useState(() => known(DEP_KNOWN));
+  // arrows the owner removed that the server may still have: one holding a queued card goes there only
+  // once „Rückgängig“ has run out (`sent` from then on), so that taking it back never leaves the card started
+  const [removing, setRemoving] = useState<{ key: string; sent?: true }[]>([]);
+  // those removals while „Rückgängig“ runs, each with its timer and what sends it
+  const pendingRemovals = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; send: (keepalive?: boolean) => void }>());
+  // what the owner removed goes to the server even when the page goes before „Rückgängig“ has run out
+  useEffect(() => {
+    const away = () => {
+      for (const p of pendingRemovals.current.values()) {
+        clearTimeout(p.timer);
+        p.send(true);
+      }
+      pendingRemovals.current.clear();
+    };
+    addEventListener('pagehide', away);
+    return () => removeEventListener('pagehide', away);
+  }, []);
+  /** A removal still waiting for „Rückgängig“ to run out is taken back: the arrow stays. */
+  function keepDependency(key: string) {
+    const p = pendingRemovals.current.get(key);
+    if (!p) return;
+    clearTimeout(p.timer);
+    pendingRemovals.current.delete(key);
+    setRemoving((r) => r.filter((x) => x.key !== key));
+  }
   // Shift + drag on the canvas draws a lasso, Shift + click on a card takes it in or out: what is marked
   // moves together and goes into a group at once through the colour ring
   const lassoRef = useRef<Pos[] | null>(null);
@@ -1081,7 +1139,8 @@ function Canvas({
     const top = c.y + b.y * c.s;
     const below = top < TOP + MARKED_ROOM;
     const y = below ? c.y + (b.y + b.h) * c.s : top;
-    return { at: { x: Math.min(innerWidth - sideNow() - 12, Math.max(MARKED_W, c.x + (b.x + b.w) * c.s)), y: Math.min(innerHeight - MARKED_ROOM, Math.max(TOP + MARKED_ROOM, y)) }, below };
+    const side = sideNow();
+    return { at: { x: Math.min(innerWidth - side.right - 12, Math.max(side.left + MARKED_W, c.x + (b.x + b.w) * c.s)), y: Math.min(innerHeight - MARKED_ROOM, Math.max(TOP + MARKED_ROOM, y)) }, below };
   };
   async function assignGroup(to: { group: string | null } | { name: string }) {
     const r = ring!;
@@ -1096,6 +1155,36 @@ function Canvas({
       fail(e);
     }
   }
+  /** The trash button on an owner-drawn arrow: it goes at once, with „Rückgängig“. */
+  function removeDependency(from: string, to: Item) {
+    const key = `${from}:${to.id}`;
+    if (!(to.queue && 'behind' in to.queue && to.queue.behind.includes(from))) {
+      api.dependency(from, to.id, true).then(
+        () => showAck(t.deps.removed, () => api.dependency(from, to.id).catch(fail)),
+        fail,
+      );
+      return;
+    }
+    setRemoving((r) => [...r, { key }]);
+    const send = (keepalive = false) => {
+      setRemoving((r) => r.map((x) => (x.key === key ? { key, sent: true } : x)));
+      api.dependency(from, to.id, true, keepalive).catch((e) => {
+        setRemoving((r) => r.filter((x) => x.key !== key));
+        fail(e);
+      });
+    };
+    const timer = setTimeout(() => {
+      pendingRemovals.current.delete(key);
+      send();
+    }, ACK_MS);
+    pendingRemovals.current.set(key, { timer, send });
+    showAck(t.deps.removed, () => keepDependency(key));
+  }
+  // a removal the server has done is shown by the snapshot from then on
+  useEffect(() => {
+    const drawn = new Set(placed.flatMap(({ item }) => (item.manualDependsOn ?? []).map((from) => `${from}:${item.id}`)));
+    if (removing.some((x) => x.sent && !drawn.has(x.key))) setRemoving((r) => r.filter((x) => !x.sent || drawn.has(x.key)));
+  }, [placed, removing]);
   /** The × on a group's name in the colour ring: its cards belong to none, with a moment to undo. */
   async function deleteGroup(g: Group) {
     setRing(null);
@@ -1116,12 +1205,12 @@ function Canvas({
     e.preventDefault();
     setRing({ at: { x: e.clientX, y: e.clientY }, ids: marked.includes(i.id) ? marked : [i.id] });
   }
-  // the sheet docked on the right; the canvas, its edge indicators, the bar and the microphone keep to its left
+  // the panels docked at the window's edges; the canvas, its edge indicators, the bar and the microphone keep between them
   const side = sideNow();
   const quickSide = useRef(0);
   useEffect(() => {
     const from = camSide.current;
-    if (side === from) return;
+    if (side.left === from.left && side.right === from.right) return;
     camSide.current = side;
     // the open card's view goes back to where it was opened from, beside whatever sheet is open then
     if (focusRef.current?.type === 'card') return;
@@ -1130,10 +1219,10 @@ function Canvas({
       stopFlight();
       setCam(to);
     } else fly(to, 450);
-  }, [side]);
+  }, [side.left, side.right]);
 
   // the grip at the open sheet's left edge widens or narrows it; reading a plan doc has its own width
-  const gripOn = kOn || inboxOn || sheetOn;
+  const gripOn = kOn || sheetOn;
   const gripKind = !!reading && sheetOn ? 'read' : 'sheet';
   const gripRef = useRef<{ x: number; w: number; kind: 'sheet' | 'read' } | null>(null);
   const [resizing, setResizing] = useState(false);
@@ -1160,7 +1249,7 @@ function Canvas({
   /** `c`, moved just far enough that the view outside the sheet shows some content. */
   const kept = (c: Cam) => keepInView(c, contentRef.current, viewNow());
   /** The view at the current zoom with a world point in the middle, as far as content stays in sight. */
-  const viewOn = (wx: number, wy: number) => kept({ s: camRef.current.s, x: (innerWidth - sideNow()) / 2 - wx * camRef.current.s, y: innerHeight / 2 - wy * camRef.current.s });
+  const viewOn = (wx: number, wy: number) => kept({ s: camRef.current.s, x: midX(sideNow()) - wx * camRef.current.s, y: innerHeight / 2 - wy * camRef.current.s });
   /** When no content is in view any more (cards went, the window shrank), flies to the nearest. */
   const recover = () => {
     if (focusRef.current?.type === 'card' || dragRef.current || panRef.current || flying()) return;
@@ -1174,7 +1263,18 @@ function Canvas({
     if (focusRef.current?.type === 'card' || e.button !== 0) return;
     if (connection) {
       e.stopPropagation();
-      if (connection.target) api.dependency(connection.from, connection.target, false, connection.anchor).catch((err) => showAck(failText(err)));
+      if (connection.target) {
+        // the arrow drawn again while its removal waits for „Rückgängig“ to run out: it simply stays
+        if (pendingRemovals.current.has(`${connection.from}:${connection.target}`)) keepDependency(`${connection.from}:${connection.target}`);
+        else {
+          const { from, target, anchor } = connection;
+          api.dependency(from, target, false, false, anchor).catch((err) => showAck(err instanceof ApiError && err.code === 'dependencyCycle' ? t.deps.cycle(titleOf(from), titleOf(target)) : failText(err)));
+        }
+        if (!depKnown) {
+          know(DEP_KNOWN);
+          setDepKnown(true);
+        }
+      }
       setConnection(null);
       return;
     }
@@ -1240,7 +1340,8 @@ function Canvas({
     const ms = d.last ? Math.min(50, now - d.last) : 0;
     d.last = now;
     const c = camRef.current;
-    const view = { left: 0, top: TOP, right: innerWidth - sideNow(), bottom: innerHeight };
+    const side = sideNow();
+    const view = { left: side.left, top: TOP, right: innerWidth - side.right, bottom: innerHeight };
     const next = edgeScroll(c, { x: d.px, y: d.py }, { x: d.x, y: d.y }, view, d.limit, ms);
     if (next.x !== c.x || next.y !== c.y) {
       setCam(next);
@@ -1253,16 +1354,21 @@ function Canvas({
     if (connection) {
       const p = toWorld(camRef.current, e.clientX, e.clientY);
       const near = placed.filter(({ item }) => item.id !== connection.from && connectable(item)).map(({ item, b }) => ({ id: item.id, area: b.w * b.h, d: Math.hypot(Math.max(b.x - p.x, 0, p.x - b.x - b.w), Math.max(b.y - p.y, 0, p.y - b.y - b.h)) })).filter((x) => x.d <= 8 / camRef.current.s).sort((a, b) => a.d - b.d || a.area - b.area)[0];
-      const target = near && placed.find((placed) => placed.item.id === near.id);
+      // the arrow ends where the pointer is nearest on the target's edges, and keeps that place
+      const target = near && placed.find((x) => x.item.id === near.id);
       const edge = target && nearestEdge(target.b, p);
       setConnection({ ...connection, x: p.x, y: p.y, target: near?.id, anchor: edge ? { fromSide: connection.side, toSide: edge.side, offset: edge.offset } : undefined });
       return;
     }
-    const pointer = toWorld(camRef.current, e.clientX, e.clientY);
-    const visible = placed.filter(({ item }) => connectable(item)).flatMap(({ item, b }) =>
-      visibleDotSides(b, pointer, camRef.current.s).map((side) => `${item.id}:${side}`),
-    );
-    setHandles((previous) => previous.length === visible.length && previous.every((h, i) => h === visible[i]) ? previous : visible);
+    // the dots stay hidden while something is dragged, lassoed or panned, and while a card is open
+    const busy = lassoRef.current || dragRef.current || panRef.current || focusRef.current?.type === 'card';
+    if (busy) showHandle(null);
+    else {
+      const c = camRef.current;
+      const near = placed.flatMap(({ item, b }) => (connectable(item) ? [{ id: item.id, b }] : []));
+      // near its dot, or anywhere close along its edge
+      showHandle(nearestHandle(near, toWorld(c, e.clientX, e.clientY), 16 / c.s, 6 / c.s));
+    }
     if (lassoRef.current) {
       lassoRef.current = [...lassoRef.current, { x: e.clientX, y: e.clientY }];
       setLasso(lassoRef.current);
@@ -1380,13 +1486,29 @@ function Canvas({
   const underwayRef = useRef(underway);
   underwayRef.current = underway;
   const yours = (i: Item) => needsYou(i) && !underwayRef.current[i.id];
-  // the inbox: what the owner acted on stays out until the server has caught up, and so does an answer of Obeya's sheet they have open
-  const [acted, setActed] = useState<Set<string>>(new Set());
-  useEffect(() => setActed((a) => (a.size ? new Set([...a].filter((k) => inbox.some((e) => entryKey(e) === k))) : a)), [inbox]);
-  const listed = inbox.filter((e) => !acted.has(entryKey(e)) && !(e.canvas === snapshot.canvas.id && (e.card ? underway[e.card] : kOn)));
-  const attentionCount = listed.length;
-  // answers in Obeya's sheet the owner has not seen: its button counts them
+  // answers in Obeya's sheet the owner has not seen: Obeya waits for them like a card
   const unread = kOn ? 0 : unreadAnswers(snapshot.talk);
+  // what waits on each canvas, for the navigation: this one's as this page sees it, without what the
+  // owner just acted on and without answers in Obeya's sheet while it is open
+  const navWaiting = { ...waiting, [snapshot.canvas.id]: waitingIn({ items: items.filter((i) => !underway[i.id]), talk: kOn ? [] : snapshot.talk }) };
+  const nav = {
+    canvas: snapshot.canvas,
+    canvases,
+    waiting: navWaiting,
+    underway: (id: string) => !!underway[id],
+    open: openId ?? undefined,
+    pinned,
+    pinnable: !matchMedia(NARROW).matches && innerWidth - NAV_W - side.right >= NAV_CANVAS_MIN,
+    onPin: pin,
+    onOpen: (c: string, i: Item) => (c === snapshot.canvas.id ? void openFresh(i) : location.assign(cardPath(c, i))),
+    onObeya: (c: string) => (c === snapshot.canvas.id ? kOnRef.current || toggleKoordinator() : location.assign(`${canvasPath(c)}?talk`)),
+    onReply: (c: string, i: Item, r: QuickReply) =>
+      sendReply(c, i, r, {
+        mark: (id, what) => setUnderway(({ [id]: _, ...rest }) => (what === null ? rest : { ...rest, [id]: what })),
+        showAck,
+        showWait,
+      }),
+  };
   const proposalCount = snapshot.preferences.filter((p) => p.state === 'proposed').length + (snapshot.settingProposals?.length ?? 0);
   const doneCount = items.filter((i) => i.source === 'manual' && finished(i.state)).length;
   async function archiveDone() {
@@ -1408,36 +1530,6 @@ function Canvas({
     attnLast.current = key(next);
     if (next === 'k') toggleKoordinator();
     else open(next);
-  }
-  /** The inbox slides out in place of Obeya's sheet or a project's, and closes again. */
-  const toggleInbox = () => {
-    const open = !inboxOnRef.current;
-    setInboxOn(open);
-    if (!open) return;
-    setKOn(false);
-    if (focusRef.current?.type === 'project') closeProject(false);
-  };
-  /** „Zur Karte“: the card on this canvas flies open; one on another canvas opens there. */
-  function goToEntry(e: InboxEntry) {
-    if (e.canvas !== snapshot.canvas.id) return location.assign(e.card ? cardPath(e.canvas, e.card) : canvasPath(e.canvas));
-    if (!e.card) return kOnRef.current || toggleKoordinator();
-    const i = byId(e.card);
-    if (i) void openFresh(i);
-  }
-  /** A quick reply of the inbox, sent to the canvas of its card. */
-  async function replyToEntry(e: InboxEntry, r: QuickReply) {
-    if (!e.card) return;
-    const key = entryKey(e);
-    setActed((a) => new Set(a).add(key));
-    cardsOn(e.canvas, [e.card]);
-    if (r.wait) showWait(`${r.wait.charAt(0).toUpperCase()}${r.wait.slice(1)}`);
-    try {
-      await api.act(e.card, r.action);
-      showAck(r.ack);
-    } catch (err) {
-      setActed((a) => new Set([...a].filter((k) => k !== key)));
-      showAck(t.cardError(plain(e.title), failText(err)));
-    }
   }
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
   keys.current = (e: KeyboardEvent) => {
@@ -1496,8 +1588,8 @@ function Canvas({
     }
     if (e.key === 'Escape' && connection) { setConnection(null); return; }
     if (e.key === 'Escape') {
-      // a screenshot or demo shown large closes first, a card's diff, the queue's list and the canvas switcher's; the card stays open
-      if (document.querySelector('.lightbox, .demo-zoom, .queue-menu, .canvas-menu, .diff-view, .start-agent-menu')) return;
+      // a screenshot or demo shown large closes first, a card's diff, the queue's list and the navigation's; the card stays open
+      if (document.querySelector('.lightbox, .demo-zoom, .queue-menu, .nav-menu, .diff-view, .start-agent-menu')) return;
       // so does the quote of a message the owner was replying to: in the field with the cursor, the open card's, the sidebar's
       const quoting = [focusedDraft(), f?.type === 'card' || f?.type === 'project' ? cardDraft(f.id) : null, kOnRef.current ? OBEYA_DRAFT : null].find((k) => k && fieldOn(k) && replyOn(k));
       if (quoting) return setReply(quoting, null);
@@ -1508,7 +1600,6 @@ function Canvas({
       if (typing) (e.target as HTMLElement).blur();
       if (f?.type === 'card') closeCard();
       else if (kOnRef.current) setKOn(false);
-      else if (inboxOnRef.current && f?.type !== 'project') setInboxOn(false);
       else if (f?.type === 'project' && readingRef.current && sheetProject) readPlan(sheetProject, null);
       else if (f?.type === 'project') closeProject();
       return;
@@ -1539,6 +1630,8 @@ function Canvas({
   const sheetProject = sheetId ? itemOrArchived(sheetId) : undefined;
   const sheetKids = !sheetProject ? [] : sheetProject.archivedAt ? archived.filter((i) => i.parent === sheetProject.id) : (kidsOf.get(sheetProject.id) ?? []);
   const deps = useMemo(() => (hoverId && !panning && !dragId ? depsOf(hoverId, items) : undefined), [hoverId, panning, dragId, items]);
+  const waits = useMemo(() => waitsAmong(items), [items]);
+  const waitKeys = useMemo(() => new Set(waits.map(([from, to]) => `${from}:${to}`)), [waits]);
   const depOf = (id: string) => (!deps ? undefined : id === hoverId ? 'self' : deps.before.has(id) ? 'before' : deps.after.has(id) ? 'after' : undefined);
   // a workstream of a collapsed project points to where its project stands
   const at = new Map(placed.map((p) => [p.item.id, p.b]));
@@ -1576,7 +1669,8 @@ function Canvas({
           {
             '--sheet-w': `${sheetW.sheet}px`,
             '--read-w': `${sheetW.read}px`,
-            '--side': `${side}px`,
+            '--side': `${side.right}px`,
+            '--left': `${side.left}px`,
           } as React.CSSProperties
         }
       >
@@ -1595,30 +1689,26 @@ function Canvas({
           <div id="world" style={{ transform: `translate(${cam.x}px,${cam.y}px) scale(${cam.s})` }}>
             <TerritoryLayer {...territories} selected={placed.filter((p) => (ring ? ring.ids : marked).includes(p.item.id)).map((p) => p.b)} />
             <Links placed={placed} />
-            {deps && <DepLinks placed={placed} edges={deps.edges.filter(([from, to]) => !items.find((i) => i.id === to)?.manualDependsOn?.includes(from))} />}
-            <svg className="manual-deps" width="1" height="1">
-              <defs><marker id="manual-arrow" viewBox="0 0 9 8" refX="0.3" refY="4" markerWidth="15" markerHeight="13.3" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker><marker id="ghost-arrow" viewBox="0 0 9 8" refX="9" refY="4" markerWidth="15" markerHeight="13.3" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker></defs>
-              {placed.flatMap(({ item, b }) => (connectable(item) ? item.manualDependsOn ?? [] : []).flatMap((from) => {
+            <DepLinks placed={placed} waits={waits.filter(([from, to]) => !removing.some((x) => x.key === `${from}:${to}`))} lit={deps?.edges ?? []} standsFor={(id) => (byId(id) ? standsFor(byId(id)!).id : id)} routeOf={routeOf} s={cam.s}>
+              {/* an arrow the owner drew: under the pointer, a trash button that removes it, where no card
+                  covers it; the button and the band that shows it keep their size on screen at every zoom */}
+              {placed.flatMap(({ item, b }) => (connectable(item) ? item.manualDependsOn ?? [] : []).filter((from) => waitKeys.has(`${from}:${item.id}`) && !removing.some((x) => x.key === `${from}:${item.id}`)).flatMap((from) => {
                 const a = placed.find((p) => p.item.id === from && connectable(p.item))?.b;
                 if (!a) return [];
+                const r = 13 / cam.s;
+                // an arrow drawn at chosen edges: its button on the middle of its route
                 const anchor = item.manualAnchors?.[from];
-                const drawing = anchor && anchoredPath(a, b, anchor);
-                const path = drawing?.path ?? linkPath(a, b, 15);
-                const x = drawing?.mid.x ?? (a.x + a.w / 2 + b.x + b.w / 2) / 2, y = drawing?.mid.y ?? (a.y + a.h / 2 + b.y + b.h / 2) / 2;
+                const routed = anchor && anchoredPath(a, b, anchor, depHead(cam.s));
+                const { x, y } = routed ? routed.mid : linkSpot(a, b, depHead(cam.s), cardBoxes, r);
                 return [<g className="manual-edge" key={`${from}:${item.id}`}>
-                  <path className="manual-hit" d={path} />
-                  <path className="manual-line" d={path} markerEnd={anchor ? "url(#ghost-arrow)" : "url(#manual-arrow)"} />
-                  <foreignObject x={x - 14} y={y - 14} width="28" height="28"><button title={t.deps.remove} aria-label={t.deps.remove} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); if (window.confirm(t.deps.confirmRemove)) api.dependency(from, item.id, true).catch((err) => showAck(failText(err))); }}><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg></button></foreignObject>
+                  <path className="manual-hit" d={routed ? routed.path : linkPath(a, b, depHead(cam.s))} strokeWidth={22 / cam.s} />
+                  <foreignObject x={x - r} y={y - r} width={2 * r} height={2 * r}><button title={t.deps.remove} aria-label={t.deps.remove} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); removeDependency(from, item); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg></button></foreignObject>
                 </g>];
               }))}
-              {connection && (() => {
-                const a = placed.find((p) => p.item.id === connection.from)?.b;
-                if (!a) return null;
-                const start = edgePoint(a, connection.side);
-                const b = placed.find((p) => p.item.id === connection.target)?.b;
-                const path = b && connection.anchor ? anchoredPath(a, b, connection.anchor).path : `M${start.x},${start.y} L${connection.x},${connection.y}`;
-                return <path className="manual-ghost" d={path} markerEnd="url(#ghost-arrow)" />;
-              })()}
+            </DepLinks>
+            <svg className="manual-deps" width="1" height="1">
+              <defs><marker id="manual-arrow" viewBox="0 0 9 8" refX="0.3" refY="4" markerWidth={6} markerHeight={(6 * 8) / 9} markerUnits="strokeWidth" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker><marker id="ghost-arrow" viewBox="0 0 9 8" refX="9" refY="4" markerWidth={6} markerHeight={(6 * 8) / 9} markerUnits="strokeWidth" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker></defs>
+              {connection && (() => { const a = placed.find((p) => p.item.id === connection.from)?.b; if (!a) return null; const start = handleAt(a, connection.side); const b = placed.find((p) => p.item.id === connection.target)?.b; const path = b ? (connection.anchor ? anchoredPath(a, b, connection.anchor, depHead(cam.s)).path : linkPath({ ...start, w: 0, h: 0 }, b, depHead(cam.s))) : `M${start.x},${start.y} L${connection.x},${connection.y}`; return <path className="manual-ghost" d={path} strokeWidth={depWidth(cam.s)} markerEnd={b ? "url(#manual-arrow)" : "url(#ghost-arrow)"} />; })()}
             </svg>
             {placed.map(({ item, b }) =>
               item.kind === 'project' ? (
@@ -1643,7 +1733,7 @@ function Canvas({
               ),
             )}
             {placed.filter(({ item }) => connectable(item)).map(({ item, b }) => <div key={`handles:${item.id}`} data-id={item.id} className={`connection-handles ${cardClass(item, underway[item.id]).replace(/^card\s*/, '')}${depOf(item.id) ? ' dep-highlight' : ''}${connection?.target === item.id ? ' target' : ''}`} style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
-              {(['top', 'right', 'bottom', 'left'] as const).map((side) => <button key={side} className={`connection-dot ${side}${!connection && handles.includes(`${item.id}:${side}`) ? ' visible' : ''}`} title={t.deps.connect} aria-label={t.deps.connect} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); const p = toWorld(camRef.current, e.clientX, e.clientY); setConnection({ from: item.id, side, ...p }); }} />)}
+              {SIDES.map((side) => <button key={side} className={`connection-dot ${side}${!connection && handle?.id === item.id && handle.side === side ? ' visible' : ''}`} title={t.deps.connect} aria-label={t.deps.connect} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); const p = toWorld(camRef.current, e.clientX, e.clientY); setConnection({ from: item.id, side, ...p }); }} />)}
             </div>)}
             {planDirs?.map((d, n) => (
               <PlanDirNote
@@ -1686,6 +1776,11 @@ function Canvas({
           />
         )}
         {markHint && <MarkHint key={markHint.key} at={markHint.at} />}
+        {connection && !depKnown && (
+          <p id="dephint" style={{ left: cam.x + connection.x * cam.s, top: cam.y + connection.y * cam.s }}>
+            {connection.target ? t.deps.waits(titleOf(connection.from), titleOf(connection.target)) : t.deps.pick(titleOf(connection.from))}
+          </p>
+        )}
         {ring && (
           <Ring
             at={ring.at}
@@ -1698,14 +1793,14 @@ function Canvas({
             onClose={() => setRing(null)}
           />
         )}
-        {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={side} onOpen={open} />}
-        {/* in the app on a Mac the bar is the window's title bar: it moves the window (app/src/main.rs) */}
-        <header id="bar" ref={barRef} {...(window.obeyaApp?.platform === 'macos' ? { className: 'titlebar', 'data-tauri-drag-region': '' } : {})}>
+        {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} side={side} onOpen={open} />}
+        {/* in the app on a Mac the bar is the window's title bar: it moves the window (app/src/main.rs); beside the pinned navigation, the traffic lights sit in that */}
+        <header id="bar" ref={barRef} {...(window.obeyaApp?.platform === 'macos' ? { className: side.left ? 'titlebar beside-nav' : 'titlebar', 'data-tauri-drag-region': '' } : {})}>
           <Wordmark height={22} />
           <span className="bar-sign">
             <Sign size={24} />
           </span>
-          <CanvasPill canvas={snapshot.canvas} canvases={canvases} waiting={waiting} />
+          {!side.left && <NavPill {...nav} />}
           <ArchivePill
             on={aOn}
             onToggle={toggleArchive}
@@ -1750,11 +1845,6 @@ function Canvas({
                 </span>
               )}
             </button>
-            {(attentionCount > 0 || inboxOn) && (
-              <button className={inboxOn ? 'pill on' : 'pill'} id="attention" aria-expanded={inboxOn} onClick={toggleInbox}>
-                <span className="n">{attentionCount}</span> <span className="lbl">{t.needsYou}</span>
-              </button>
-            )}
             {!kOn && (
               <div className="talk-room" aria-hidden>
                 {talkButton}
@@ -1762,16 +1852,16 @@ function Canvas({
             )}
           </div>
         </header>
+        <NavSheet on={side.left > 0} {...nav} />
         <Minimap
           cam={cam}
-          viewW={innerWidth - side}
+          side={side}
           all={all}
           placed={placed}
           territories={territories.shapes}
           onJump={(wx, wy) => !focusRef.current && fly(viewOn(wx, wy), 500)}
           onFollow={(wx, wy) => !focusRef.current && chase(camRef.current, viewOn(wx, wy), setCam)}
         />
-        <Inbox entries={listed} on={inboxOn} onGo={goToEntry} onReply={(e, r) => void replyToEntry(e, r)} />
         <div id="dim" className={dim ? 'on' : undefined} onClick={() => closeCard()} />
         {helpOn && <Help note={helpNote} onClose={() => setHelpOn(false)} />}
         <WishDialog />
@@ -1862,7 +1952,7 @@ function Canvas({
           {talkButton}
         </div>
         {gripOn && !kOn && (
-          <button id="sheet-close" title={t.close} onClick={() => (sheetOn ? closeProject() : setInboxOn(false))}>
+          <button id="sheet-close" title={t.close} onClick={() => (sheetOn ? closeProject() : setKOn(false))}>
             ✕
           </button>
         )}
@@ -1889,18 +1979,22 @@ function Canvas({
 }
 
 /**
- * Where the unfolded card sits: in the middle of the canvas left of a sheet `side` wide, as tall as
- * its content needs up to a limit, beyond which it scrolls. Lays the content out at the final width
+ * Where the unfolded card sits: in the middle of the canvas between the panels `side`, reaching over
+ * the sheet where the canvas is too narrow for it, as tall as its content needs up to a limit, beyond
+ * which it scrolls. Lays the content out at the final width
  * to measure it, so call it with the content rendered.
  */
-function panelRect(i: Item, inner: HTMLElement, side: number) {
+function panelRect(i: Item, inner: HTMLElement, side: Sides) {
   const tall = i.state !== 'planned' && i.state !== 'proposal';
   // a card with a conversation beside what it is about (an idea, a proposal, a task an agent worked on) gets the room of the mock's demo panel
   const wide = split(i);
   // a task an agent works on without a result yet is its conversation alone, and only as wide
   const want = wide ? 1600 : talkAlone(i) ? TALK_W : tall ? 980 : 900;
-  // beside a sheet dragged wide a card keeps at least the width of a conversation and reaches over the sheet
-  const W = Math.min(want, Math.max(innerWidth - side - 80, Math.min(TALK_W, innerWidth - 80)));
+  // the sheet lies dimmed under an open card, so a card wider than the canvas reaches over it; the
+  // pinned navigation, which stays usable beside it, limits it unless the window leaves less than a
+  // conversation's width beside the navigation
+  const room = innerWidth - side.left - 80;
+  const W = Math.min(want, Math.max(room, Math.min(TALK_W, innerWidth - 80)));
   inner.style.width = `${W}px`;
   inner.style.removeProperty('--pb');
   inner.style.overflowY = '';
@@ -1941,7 +2035,9 @@ function panelRect(i: Item, inner: HTMLElement, side: number) {
   const extra = under(H);
   // through --pb, which the card's sticky row of decisions reaches down over too (styles.css)
   if (extra) inner.style.setProperty('--pb', `${base + extra}px`);
-  return { left: `${Math.max(40, (innerWidth - side - W) / 2)}px`, top: `${top(H)}px`, width: `${W}px`, height: `${H}px` };
+  // in the middle of the canvas where it fits there, else as near to it as the window allows
+  const lo = W <= room ? side.left + 40 : 40;
+  return { left: `${Math.max(lo, Math.min(midX(side) - W / 2, innerWidth - W - 40))}px`, top: `${top(H)}px`, width: `${W}px`, height: `${H}px` };
 }
 
 /** A panel holding a conversation alone: its column at its widest (560 px, styles.css) and the panel's padding. */
@@ -1963,8 +2059,8 @@ const MIC_GAP = 12;
 
 const rect = (r: DOMRect) => ({ left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
 
-/** Camera centred on the middle of `b` at scale `s` left of a sheet `side` wide, ignoring the top bar (the unfold is centred there too). */
-const centreOnPoint = (b: Bounds, s: number, side: number): Cam => ({ s, x: (innerWidth - side) / 2 - (b.x + b.w / 2) * s, y: innerHeight / 2 - (b.y + b.h / 2) * s });
+/** Camera centred on the middle of `b` at scale `s` between the panels `side`, ignoring the top bar (the unfold is centred there too). */
+const centreOnPoint = (b: Bounds, s: number, side: Sides): Cam => ({ s, x: midX(side) - (b.x + b.w / 2) * s, y: innerHeight / 2 - (b.y + b.h / 2) * s });
 
 /** State with a ref that holds the value set last, for what reads it before the next render. */
 function useLive<T>(init: T | (() => T)): [T, (v: T) => void, { readonly current: T }] {

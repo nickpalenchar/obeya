@@ -148,6 +148,7 @@ A Koordinator turn reads the transcript as speech that may be misheard (typed wo
 it knows which, and in which field) and either acts or replies. One sentence may give up to 20
 actions: new card, new idea, a review card for a pull request, start, out of the queue, note, answer, feedback, approve, accept,
 dismiss, revise, stop, remember, Arbeitsrückschau, grouping and ungrouping cards, renaming a group,
+merging and deleting planned tasks,
 `configure` (see The Konfiguration dialog), `wish` (see Wishes for Obeya's makers), `wait_for` (see A
 step once a card gets somewhere); on ideas discuss, build, plan doc (also for a planned task nobody
 has worked on), prototype, park, drop; on prototypes build on it, discard. Actions are checked
@@ -189,9 +190,25 @@ sees what queued cards wait for ("starte alle wartenden Aufgaben"); "nimm sie au
 takes a card back to planned. Replies answer questions ("Was ist seit gestern passiert?") as far as
 the cards and their history do.
 
+Planned tasks that are one (dictated twice, follow-ups of a review that belong together) are merged
+(„fass die beiden zusammen“): the first named stays, with its place and group, under a title Obeya
+gives it; the texts of all go in unchanged, each a section under its old title, with their
+screenshots and the notes the owner left on them, and the others go. What followed up on them, and
+review findings that linked them, and cards waiting for them in the queue, then point at the one
+that stays; started ones waiting in the queue make it wait for what any of them waited for, in the
+place of the first queued. A planned task the owner no longer wants is deleted. Both hold only for
+planned tasks nobody has worked on yet (no branch, no workspace, queued only while waiting behind
+other cards; not a proposal, an idea, a workstream of a plan doc or a prototype), merging
+only within one repository; for anything else Obeya refuses with the reason. Like every command they
+run after the undo window.
+
 „Review PR #5“ (or a pull request's link, „schau dir den PR an“) makes a review card for a
 contributor's pull request and starts it; a number is the PR of the card's repository (the first on
-a canvas with several, unless the owner names one). What the owner adds („schau besonders auf
+a canvas with several, unless the owner names one). Several pull requests in one sentence („Reviews
+für 5, 6 und 7“), or a list the Koordinator looks up first („für die neuen Pull Requests“), get a
+review card each; a task from a new card never stands in for one. The Koordinator's list of the
+cards marks review cards with their PR, and its history says „new review card“ for each, so a task
+merely titled like a review is told apart. What the owner adds („schau besonders auf
 Security“) becomes its task. A PR with a card already opens that card, unless the owner has another
 one open, and the words go to its worker; one Obeya cannot read, or closed, gets none, and the owner
 reads why. On a canvas with a repository whose origin is on a server, one muted line under Obeya's
@@ -351,6 +368,22 @@ Koordinator's sheet and the line above the mic. Demo narration is separate (see 
   „leg auf Super 59 eine Karte an“ said elsewhere, or a step it waited for, failed twice on one
   idea, and a card it then made on the wrong canvas could not start there. Its other actions stay
   on its own canvas.
+- **The Koordinator merges and deletes planned tasks** (2026-10-31, the review of PR #33: too many
+  follow-up tasks, and Obeya could only group them). Only tasks nobody has worked on, since a branch
+  or a workspace holds work a merge would lose or split; a merge keeps every text unchanged under its
+  title rather than rewriting them, so nothing the owner said gets lost in a summary. Rejected:
+  merging into a new card (it would lose the first card's place, group and history).
+- **Reviews of several pull requests are review cards too** (2026-11-02). Asked for several at once,
+  or for a list it looked up first, the Koordinator made tasks titled „Review PR #…“: its own
+  confirmations of earlier review cards read „Neue Aufgabe …“, its card list did not tell review
+  cards from tasks, and a step it wrote for after a look-up said „Aufgabe“. Once there, such tasks
+  bred more of them. Their agents had no findings to record and nothing to merge from. Fixed by
+  facts the Koordinator reads (review cards marked in its list and history, `review_pr` once for each
+  pull request, the step after a look-up naming its action). Rejected: refusing a new card titled
+  like a review (titles such as a review's follow-up are legitimate); letting a card's agent turn its
+  task into a review card (a review card's safety rests on how it starts: a workspace on the PR's
+  head and a session that reads none of the contributor's settings; a task that already ran in its
+  own workspace needs a new card anyway, which the owner gets by saying „Review PR #…“ on it).
 - **The Koordinator's model stays**: Sonnet, Haiku or a shorter prompt saved nothing reliable.
 - **Obeya does not speak** (2026-10-08): spoken confirmations and answers distracted the owner, who
   reads them anyway.

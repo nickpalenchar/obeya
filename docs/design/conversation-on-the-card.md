@@ -10,7 +10,7 @@ agent got them); the agent's questions with their options and the owner's pick m
 replies; its handovers (the one a demo came with carries the report's question, with its options
 and the owner's pick marked, muted once answered; a handover in the same turn as a reply stands
 under it after a dashed line as „Übergabe“); and what the Koordinator looked up. Small lines between
-them mark state changes (started, pull request, approved, landed, the demo's link put on the pull
+them mark state changes (waiting for other cards before the start, and why; started, pull request, approved, landed, the demo's link put on the pull
 request, stopped, errors, usage limit); an address in them is a link (the comment on the pull
 request, say). Everything else (tool calls, thoughts, status
 lines, Obeya's notes) folds away as „Verlauf“ under the agent's next message. Obeya's reply to what
@@ -27,10 +27,28 @@ owner says more. Once no agent works on the card and no question is open, steps 
 message stand where they happened, the agent's last words among them as its message. A card that was
 an idea continues the idea's conversation.
 
-Claude login errors offer „Erneut anmelden“ in the conversation and in a failed start's explanation.
+Claude login errors offer „Erneut anmelden“ in the conversation, or, when a failed start's
+explanation above it shows the error, there alone: one error gets one button.
 It opens the same terminal login as Setup, even when the login check still reports an account
 after a session failed to refresh. The error stays visible. The action reports whether a terminal
 opened, offers the manual command, and tells the owner to send the message again after signing in.
+A session that signed in with a token instead of this machine's account (on another machine, or
+here on `CLAUDE_CODE_OAUTH_TOKEN`), which its error records, gets „Neuen Token erstellen“ there
+instead, since a new login here would leave the token expired: the terminal runs
+`claude setup-token`, and the token it prints goes into a field beside the error, which Obeya keeps
+as `claude-token` for the sessions that start from then on. The field is not kept as an unsent
+draft, since it holds a secret. Errors recorded before sessions said how they signed in offer the
+login.
+The terminal opens on the machine Obeya runs on, so on the phone and on any other device the error
+offers no button, only the hint that the login happens at that computer, where the same message
+offers it.
+
+A Claude login error is one in Claude Code's own words: its `/login` or `claude auth login` hints,
+„Failed to authenticate“ with an OAuth or 401 API error, or „not logged in“ on the stderr of its
+process's exit. The server words a session's failure by the same rule („Claude is not logged in on
+this machine …“). Another tool's login error (gh's, an expired OAuth token of some API) offers no
+Claude login.
+
 The speaker's role is followed by the harness and model that produced the message, when known.
 This holds for card replies and open questions as well as the Koordinator's reply and a looked-up
 answer, which can come from different models. Attribution is recorded when the agent speaks and
@@ -196,11 +214,15 @@ What a card's work made or changed is its result, shown on the left for folder a
 The change list at the top of the column is also its row of tabs, so each file shows once: a line
 per file with its sign (＋ added, ✎ changed, ↪ moved or renamed, ✕ deleted), its path cut at the
 front so the name stays, its lines added and removed, and on a folder card what discarding would
-leave. „▶ Demo“ comes first, then the files the worker named at its handover (`ready_for_review`'s
+leave. The demo comes first, named by its kind („Demo-Video“, „Demo-Artefakt“; „Demo“ where the
+card's demos are of both) and without a play mark: it is a tab, not a player, and a ▶ there made
+it read as a button that ought to start a video (a colleague's report, 2026-11-02). Then the files the worker named at its handover (`ready_for_review`'s
 `files`, the caption under the path), then other changed files that can be shown, documents first;
 last, greyed and not to be picked, deleted files, directories and files that are neither documents
 nor text (their line counts still open their diff). The line picked is marked like a tab; a click on
-a line shows its file below, a click on its line counts its changes there. Beside a demo, and while
+a line shows its file below, a click on its line counts its changes there. Where what a click picked
+(the line marked already too) lies out of sight, below the column's visible part or under the card's
+buttons in a low window, the click scrolls it into view: otherwise it seemed to do nothing. Beside a demo, and while
 the agent is at work (working, stopped, or asking), the list shows the demo and the named files
 only, the other changed files folded under „N geänderte Dateien ▾“ (or „und N weitere ▾“ below named
 files), and no file is picked until the owner picks one; handed over without a demo, the list is

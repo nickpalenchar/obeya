@@ -1,20 +1,18 @@
 // Presentational pieces of the canvas. State and camera live in App.tsx.
 
-import { Docked } from './docked';
 import { memo, type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { type Bounds, dependencyOrder, shapeOf } from '../core/layout';
 import { clip } from '../core/text';
 import { answering, type AppUpdate, type CanvasInfo, type BlockedClone, type ClonePool, finished, finishedArchivable, finishingUp, handedOver, type Item, needsYou, openQuestions, pausable, type PendingRestart, halted, type PoolHost, type ProjectHistory, type SourceUpdate, stoppedArchivable, titleFrom } from '../core/types';
 import { ProjectTalk } from './koordinator';
 import { api } from './api';
-import type { Cam } from './camera';
+import type { Cam, Sides } from './camera';
 import type { Shape } from './groups';
 import { Doc, excerpt, Inline, plain } from './markdown';
 import { Body } from './message';
-import { useMenuClose, waitedOn } from './queue';
+import { waitedOn, waitReason } from './queue';
 import { ClockMark, snoozeWho } from './snooze';
 import { becomesLabel, clock, shortDay, snoozeWhen, stateLabel, t } from './strings';
-import { canvasPath } from './address';
 
 /** The first line of a card's text that says something (not a bare "Ziel" label, as briefs start). */
 const firstLine = (md: string) =>
@@ -167,7 +165,7 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
   const findings = item.contribution?.findings ?? [];
   const open = findings.filter((f) => f.status === 'open');
   const status = results
-    ? `${t.review.checks(results)} · ${t.review.findings(findings.length, open.length, open.filter((f) => f.security).length)}`
+    ? [t.review.checks(results), ...(item.contribution?.clash ? [t.review.clashShort] : []), t.review.findings(findings.length, open.length, open.filter((f) => f.security).length)].join(' · ')
     : item.state === 'working' || item.finishing || answering(item) || (item.state === 'inPr' && (!item.pr || item.contribution))
       ? item.statusLine && excerpt(item.statusLine)
       : item.state === 'inPr' && item.pr
@@ -183,7 +181,7 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
     (item.limitedUntil ? t.limitedUntil(clock(item.limitedUntil)) : undefined) ??
     (item.kind === 'question' && item.thread ? t.question.count(item.thread.answers, item.thread.files) : undefined) ??
     (asked === undefined ? undefined : excerpt(asked)) ??
-    (item.queue && 'behind' in item.queue ? excerpt(item.queue.reason) : undefined) ??
+    (item.queue && 'behind' in item.queue ? excerpt(waitReason(item.queue)) : undefined) ??
     (item.queue && 'workspace' in item.queue ? t.queue.workspaceWhy[item.queue.workspace] : undefined) ??
     (item.queue && 'paused' in item.queue ? t.queue.pausedWhy : undefined) ??
     status ??
@@ -284,56 +282,6 @@ export const CardView = memo(
   (a, b) =>
     a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.prototyped === b.prototyped && a.showRepo === b.showRepo && a.onStart === b.onStart && a.onArchive === b.onArchive && a.dep === b.dep && a.onHover === b.onHover && a.underway === b.underway,
 );
-
-/**
- * The canvas's name and home branch; with several canvases, a switcher. Other canvases with cards
- * that need the owner carry their count in the menu, and while it is closed the pill carries the sum.
- */
-export function CanvasPill({ canvas, canvases, waiting }: { canvas: CanvasInfo; canvases: CanvasInfo[]; waiting: Record<string, number> }) {
-  const [open, setOpen] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-  useMenuClose(open, box, () => setOpen(false), true);
-  const home = canvas.repos[0];
-  const many = canvases.length > 1;
-  const elsewhere = canvases.reduce((n, c) => n + (c.id === canvas.id ? 0 : (waiting[c.id] ?? 0)), 0);
-  return (
-    <div className="canvas-pill" ref={box}>
-      <button
-        className={many ? 'pill switch' : 'pill'}
-        title={many ? (elsewhere ? `${t.switchCanvas} · ${t.waitingElsewhere(elsewhere)}` : t.switchCanvas) : undefined}
-        onClick={() => many && setOpen(!open)}
-      >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="6" cy="6" r="2.5" />
-          <circle cx="6" cy="18" r="2.5" />
-          <circle cx="18" cy="8" r="2.5" />
-          <path d="M6 8.5v7M18 10.5c0 4-6 3-10 6" />
-        </svg>
-        <b>{canvas.name}</b>
-        <span className="hint lbl">{canvas.repos.length > 1 ? t.repos(canvas.repos.length) : home?.branch}</span>
-        {many && <span className="hint">▾</span>}
-        {!open && elsewhere > 0 && <span className="waits pulse">{elsewhere}</span>}
-      </button>
-      {open && (
-        <ul className="canvas-menu">
-          {canvases.map((c) => {
-            const n = c.id === canvas.id ? 0 : (waiting[c.id] ?? 0);
-            return (
-              <li key={c.id} className={c.id === canvas.id ? 'on' : ''}>
-                <a href={canvasPath(c.id)} title={n ? t.waitingThere(n) : undefined}>
-                  <b>{c.name}</b>
-                  <span className="hint">{c.repos.map((r) => r.name).join(', ')}</span>
-                  {n > 0 && <span className="waits">{n}</span>}
-                </a>
-                <CanvasAgents canvas={c} />
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 /**
  * A canvas's agents on its row in the switcher (design: Pausing a canvas's agents): while one works
@@ -1000,6 +948,14 @@ export const ProjectView = memo(
  * its last direction goes, so the head ends on `b`'s side however sharply the curve bends.
  */
 export function linkPath(a: Bounds, b: Bounds, head = 0): string {
+  const [p0, p1, p2, p3] = linkCurve(a, b, head);
+  return `M${p0.x},${p0.y} C${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`;
+}
+
+type Pt = { x: number; y: number };
+
+/** The cubic Bézier curve `linkPath` draws: its start, its two control points and its end. */
+function linkCurve(a: Bounds, b: Bounds, head: number): [Pt, Pt, Pt, Pt] {
   const gapX = Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w));
   const gapY = Math.max(b.y - (a.y + a.h), a.y - (b.y + b.h));
   const across = gapX > gapY;
@@ -1013,7 +969,29 @@ export function linkPath(a: Bounds, b: Bounds, head = 0): string {
   const along = across ? x2 - x1 : y2 - y1;
   const aside = across ? y2 - y1 : x2 - x1;
   const reach = dir * Math.max(dir * along / 2, Math.min(Math.abs(aside) / 2, head));
-  return across ? `M${x1},${y1} C${x1 + reach},${y1} ${x2 - reach},${y2} ${x2},${y2}` : `M${x1},${y1} C${x1},${y1 + reach} ${x2},${y2 - reach} ${x2},${y2}`;
+  const [c1, c2] = across ? [{ x: x1 + reach, y: y1 }, { x: x2 - reach, y: y2 }] : [{ x: x1, y: y1 + reach }, { x: x2, y: y2 - reach }];
+  return [{ x: x1, y: y1 }, c1, c2, { x: x2, y: y2 }];
+}
+
+/**
+ * Where on the link from `a` to `b` its button goes: the middle, or the point nearest the middle that
+ * keeps `room` clear of every card in `cards`, so that a card the link passes under never covers it.
+ */
+export function linkSpot(a: Bounds, b: Bounds, head: number, cards: Bounds[], room: number): Pt {
+  const [p0, p1, p2, p3] = linkCurve(a, b, head);
+  const at = (t: number) => {
+    const u = 1 - t;
+    const [k0, k1, k2, k3] = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
+    return { x: k0 * p0.x + k1 * p1.x + k2 * p2.x + k3 * p3.x, y: k0 * p0.y + k1 * p1.y + k2 * p2.y + k3 * p3.y };
+  };
+  const clear = (p: Pt) => !cards.some((c) => p.x > c.x - room && p.x < c.x + c.w + room && p.y > c.y - room && p.y < c.y + c.h + room);
+  for (let step = 0; step <= 20; step++) {
+    for (const t of step ? [0.5 - step * 0.02, 0.5 + step * 0.02] : [0.5]) {
+      const p = at(t);
+      if (clear(p)) return p;
+    }
+  }
+  return at(0.5);
 }
 
 /**
@@ -1036,25 +1014,66 @@ export function Links({ placed }: { placed: { item: Item; b: Bounds }[] }) {
   );
 }
 
-/** The length of the arrow head at the end of a wait's line, in canvas pixels. */
-const DEP_HEAD = 15;
+/**
+ * The width of a wait's line in canvas pixels at zoom `s`, the same faint or highlighted, so that
+ * the pointer on a card only changes its colour; never thinner on screen than a hair when zoomed out.
+ */
+export const depWidth = (s: number) => Math.max(2, 1.6 / s);
+/** The length of the arrow head at the end of a wait's line, in canvas pixels: six widths of its line. */
+export const depHead = (s: number) => 6 * depWidth(s);
 
-/** While the pointer is on a card with waits: a line for each wait, from the card waited for to the card waiting. */
-export function DepLinks({ placed, edges }: { placed: { item: Item; b: Bounds }[]; edges: [string, string][] }) {
+/**
+ * Every direct wait between cards on the canvas as a faint line, from the card waited for to the
+ * card waiting; while the pointer is on a card, the waits around it (`lit`) in the waiting colour
+ * instead. A workstream of a collapsed project stands for its project (`standsFor`). `children` go on
+ * top: what the pointer can reach on a line.
+ */
+export function DepLinks({
+  placed,
+  waits,
+  lit,
+  standsFor,
+  routeOf,
+  s,
+  children,
+}: {
+  placed: { item: Item; b: Bounds }[];
+  waits: [string, string][];
+  lit: [string, string][];
+  standsFor: (id: string) => string;
+  /** A wait's own route where it has one (an arrow the owner drew at chosen edges), else none. */
+  routeOf?: (from: string, to: string, a: Bounds, b: Bounds, head: number) => string | undefined;
+  s: number;
+  children?: ReactNode;
+}) {
   const byId = new Map(placed.map((p) => [p.item.id, p.b]));
+  // each wait once between the cards that show it, none from a project to its own workstream
+  const shown = (edges: [string, string][]) =>
+    new Map(
+      edges.flatMap(([from, to]): [string, [string, string]][] => {
+        const e: [string, string] = [standsFor(from), standsFor(to)];
+        return e[0] !== e[1] && byId.has(e[0]) && byId.has(e[1]) ? [[e.join(' '), e]] : [];
+      }),
+    );
+  const hot = shown(lit);
+  const faint = [...shown(waits)].filter(([k]) => !hot.has(k));
+  const path = (cls: string) => ([k, [from, to]]: [string, [string, string]]) => (
+    <path key={`${cls} ${k}`} className={cls} d={routeOf?.(from, to, byId.get(from)!, byId.get(to)!, depHead(s)) ?? linkPath(byId.get(from)!, byId.get(to)!, depHead(s))} strokeWidth={depWidth(s)} markerEnd={`url(#${cls}-arrow)`} />
+  );
   return (
     <svg id="deps" width="1" height="1">
       <defs>
-        {/* The line stops at the head's base (refX 0, a hair inside so no seam shows) and the head points on to the card. */}
-        <marker id="dep-arrow" viewBox="0 0 9 8" refX="0.3" refY="4" markerUnits="userSpaceOnUse" markerWidth={DEP_HEAD} markerHeight={(DEP_HEAD * 8) / 9} orient="auto">
-          <path d="M0,0 L9,4 L0,8 z" />
-        </marker>
+        {/* The line stops at the head's base (refX 0, a hair inside so no seam shows) and the head points
+            on to the card; measured in the line's width, as `depHead` is. */}
+        {['lit', 'faint'].map((cls) => (
+          <marker key={cls} id={`${cls}-arrow`} className={cls} viewBox="0 0 9 8" refX="0.3" refY="4" markerUnits="strokeWidth" markerWidth={6} markerHeight={(6 * 8) / 9} orient="auto">
+            <path d="M0,0 L9,4 L0,8 z" />
+          </marker>
+        ))}
       </defs>
-      {edges.flatMap(([from, to]) => {
-        const a = byId.get(from);
-        const b = byId.get(to);
-        return a && b ? [<path key={`${from} ${to}`} d={linkPath(a, b, DEP_HEAD)} markerEnd="url(#dep-arrow)" />] : [];
-      })}
+      {faint.map(path('faint'))}
+      {[...hot].map(path('lit'))}
+      {children}
     </svg>
   );
 }
@@ -1149,7 +1168,11 @@ export function Sheet({
     return () => clearTimeout(h);
   }, [shown?.id, reading, !!shown]);
   return (
-    <Docked id="sheet" ref={box} on={!!on} className={reading ? 'reading' : undefined}>
+    <aside
+      id="sheet"
+      ref={box}
+      className={['sheet', on && 'on', reading && 'reading'].filter(Boolean).join(' ')}
+    >
       {project?.plan && reading && (
         <>
           <div className="read-head">
@@ -1243,18 +1266,18 @@ export function Sheet({
           )}
         </>
       )}
-    </Docked>
+    </aside>
   );
 }
 
 // ------------------------------------------------------------------ overlays
 
-/** Chips at the edge of the canvas pointing at off-screen cards that need the owner; `rightReserve`: the sheet docked on the right. */
-export function Edges({ cam, targets, rightReserve, onOpen }: { cam: Cam; targets: { item: Item; b: Bounds }[]; rightReserve: number; onOpen: (i: Item) => void }) {
-  const m = 30;
+/** Chips at the edge of the canvas pointing at off-screen cards that need the owner; `side`: the panels docked at the window's edges. */
+export function Edges({ cam, targets, side, onOpen }: { cam: Cam; targets: { item: Item; b: Bounds }[]; side: Sides; onOpen: (i: Item) => void }) {
   const top = 64;
   const bottom = innerHeight - 60;
-  const right = innerWidth - rightReserve - m;
+  const m = side.left + 30;
+  const right = innerWidth - side.right - 30;
   return (
     <div id="edges">
       {targets.map(({ item, b }) => {
@@ -1282,7 +1305,7 @@ export function Edges({ cam, targets, rightReserve, onOpen }: { cam: Cam; target
 
 export function Minimap({
   cam,
-  viewW,
+  side,
   all,
   placed,
   territories,
@@ -1290,8 +1313,8 @@ export function Minimap({
   onFollow,
 }: {
   cam: Cam;
-  /** How wide the canvas shows, left of the sheet docked on the right. */
-  viewW: number;
+  /** The panels docked at the window's edges: the canvas shows between them. */
+  side: Sides;
   all: Bounds;
   placed: { item: Item; b: Bounds }[];
   territories: Shape[];
@@ -1351,9 +1374,9 @@ export function Minimap({
           />
         ))}
         <rect
-          x={ox + (-cam.x / cam.s) * k}
+          x={ox + ((side.left - cam.x) / cam.s) * k}
           y={oy + (-cam.y / cam.s) * k}
-          width={(viewW / cam.s) * k}
+          width={((innerWidth - side.left - side.right) / cam.s) * k}
           height={(innerHeight / cam.s) * k}
           fill="none"
           style={{ stroke: 'var(--ink)' }}

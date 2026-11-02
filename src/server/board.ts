@@ -25,6 +25,7 @@ import {
   type CardPatch,
   type ClonePool,
   type Contribution,
+  type HeldChanges,
   type Decision,
   type Demo,
   type DemoKind,
@@ -55,6 +56,7 @@ import {
   type PlannedPrototype,
   type SettledPart,
   type Question,
+  type Queue,
   type PlanDir,
   type Reshare,
   type TalkQuote,
@@ -105,8 +107,18 @@ export interface PrState {
   review?: PrReviewEntry[];
 }
 
+/** A card's place in the queue where it waits behind other cards; none otherwise. */
+const waitOf = (r: Pick<CardRow, 'queue'>) => {
+  const q = r.queue ? (JSON.parse(r.queue) as Queue) : null;
+  return q && 'behind' in q ? q : null;
+};
+
 /** What is stored of a review card's pull request (`CardRow.contribution`): what the card shows, and what only the server needs. */
 export interface StoredContribution extends Contribution {
+  /** `base`: the PR's head the held commits go on top of, as it stood at the handover. */
+  held?: HeldChanges & { base: string };
+  /** The owner chose „Selbst ändern“, and the worker's changes have not gone out yet: requests to the contributor wait for them. */
+  changing?: true;
   /** The PR's head commit the worker reviewed at its latest handover: only that one is merged. */
   reviewed?: string;
   /** Where the PR's branch is, for a worker that pushes onto it: its repository's URL and branch. */
@@ -363,6 +375,9 @@ export interface PlanRead {
   dirs: { repo: string; dir: string; others: OtherDoc[] }[];
 }
 
+/** The edges of a card an owner-drawn arrow may leave or reach. */
+const SIDES: readonly string[] = ['top', 'right', 'bottom', 'left'];
+
 export class Board {
   private listeners = new Set<() => void>();
   /** Whether the listeners are to hear of the changes made since they last did (`changed`). */
@@ -378,6 +393,8 @@ export class Board {
   private itemsCache: Item[] | null = null;
   /** The archive as `archived` built it; gone with `cache`, since it changes with the same writes. */
   private archiveItems: Item[] | null = null;
+  /** The canvas's prototypes, and those `withPrototypes` handed out so far; gone with `cache`. */
+  private prototypeItems: Prototypes | null = null;
   private eventListeners = new Set<(e: CardEvent) => void>();
   private goneListeners = new Set<(cardId: string, id: number) => void>();
   private noticeListeners = new Set<(n: Notice) => void>();
@@ -444,6 +461,7 @@ export class Board {
   }
 
   /** Owner-drawn dependencies, directed from the prerequisite to the waiting card. */
+  /** The owner's arrows, `[from, to]`, each with the edges and place it was drawn at where the owner chose them. */
   manualDependencies(): [string, string, ManualAnchor?][] {
     try { return JSON.parse(this.setting('manual_dependencies') || '[]'); } catch { return []; }
   }
@@ -452,25 +470,22 @@ export class Board {
     const items = this.snapshot().items;
     if (!items.some((i) => i.id === from) || !items.some((i) => i.id === to) || from === to)
       throw new BadRequest('unknownCard', 'invalid dependency');
-    if (!remove && items.some((i) => (i.id === from || i.id === to) && (i.source === 'plan' || i.kind === 'project')))
-      throw new BadRequest('invalid', 'project dependencies are decided from the plan');
-    if (anchor && (!['top', 'right', 'bottom', 'left'].includes(anchor.fromSide) || !['top', 'right', 'bottom', 'left'].includes(anchor.toSide) || !Number.isFinite(anchor.offset) || anchor.offset < 0 || anchor.offset > 1))
+    if (!remove && items.some((i) => (i.id === from || i.id === to) && !connectable(i)))
+      throw new BadRequest('planDependency', 'project dependencies are decided from the plan');
+    if (anchor && (!SIDES.includes(anchor.fromSide) || !SIDES.includes(anchor.toSide) || !Number.isFinite(anchor.offset) || anchor.offset < 0 || anchor.offset > 1))
       throw new BadRequest('invalid', 'invalid dependency attachment');
     const edges = this.manualDependencies().filter(([a, b]) => a !== from || b !== to);
     if (!remove) {
       // A cycle would leave the cards waiting for each other forever.
-      const all = [...edges, ...items.flatMap((i): [string, string][] => [...(i.buildsOn ?? []), ...(i.queue && 'behind' in i.queue ? i.queue.behind : []), ...(i.snoozed?.on ? [i.snoozed.on.card] : [])].map((before) => [before, i.id]))];
-      const seen = new Set<string>();
-      const visit = (id: string): boolean => {
-        if (id === from) return true;
-        if (seen.has(id)) return false;
-        seen.add(id);
-        return all.some(([a, b]) => a === id && visit(b));
-      };
-      if (visit(to)) throw new BadRequest('invalid', 'dependency cycle');
+      if (closesCycle(from, to, edges.map(([a, b]): [string, string] => [a, b]), items)) throw new BadRequest('dependencyCycle', 'dependency cycle');
       edges.push(anchor ? [from, to, anchor] : [from, to]);
     }
-    this.setSetting('manual_dependencies', JSON.stringify(edges));
+    this.setManualDependencies(edges);
+  }
+
+  /** Arrows of cards that no longer exist go; those of a deleted or archived card stay, for its return. */
+  private setManualDependencies(edges: [string, string, ManualAnchor?][]) {
+    this.setSetting('manual_dependencies', JSON.stringify(edges.filter(([a, b]) => this.store.card(a) && this.store.card(b))));
     this.changed();
   }
 
@@ -483,6 +498,7 @@ export class Board {
     this.cache = null;
     this.itemsCache = null;
     this.archiveItems = null;
+    this.prototypeItems = null;
     this.tell();
   }
 
@@ -551,16 +567,16 @@ export class Board {
    * demo video they are about; `picks`: the options an answer picked; `answer`: a looked-up answer's
    * exchange and files; `at` keeps a message's time when a thread is copied onto its Question card;
    * `wish`: on a reply of Obeya's, what a draft for its makers starts from; `forwarded`: Obeya's
-   * reply to what the card's agent passed on.
+   * reply to what the card's agent passed on; `token`: an error of a session signed in with a token.
    */
   log(
     cardId: string,
     kind: CardEvent['kind'],
     author: CardEvent['author'],
     text: string,
-    extra: Partial<Pick<CardEvent, 'code' | 'images' | 'mocks' | 'replyTo' | 'spot' | 'answer' | 'picks' | 'at' | 'wish' | 'reply' | 'forwarded' | 'agent'>> & { unread?: boolean } = {},
+    extra: Partial<Pick<CardEvent, 'code' | 'images' | 'mocks' | 'replyTo' | 'spot' | 'answer' | 'picks' | 'at' | 'wish' | 'reply' | 'forwarded' | 'agent' | 'token'>> & { unread?: boolean } = {},
   ): CardEvent {
-    const { code, images, mocks, replyTo, spot, answer, picks, at, unread, wish, reply, forwarded, agent } = extra;
+    const { code, images, mocks, replyTo, spot, answer, picks, at, unread, wish, reply, forwarded, agent, token } = extra;
     const e = this.store.addEvent({
       cardId,
       kind,
@@ -579,6 +595,7 @@ export class Board {
       ...(reply ? { reply } : {}),
       ...(forwarded ? { forwarded } : {}),
       ...('agent' in extra ? { agent } : {}),
+      ...(token ? { token } : {}),
     });
     for (const fn of this.eventListeners) fn(e);
     return e;
@@ -1357,6 +1374,7 @@ export class Board {
     if (row.prototype_of) throw new BadRequest('prototypeEnded', 'a discarded or built prototype stays in the archive');
     this.store.update(id, { archived_at: null });
     this.changed();
+    this.backOnCanvas(id);
   }
 
   /**
@@ -1426,7 +1444,9 @@ export class Board {
    * card does not name it as its workspace, or its work is over and its worker done (`stale`: the
    * lease outlived what it was for); it was deleted; or it is a workstream no worker is on whose box
    * the plan doc on the default branch ticks off (`ticked`; `merged` while it is in its pull request,
-   * which the doc says has been merged), or that the doc there no longer has (`gone`).
+   * which the doc says has been merged), or that the doc there no longer has (`gone`). A box ticked
+   * in a plan folder outside the repository says nothing of a merge: the worker ticks it there before
+   * its pull request is even open.
    */
   leaseEnded(cardId: string, path: string): 'stale' | 'deleted' | 'ticked' | 'merged' | 'gone' | null {
     const row = this.store.card(cardId);
@@ -1441,6 +1461,7 @@ export class Board {
     const hash = row.plan_ref?.indexOf('#') ?? -1;
     if (hash < 0 || row.state === 'working' || row.state === 'waiting' || row.state === 'approved') return null;
     if (row.state === 'inPr' && !row.pr) return null;
+    if (row.state === 'inPr' && OUTSIDE_PATH.test(pathOfRef(row.plan_ref!))) return null;
     // the docs are read the way the canvas reads them, which plans again a workstream only a part of which landed
     this.items();
     const doc = this.docs?.find((d) => d.file === row.plan_ref!.slice(0, hash));
@@ -1520,6 +1541,7 @@ export class Board {
       this.cache = null;
       this.itemsCache = null;
       this.archiveItems = null;
+      this.prototypeItems = null;
     }
     if (this.itemsCache) return this.itemsCache;
     const read = !this.docs;
@@ -1547,10 +1569,10 @@ export class Board {
     }
     const manual = this.manualDependencies();
     if (manual.length) {
-      const eligible = new Set(items.filter((i) => i.source !== 'plan' && i.kind !== 'project').map((i) => i.id));
+      const eligible = new Set(items.filter(connectable).map((i) => i.id));
       items = items.map((i) => {
         const edges = eligible.has(i.id) ? manual.filter(([from, to]) => to === i.id && eligible.has(from)) : [];
-        const anchors = Object.fromEntries(edges.flatMap(([from, , anchor]) => anchor ? [[from, anchor]] : []));
+        const anchors = Object.fromEntries(edges.flatMap(([from, , anchor]) => (anchor ? [[from, anchor]] : [])));
         return edges.length ? { ...i, manualDependsOn: edges.map(([from]) => from), ...(Object.keys(anchors).length ? { manualAnchors: anchors } : {}) } : i;
       });
     }
@@ -1853,17 +1875,46 @@ export class Board {
    * title, also once the idea is in the archive.
    */
   private withPrototypes(items: Item[]): Item[] {
-    const rows = this.store.prototypes(this.canvas.id);
-    if (!rows.length) return items;
-    const titles = new Map<string, string>();
-    const ideaTitle = (id: string) => titles.get(id) ?? (titles.set(id, this.store.card(id)?.title ?? ''), titles.get(id)!);
-    const named = (p: Item): Item => ({ ...p, ideaTitle: ideaTitle(p.prototypeOf!) });
-    const prototypes = toItems(rows, [], this.home).map((p, n) => named(rows[n]!.archived_at ? { ...p, archivedAt: rows[n]!.archived_at! } : p));
+    const p = this.prototypes();
+    if (!p.rows.length) return items;
+    // a prototype among these items is not read again
+    const given = new Map(items.flatMap((i) => (i.prototypeOf ? [[i.id, i]] : [])));
     return items.map((i) => {
-      const own = prototypes.filter((p) => p.prototypeOf === i.id || (i.parent && p.id === i.builtOn));
-      const me = i.prototypeOf ? named(i) : i;
-      return own.length ? { ...me, prototypes: own } : me;
+      const ofIdea = p.ofIdea.get(i.id) ?? [];
+      const built = i.parent && i.builtOn ? p.byId.get(i.builtOn) : undefined;
+      const rows = built && !ofIdea.includes(built) ? p.rows.filter((r) => r.prototype_of === i.id || r === built) : ofIdea;
+      const me = i.prototypeOf ? { ...i, ideaTitle: this.ideaTitle(p, i.prototypeOf) } : i;
+      return rows.length ? { ...me, prototypes: rows.flatMap((r) => this.prototypeItem(p, r, given.get(r.id)) ?? []) } : me;
     });
+  }
+
+  /**
+   * Which cards of the canvas are prototypes, read once per change; each is made into an item when a
+   * card first needs it, once per change too: the canvas, the archive and every archived card looked
+   * up on its own (sharing looks up hundreds in a row) need them.
+   */
+  private prototypes(): Prototypes {
+    if (this.prototypeItems) return this.prototypeItems;
+    const rows = this.store.prototypes(this.canvas.id);
+    this.prototypeItems = { rows, ofIdea: Map.groupBy(rows, (r) => r.prototype_of!), byId: new Map(rows.map((r) => [r.id, r])), items: new Map(), titles: new Map() };
+    return this.prototypeItems;
+  }
+
+  private prototypeItem(p: Prototypes, ref: PrototypeRef, given?: Item): Item | undefined {
+    const made = p.items.get(ref.id);
+    if (made) return made;
+    const row = given ? null : this.store.card(ref.id);
+    const item = given ?? (row && toItems([row], [], this.home)[0]);
+    if (!item) return undefined;
+    const prototype = { ...item, ...(ref.archived_at ? { archivedAt: ref.archived_at } : {}), ideaTitle: this.ideaTitle(p, ref.prototype_of!) };
+    p.items.set(ref.id, prototype);
+    return prototype;
+  }
+
+  private ideaTitle(p: Prototypes, ideaId: string): string {
+    const title = p.titles.get(ideaId) ?? this.store.card(ideaId)?.title ?? '';
+    p.titles.set(ideaId, title);
+    return title;
   }
 
   /** The project an idea became, while it is on the canvas. */
@@ -2182,6 +2233,50 @@ export class Board {
     this.changed();
   }
 
+  /**
+   * Merges tasks into the first (`keep`), titled `title`; the caller checks they may be merged and
+   * removes the others. Their texts go in unchanged, each a section under its old title, with their
+   * screenshots and the owner's notes they held. What followed up on them, and review findings that
+   * linked them, now point at the first.
+   */
+  merge(keep: string, others: string[], title: string) {
+    const first = this.own(keep);
+    const rest = others.map((id) => this.own(id));
+    const section = (r: CardRow) => `## ${r.title ?? ""}\n\n${r.body ?? ''}`.trim();
+    const body = [first, ...rest].map(section).filter(Boolean).join('\n\n');
+    checkText(body, 'the merged text', 20000);
+    const list = (r: CardRow) => (r.images ? (JSON.parse(r.images) as string[]) : []);
+    const images = [...new Set([first, ...rest].flatMap(list))];
+    const notes = [first, ...rest].flatMap((r) => (r.unheard ? (JSON.parse(r.unheard) as unknown[]) : []));
+    const gone = new Set(others);
+    // started ones waiting in the queue: the merged task waits for what any of them waited for, in the place of the one queued first
+    const queued = [first, ...rest].map(waitOf).filter((q) => !!q);
+    const merged = (ids: string[]) => [...new Set(ids)].filter((id) => id !== keep && !gone.has(id));
+    const behind = merged(queued.flatMap((q) => q.behind));
+    const buildsOn = merged(queued.flatMap((q) => q.buildsOn ?? []));
+    const manualWait = merged(queued.flatMap((q) => q.manualWait ?? []));
+    const queue = behind.length
+      ? { queue: JSON.stringify({ behind, reason: queued[0]!.reason, ...(buildsOn.length && { buildsOn }), ...(manualWait.length && { manualWait }), since: queued.map((q) => q.since).sort()[0]! }) }
+      : {};
+    this.store.update(keep, { title, body, images: images.length ? JSON.stringify(images) : null, ...(notes.length ? { unheard: JSON.stringify(notes) } : {}), ...queue });
+    for (const r of this.store.cards(this.canvas.id)) {
+      if (r.from_id && gone.has(r.from_id) && r.id !== keep) this.store.update(r.id, { from_id: keep });
+      // a card that waited for one that goes waits for the merged task instead
+      const w = r.id === keep ? undefined : waitOf(r);
+      if (w?.behind.some((id) => gone.has(id))) {
+        const to = (ids: string[]) => [...new Set(ids.map((id) => (gone.has(id) ? keep : id)))];
+        // a card it waited for by an inferred wait stays waited for so, also where an arrow named another merged into it
+        const inferred = to(w.behind.filter((id) => !w.manualWait?.includes(id)));
+        const manualWait = to(w.manualWait ?? []).filter((id) => !inferred.includes(id));
+        this.store.update(r.id, { queue: JSON.stringify({ ...w, behind: to(w.behind), ...(w.buildsOn && { buildsOn: to(w.buildsOn) }), manualWait: manualWait.length ? manualWait : undefined }) });
+      }
+      const c = contributionOf(r);
+      if (c?.findings?.some((f) => f.card && gone.has(f.card))) this.store.update(r.id, { contribution: JSON.stringify({ ...c, findings: c.findings.map((f) => (f.card && gone.has(f.card) ? { ...f, card: keep } : f)) } satisfies StoredContribution) });
+    }
+    this.log(keep, 'state', 'obeya', this.t.voice.merged(rest.map((r) => r.title ?? '')));
+    this.changed();
+  }
+
   /** Manual cards only; a plan card goes away with its workstream. */
   remove(id: string) {
     if (this.own(id).plan_ref) throw new BadRequest('planCard', 'plan cards are removed in the plan doc');
@@ -2194,6 +2289,16 @@ export class Board {
     if (!row || row.canvas_id !== this.canvas.id) throw new BadRequest('unknownCard', 'unknown card');
     this.store.update(id, { deleted_at: null });
     this.changed();
+    this.backOnCanvas(id);
+  }
+
+  /** A card deleted or archived is back: its arrows too, but none that the arrows drawn meanwhile would make a cycle. */
+  private backOnCanvas(id: string) {
+    const items = this.items();
+    const edges = this.manualDependencies();
+    const kept = edges.filter(([a, b]) => a !== id && b !== id);
+    for (const e of edges) if ((e[0] === id || e[1] === id) && !closesCycle(e[0], e[1], kept.map(([a, b]): [string, string] => [a, b]), items)) kept.push(e);
+    if (kept.length !== edges.length) this.setManualDependencies(kept);
   }
 
   private checkImages(ids: unknown) {
@@ -2417,6 +2522,18 @@ export function pathOfRef(ref: string): string {
 }
 
 const REPO_PREFIX = /^(?![A-Za-z]:\/)([\w.-]+):/;
+/** A plan reference's path in a plan folder outside the repository: absolute, `/…` or `C:/…`. */
+const OUTSIDE_PATH = /^(\/|[A-Za-z]:\/)/;
+
+/** The canvas's prototypes for one change of the board: which cards they are, the items made of them so far, their ideas' titles. */
+type Prototypes = {
+  rows: PrototypeRef[];
+  ofIdea: Map<string, PrototypeRef[]>;
+  byId: Map<string, PrototypeRef>;
+  items: Map<string, Item>;
+  titles: Map<string, string>;
+};
+type PrototypeRef = Pick<CardRow, 'id' | 'prototype_of' | 'archived_at'>;
 
 /** Visible items: projects first, their workstreams in doc order, then manual cards. */
 export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] {
@@ -2552,12 +2669,12 @@ function work(r: CardRow): Partial<Item> {
   const share = shareOf(r);
   const notOnApproval = r.share ? (JSON.parse(r.share) as StoredShare).notOnApproval : undefined;
   const tags = demo && !r.prototype_of ? pageTagsOf(r) : {};
-  const landed = r.landed ? (JSON.parse(r.landed) as { followUp?: boolean; needsClone?: boolean }) : null;
+  const landed = r.landed ? (JSON.parse(r.landed) as { followUp?: boolean; needsClone?: boolean; resolve?: object }) : null;
   return {
     ...(scope?.length ? { scope } : {}),
     ...(r.queue && (r.state ?? 'planned') === 'planned' ? { queue: JSON.parse(r.queue) as Item['queue'] } : {}),
     ...(pr?.url ? { pr: { url: pr.url, number: pr.number!, checks: pr.checks ?? [], conflict: !!pr.conflictHead, ...(pr.readyHead && (pr.mergeError || pr.held || pr.manual) ? { ready: true, ...(pr.mergeError ? { mergeError: pr.mergeError } : {}), ...(pr.held ? { held: pr.held } : {}), ...(pr.manual ? { manual: true } : {}) } : {}), ...(pr.review?.length ? { review: pr.review } : {}) } } : {}),
-    ...(contribution ? { contribution: { url: contribution.url, number: contribution.number, author: contribution.author, title: contribution.title, canModify: contribution.canModify, ...(contribution.results ? { results: contribution.results } : {}), ...(contribution.findings ? { findings: contribution.findings } : {}), ...(contribution.requested ? { requested: contribution.requested } : {}) } } : {}),
+    ...(contribution ? { contribution: { url: contribution.url, number: contribution.number, author: contribution.author, title: contribution.title, canModify: contribution.canModify, ...(contribution.results ? { results: contribution.results } : {}), ...(contribution.findings ? { findings: contribution.findings } : {}), ...(contribution.requested ? { requested: contribution.requested } : {}), ...(contribution.held ? { held: { body: contribution.held.body, commits: contribution.held.commits, asks: contribution.held.asks } } : {}), ...(contribution.clash ? { clash: contribution.clash } : {}) } } : {}),
     ...(r.status_line ? { statusLine: r.status_line } : {}),
     ...(detail.question && r.need === 'question' ? { question: detail.question } : {}),
     // a demo's question is as open as a worker's: the owner answers it on the card or by voice
@@ -2579,7 +2696,7 @@ function work(r: CardRow): Partial<Item> {
     // a workspace on another machine as ssh and scp write it
     ...(r.workspace ? { workspace: r.workspace.replace(/^ssh:\/\/([^/]+)/, '$1:') } : {}),
     ...(r.kept_in ? { keptIn: r.kept_in.replace(/^ssh:\/\/([^/]+)/, '$1:') } : {}),
-    ...(landed && (r.workspace || landed.needsClone) ? { finishing: true, ...(landed.followUp ? { followUp: true } : {}), ...(landed.needsClone && !r.workspace ? { waitsForClone: true } : {}) } : {}),
+    ...(landed && (r.workspace || landed.needsClone) ? { finishing: true, ...(landed.followUp && !landed.resolve ? { followUp: true } : {}), ...(landed.needsClone && !r.workspace ? { waitsForClone: true } : {}) } : {}),
     ...(detail.noChange && handed ? { noChange: true } : {}),
     ...(detail.lands && handed ? { lands: detail.lands } : {}),
     ...(r.paused ? { paused: true } : {}),
@@ -2766,4 +2883,27 @@ function checkText(v: unknown, name: string, max: number) {
 
 function checkNumber(v: unknown, name: string) {
   if (typeof v !== 'number' || !Number.isFinite(v)) throw new BadRequest('invalid', `${name} must be a finite number`);
+}
+
+/** A card the owner may draw dependencies to and from: not a project nor one of its workstreams. */
+const connectable = (i: Item) => i.source !== 'plan' && i.kind !== 'project';
+
+/**
+ * Whether an arrow from `from` to `to` would close a cycle with the arrows between the cards shown
+ * (`edges`; a deleted or archived card's count for nothing) and the waits Obeya inferred.
+ */
+function closesCycle(from: string, to: string, edges: [string, string][], items: Item[]): boolean {
+  const shown = new Set(items.map((i) => i.id));
+  const all = [
+    ...edges.filter(([a, b]) => shown.has(a) && shown.has(b)),
+    ...items.flatMap((i): [string, string][] => [...(i.buildsOn ?? []), ...(i.queue && 'behind' in i.queue ? i.queue.behind : []), ...(i.snoozed?.on ? [i.snoozed.on.card] : [])].map((before) => [before, i.id])),
+  ];
+  const seen = new Set<string>();
+  const visit = (id: string): boolean => {
+    if (id === from) return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return all.some(([a, b]) => a === id && visit(b));
+  };
+  return visit(to);
 }

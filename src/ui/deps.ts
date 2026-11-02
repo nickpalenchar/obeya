@@ -1,7 +1,9 @@
-// What a card in the queue waits for, and what waits for a card, over every step: shown while the
-// pointer is on a card. A workstream not delivered yet also waits for the open workstreams it builds
-// on, as the Koordinator read them from the plan doc, started or not; a card snoozed until another
-// card gets somewhere waits for that card.
+// What a card waits for, and what waits for a card: each direct wait shows as a faint line at all
+// times, and over every step while the pointer is on a card. A card in the queue waits for the cards
+// the Koordinator holds it behind; a workstream not delivered yet also waits for the open workstreams
+// it builds on, as the Koordinator read them from the plan doc, started or not; a card snoozed until
+// another card gets somewhere waits for that card; and a card waits for those the owner drew an arrow
+// from. A wait ends once the card waited for is finished.
 
 import type { Bounds } from '../core/layout';
 import { finished, type Item } from '../core/types';
@@ -18,15 +20,27 @@ export interface Deps {
 const queued = (i: Item) => (i.queue && 'behind' in i.queue ? i.queue.behind : []);
 const snoozedOn = (i: Item) => (i.snoozed?.on ? [i.snoozed.on.card] : []);
 
+/** The cards among `byId` that `i` waits for directly. */
+function waitsFor(i: Item, byId: Map<string, Item>): string[] {
+  const open = (x: string) => byId.has(x) && !finished(byId.get(x)!.state);
+  if (!open(i.id)) return [];
+  return [...new Set([...queued(i), ...snoozedOn(i), ...(i.manualDependsOn ?? []), ...(i.buildsOn ?? [])])].filter(open);
+}
+
+/** Every direct wait among `items`, from the card waited for to the card waiting. */
+export function waitsAmong(items: Item[]): [from: string, to: string][] {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  return items.flatMap((i) => waitsFor(i, byId).map((b): [string, string] => [b, i.id]));
+}
+
 /** The waits around `id` among `items`, both ways; undefined when there are none or `id` is gone
  *  (a card archived under the pointer stays hovered). */
 export function depsOf(id: string, items: Item[]): Deps | undefined {
   const byId = new Map(items.map((i) => [i.id, i]));
   if (!byId.has(id)) return undefined;
-  const open = (x: string | undefined) => !!x && byId.has(x) && !finished(byId.get(x)!.state);
-  const behind = (i: Item) => [...new Set([...queued(i), ...snoozedOn(i), ...(open(i.id) ? (i.manualDependsOn ?? []).filter(open) : []), ...(open(i.id) ? (i.buildsOn ?? []).filter(open) : [])])];
+  const behind = (i: Item) => waitsFor(i, byId);
   const waiters = new Map<string, string[]>();
-  for (const i of items) for (const b of behind(i)) if (byId.has(b)) waiters.set(b, [...(waiters.get(b) ?? []), i.id]);
+  for (const i of items) for (const b of behind(i)) waiters.set(b, [...(waiters.get(b) ?? []), i.id]);
   const edges = new Map<string, [string, string]>();
   const walk = (next: (x: string) => string[], edge: (x: string, y: string) => [string, string]) => {
     const seen = new Set<string>();
@@ -43,28 +57,57 @@ export function depsOf(id: string, items: Item[]): Deps | undefined {
     }
     return seen;
   };
-  const before = walk((x) => behind(byId.get(x)!).filter((b) => byId.has(b)), (x, y) => [y, x]);
+  const before = walk((x) => behind(byId.get(x)!), (x, y) => [y, x]);
   const after = walk((x) => waiters.get(x) ?? [], (x, y) => [x, y]);
   if (!before.size && !after.size) return undefined;
   return { before, after, edges: [...edges.values()] };
 }
 
+// ---------------------------------------------------------------- the dots an owner draws an arrow from
 
-/** Dots within 18 screen pixels, or whose card edge is within 6 screen pixels. */
-export function visibleDotSides(b: Bounds, pointer: { x: number; y: number }, scale: number): string[] {
-  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-  const x = clamp(pointer.x, b.x, b.x + b.w);
-  const y = clamp(pointer.y, b.y, b.y + b.h);
-  const edges = [
-    { side: 'top', dot: [b.x + b.w / 2, b.y], edge: [x, b.y] },
-    { side: 'right', dot: [b.x + b.w, b.y + b.h / 2], edge: [b.x + b.w, y] },
-    { side: 'bottom', dot: [b.x + b.w / 2, b.y + b.h], edge: [x, b.y + b.h] },
-    { side: 'left', dot: [b.x, b.y + b.h / 2], edge: [b.x, y] },
-  ];
-  return edges.filter(({ dot, edge }) =>
-    Math.hypot(pointer.x - dot[0]!, pointer.y - dot[1]!) * scale <= 18 ||
-    Math.hypot(pointer.x - edge[0]!, pointer.y - edge[1]!) * scale <= 6,
-  ).map(({ side }) => side);
+export type Side = 'top' | 'right' | 'bottom' | 'left';
+export const SIDES: Side[] = ['top', 'right', 'bottom', 'left'];
+
+/** The middle of a card's edge, where its dot for that side sits. */
+export function handleAt(b: Bounds, side: Side): { x: number; y: number } {
+  if (side === 'top') return { x: b.x + b.w / 2, y: b.y };
+  if (side === 'bottom') return { x: b.x + b.w / 2, y: b.y + b.h };
+  if (side === 'left') return { x: b.x, y: b.y + b.h / 2 };
+  return { x: b.x + b.w, y: b.y + b.h / 2 };
+}
+
+/** How far world point `at` is from the edge `side` of `b`, anywhere along it. */
+function edgeDistance(b: Bounds, side: Side, at: { x: number; y: number }): number {
+  const x = Math.max(b.x, Math.min(b.x + b.w, at.x));
+  const y = Math.max(b.y, Math.min(b.y + b.h, at.y));
+  if (side === 'top') return Math.hypot(at.x - x, at.y - b.y);
+  if (side === 'bottom') return Math.hypot(at.x - x, at.y - (b.y + b.h));
+  if (side === 'left') return Math.hypot(at.x - b.x, at.y - y);
+  return Math.hypot(at.x - (b.x + b.w), at.y - y);
+}
+
+/**
+ * The dot nearest to world point `at` within `reach` (world units), among the cards `cards`; null when none is that close.
+ * With `edgeReach`, a dot also shows while the pointer is that close to any point of its edge.
+ */
+export function nearestHandle(cards: { id: string; b: Bounds }[], at: { x: number; y: number }, reach: number, edgeReach = 0): { id: string; side: Side } | null {
+  let best: { id: string; side: Side } | null = null;
+  let bestD = Infinity;
+  const outer = Math.max(reach, edgeReach);
+  for (const { id, b } of cards) {
+    // a card whose edges all lie farther away has no dot in reach
+    if (at.x < b.x - outer || at.x > b.x + b.w + outer || at.y < b.y - outer || at.y > b.y + b.h + outer) continue;
+    for (const side of SIDES) {
+      const h = handleAt(b, side);
+      const toDot = Math.hypot(h.x - at.x, h.y - at.y);
+      const d = toDot <= reach ? toDot : edgeReach > 0 && edgeDistance(b, side, at) <= edgeReach ? edgeDistance(b, side, at) : Infinity;
+      if (d < bestD) {
+        best = { id, side };
+        bestD = d;
+      }
+    }
+  }
+  return best;
 }
 
 /** Unfinished prerequisites explicitly connected by the owner. */

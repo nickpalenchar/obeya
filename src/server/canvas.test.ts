@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { boundsOf, CARD_SIZE } from '../core/layout';
 import { AGENT_DEFAULTS, type CardAction, type RepoConfig, type RepoSettings } from '../core/types';
-import type { BadRequest } from './board';
+import type { BadRequest, StoredContribution } from './board';
 import { Canvases, CanvasRuntime, startCanvases } from './canvas';
 import { Store } from './db';
 import { readShared } from '../adapters';
@@ -1338,6 +1338,64 @@ describe('groups by voice', () => {
   });
 });
 
+describe('merging and deleting planned tasks by voice', () => {
+  test('a merge keeps the first card with a new title and every text; what pointed at the others points at it', async () => {
+    const a = canvas.board.create({ title: 'Login error', body: 'The button shows on the wrong message.', x: 100, y: 200, repo: 'web' });
+    const b = canvas.board.create({ title: 'Sign in again', body: 'Two buttons for one error.', x: 600, y: 200, repo: 'web' });
+    const after = canvas.board.create({ title: 'After it', from: b.id });
+    const review = canvas.board.create({ title: 'PR #5', x: 0, y: 900, repo: 'web' });
+    const c: StoredContribution = { url: 'https://github.com/acme/app/pull/5', number: 5, author: 'amerlander', title: 'T', canModify: true, findings: [{ id: 1, title: 'F', text: 'T', status: 'later', card: b.id }] };
+    canvas.board.work(review.id, { contribution: JSON.stringify(c) });
+    const g = canvas.board.createGroup('Login', [a.id]);
+    await canvas.run({ do: 'merge', card: a.id, others: [b.id], title: 'Sign in again: when and where' });
+    expect(item(a.id)).toMatchObject({ title: 'Sign in again: when and where', x: 100, y: 200, group: g.id });
+    expect(item(a.id).body).toBe('## Login error\n\nThe button shows on the wrong message.\n\n## Sign in again\n\nTwo buttons for one error.');
+    expect(canvas.board.item(b.id)).toBeUndefined();
+    expect(item(after.id).from).toBe(a.id);
+    expect(item(review.id).contribution!.findings![0]!.card).toBe(a.id);
+    expect(canvas.board.events(a.id).at(-1)!.text).toContain('„Sign in again“');
+  });
+
+  test("follow-up tasks waiting in the queue merge into one that waits for what they waited for, in the place of the first queued", async () => {
+    const review = canvas.board.create({ title: 'PR #5', x: 0, y: 900, repo: 'web' });
+    const ahead = canvas.board.create({ title: 'Ahead', x: 0, y: 1400, repo: 'web' });
+    const a = canvas.board.create({ title: 'A', x: 0, y: 0, repo: 'web' });
+    const b = canvas.board.create({ title: 'B', x: 400, y: 0, repo: 'web' });
+    const behindB = canvas.board.create({ title: 'Behind B', x: 800, y: 0, repo: 'web' });
+    const wait = (behind: string[], since: string, buildsOn?: string[]) => JSON.stringify({ behind, reason: 'Folgeaufgabe.', ...(buildsOn && { buildsOn }), since });
+    canvas.board.work(ahead.id, { state: 'working' });
+    canvas.board.work(a.id, { queue: wait([review.id], '2026-11-02T10:00:01.000Z', [review.id]) });
+    canvas.board.work(b.id, { queue: wait([review.id, ahead.id], '2026-11-02T10:00:00.000Z', [review.id]) });
+    canvas.board.work(behindB.id, { queue: wait([b.id], '2026-11-02T10:00:02.000Z') });
+    await canvas.run({ do: 'merge', card: a.id, others: [b.id], title: 'A and B' });
+    expect(item(a.id).queue).toEqual({ behind: [review.id, ahead.id], reason: 'Folgeaufgabe.', buildsOn: [review.id], since: '2026-11-02T10:00:00.000Z' });
+    expect(item(behindB.id).queue).toMatchObject({ behind: [a.id] });
+    await canvas.run({ do: 'delete', card: a.id });
+    expect(canvas.board.item(a.id)).toBeUndefined();
+  });
+
+  test('both only on planned tasks nobody has worked on, a merge only within one repository', async () => {
+    const a = canvas.board.create({ title: 'A', x: 0, y: 0, repo: 'web' });
+    const b = canvas.board.create({ title: 'B', x: 400, y: 0, repo: 'web' });
+    const other = canvas.board.create({ title: 'Elsewhere', x: 800, y: 0, repo: 'api' });
+    const worked = canvas.board.create({ title: 'Stopped', x: 1200, y: 0, repo: 'web' });
+    canvas.board.work(worked.id, { branch: 'obeya/stopped' });
+    const code = (c: Parameters<CanvasRuntime['run']>[0]) => {
+      try {
+        canvas.run(c);
+      } catch (e) {
+        return (e as BadRequest).code;
+      }
+    };
+    expect(code({ do: 'merge', card: a.id, others: [other.id], title: 'X' })).toBe('otherRepos');
+    expect(code({ do: 'merge', card: a.id, others: [worked.id], title: 'X' })).toBe('notUntouched');
+    expect(code({ do: 'delete', card: worked.id })).toBe('notUntouched');
+    expect([item(a.id).title, item(other.id).title, item(worked.id).title]).toEqual(['A', 'Elsewhere', 'Stopped']);
+    await canvas.run({ do: 'delete', card: b.id });
+    expect(canvas.board.item(b.id)).toBeUndefined();
+  });
+});
+
 describe("the owner's words on a card with an agent", () => {
   test('go straight to its worker, which passes on to the Koordinator what asks Obeya for something', async () => {
     const c = canvas.board.create({ title: 'Export', x: 0, y: 0, repo: 'web' });
@@ -1630,8 +1688,11 @@ test('a manual dependency holds a requested card until removed', async () => {
   canvas.board.connect(a.id, b.id);
   canvas.act(b.id, { action: 'start' });
   await until(() => !!item(b.id).queue && 'behind' in item(b.id).queue!);
-  expect(item(b.id).queue).toMatchObject({ behind: [a.id] });
+  const t = canvas.board.t.koordinator;
+  expect(item(b.id).queue).toMatchObject({ behind: [a.id], reason: t.drawn });
   expect(item(b.id).state).toBe('planned');
+  // the card says why it waits: the owner connected it, not a wait Obeya inferred
+  expect(canvas.board.events(b.id).at(-1)).toMatchObject({ kind: 'state', author: 'obeya', text: t.waitsFor(t.notStarted('„Prerequisite“'), t.drawn) });
   canvas.board.connect(a.id, b.id, true);
   await until(() => item(b.id).state === 'working');
   await settle();
@@ -1647,4 +1708,119 @@ test('removing a manual dependency leaves an independently inferred wait intact'
   await settle();
   expect(item(b.id).queue).toMatchObject({ behind: [a.id], buildsOn: [a.id] });
   expect(item(b.id).state).toBe('planned');
+});
+
+describe('owner-drawn dependencies in the queue', () => {
+  const estimate = () => runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'scope')).at(-1)!;
+  /** Answers the latest estimate once its brief is written, with a likely conflict with each card it lists, or none. */
+  async function judge(conflict: boolean) {
+    await until(() => estimate()?.inbox[0]);
+    const s = estimate();
+    s.call('scope', { files: ['src/index.ts'], conflicts_with: conflict ? [...new Set(s.inbox[0]!.match(/\bK\d+\b/g) ?? [])] : [], reason: '' });
+    s.emit({ type: 'idle' });
+    await settle();
+  }
+  /** A card at work in "web", holding its only clone. */
+  async function atWork(title: string) {
+    const x = canvas.board.create({ title, x: 0, y: 0 });
+    await canvas.repoOf(x.id).workers.start(x.id);
+    await settle();
+    return x;
+  }
+
+  test('a card waiting for a workspace that an arrow then holds is not ahead of its prerequisite, so the two never wait for each other', async () => {
+    await atWork('Running');
+    const a = canvas.board.create({ title: 'A', x: 0, y: 0 });
+    canvas.board.work(a.id, { queue: JSON.stringify({ workspace: 'none', since: new Date(Date.now() - 1000).toISOString() }) });
+    await settle();
+    const b = canvas.board.create({ title: 'B', x: 400, y: 0 });
+    canvas.board.connect(b.id, a.id);
+    await settle();
+    expect(item(a.id).queue).toMatchObject({ behind: [b.id], manualWait: [b.id] });
+    canvas.act(b.id, { action: 'start' });
+    // whatever B's estimate says, it cannot come to wait for A
+    await judge(true);
+    expect(estimate().inbox[0]).not.toContain('"A"');
+    expect(item(b.id).queue).toMatchObject({ behind: [expect.not.stringMatching(a.id)] });
+    expect(item(a.id).queue).toMatchObject({ behind: [b.id] });
+  });
+
+  test('an arrow drawn over a wait the Koordinator inferred leaves that wait as it was once removed', async () => {
+    const a = await atWork('A');
+    const b = canvas.board.create({ title: 'B', x: 400, y: 0 });
+    canvas.act(b.id, { action: 'start' });
+    await judge(true);
+    expect(item(b.id).queue).toMatchObject({ behind: [a.id] });
+    const p = canvas.board.create({ title: 'Prerequisite', x: 0, y: 400 });
+    canvas.board.connect(a.id, b.id);
+    canvas.board.connect(p.id, b.id);
+    await settle();
+    expect(item(b.id).queue).toMatchObject({ behind: [a.id, p.id], manualWait: [p.id] });
+    // the arrow drawn while it waited is said once; the one over the inferred wait adds nothing to say
+    const t = canvas.board.t.koordinator;
+    expect(canvas.board.events(b.id).filter((e) => e.author === 'obeya' && e.text.includes(t.drawn)).map((e) => e.text)).toEqual([t.waitsFor(t.notStarted('„Prerequisite“'), t.drawn)]);
+    canvas.board.connect(a.id, b.id, true);
+    await settle();
+    // a likely conflict holds only while A is in progress; the other arrow holds on
+    await canvas.repoOf(a.id).workers.stop(a.id);
+    await settle();
+    expect(item(b.id).queue).toEqual(expect.objectContaining({ behind: [p.id], manualWait: [p.id] }));
+    expect(item(b.id).queue).not.toHaveProperty('buildsOn');
+    canvas.board.connect(p.id, b.id, true);
+    await until(() => item(b.id).state === 'working');
+  });
+
+  test('an arrow holds on where the wait the Koordinator inferred ended, and its removal frees the card', async () => {
+    const a = await atWork('A');
+    const b = canvas.board.create({ title: 'B', x: 400, y: 0 });
+    canvas.act(b.id, { action: 'start' });
+    await judge(true);
+    canvas.board.connect(a.id, b.id);
+    await canvas.repoOf(a.id).workers.stop(a.id);
+    await settle();
+    // A stopped has not landed: the arrow still holds B
+    expect(item(b.id)).toMatchObject({ state: 'planned', queue: { behind: [a.id], manualWait: [a.id] } });
+    canvas.board.connect(a.id, b.id, true);
+    await until(() => item(b.id).state === 'working');
+  });
+
+  test('an arrow drawn while a card is judged keeps it from waiting for the card the arrow holds', async () => {
+    await atWork('Running');
+    const a = canvas.board.create({ title: 'A', x: 0, y: 0 });
+    canvas.board.work(a.id, { queue: JSON.stringify({ workspace: 'none', since: new Date(Date.now() - 1000).toISOString() }) });
+    const b = canvas.board.create({ title: 'B', x: 400, y: 0 });
+    canvas.act(b.id, { action: 'start' });
+    await until(() => estimate()?.inbox[0]);
+    expect(estimate().inbox[0]).toContain('K2: "A"');
+    canvas.board.connect(b.id, a.id);
+    await judge(true);
+    expect(item(b.id).queue).toMatchObject({ behind: [expect.not.stringMatching(a.id)] });
+    expect(item(a.id).queue).toMatchObject({ behind: [b.id] });
+  });
+
+  test('a merged card waited for by an inferred wait stays so waited for where an arrow named another merged into it', async () => {
+    const a = canvas.board.create({ title: 'A', x: 0, y: 0 });
+    const b = canvas.board.create({ title: 'B', x: 0, y: 200 });
+    const c = canvas.board.create({ title: 'C', x: 400, y: 0 });
+    const since = new Date().toISOString();
+    for (const x of [a, b]) canvas.board.work(x.id, { queue: JSON.stringify({ workspace: 'none', since }) });
+    canvas.board.work(c.id, { queue: JSON.stringify({ behind: [a.id, b.id], reason: 'R', manualWait: [b.id], since }) });
+    canvas.board.merge(a.id, [b.id], 'A and B');
+    expect(canvas.board.row(c.id).queue).toBe(JSON.stringify({ behind: [a.id], reason: 'R', since }));
+  });
+
+  test('a card started anyway waits for a workspace without an arrow holding it again', async () => {
+    const x = await atWork('Running');
+    const p = canvas.board.create({ title: 'Prerequisite', x: 0, y: 0 });
+    const a = canvas.board.create({ title: 'A', x: 400, y: 0 });
+    canvas.board.connect(p.id, a.id);
+    canvas.act(a.id, { action: 'start' });
+    await judge(false);
+    expect(item(a.id).queue).toMatchObject({ behind: [p.id], manualWait: [p.id] });
+    canvas.act(a.id, { action: 'force' });
+    await settle();
+    expect(item(a.id).queue).toMatchObject({ workspace: 'none', begun: true });
+    await canvas.repoOf(x.id).workers.stop(x.id);
+    await until(() => item(a.id).state === 'working');
+  });
 });

@@ -3,9 +3,8 @@
 import type { ServerWebSocket } from 'bun';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
-import { join } from 'node:path';
-import { type InboxEntry, inboxOf, inboxOrder } from '../core/inbox';
-import { agentListens, type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, type Item, type NewCard, type PendingRestart, type ServerMessage, type SpotInput, type TalkRef, isTalkRef, MAX_FILE_BYTES, needsYou, waitingOn } from '../core/types';
+import { join, resolve } from 'node:path';
+import { agentListens, type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, type Item, type NewCard, type PageTags, type PendingRestart, type ServerMessage, type SpotInput, type TalkRef, isTalkRef, MAX_FILE_BYTES, needsYou, type Waiting, waitingIn } from '../core/types';
 import index from '../ui/index.html';
 import { guarded, LOCAL_HOSTS, refusal } from './access';
 import { BadRequest } from './board';
@@ -35,7 +34,10 @@ import icon512 from '../ui/logo/icon-512.png' with { type: 'file' };
 import { servePdfjs } from './pdfjs';
 import { Tailscale } from './tailscale';
 import { codexModels } from './codex-runtime';
-import { agentsView, languageView, saveAgents, saveLanguage, saveTheme, saveUsageMeter, themeView, usageMeterView } from './settings';
+import { agentsView, languageView, ownerLanguage, saveAgents, saveLanguage, saveTheme, saveUsageMeter, themeView, usageMeterView } from './settings';
+import { proposeTags, TagProposals } from './tag-proposal';
+import { parseTagLines, tagLines } from '../core/page-tags';
+import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import type { UsageMeter } from './usage';
 import { VERSION } from './resources';
 import { footerOf } from './wish';
@@ -148,6 +150,28 @@ export function serve(
         })(),
       })
     : undefined;
+  const tagProposals = new TagProposals();
+  /**
+   * Proposes the tags of a repository's site: read where it runs (its first canvas), from the cards
+   * of every canvas it is on, in the language of its demos (`language`: the dialog's, unsaved).
+   */
+  const proposeTagsFor = (home: string, input: unknown) => {
+    const { path, current, language } = (input ?? {}) as { path?: unknown; current?: unknown; language?: unknown };
+    if (typeof path !== 'string' || !path.trim()) throw new BadRequest('invalid', 'expected { path }');
+    const sources = canvases.all().flatMap((c) => c.tagSource(expandHome(path)) ?? []);
+    if (!sources.length) throw new BadRequest('invalid', 'the repository runs on no canvas');
+    const vocabulary = typeof current === 'object' && current ? parseTagLines(tagLines(current as PageTags)) : undefined;
+    return tagProposals.start(path, () =>
+      proposeTags({
+        runtime: sources[0]!.runtime,
+        cwd: sources[0]!.cwd,
+        language: language === 'de' || language === 'en' ? language : (sources[0]!.language ?? readDemoSettings(home).language),
+        owner: ownerLanguage(home),
+        ...(vocabulary ? { current: vocabulary } : {}),
+        cards: sources.flatMap((s) => s.cards),
+      }),
+    );
+  };
   const byId = new Map<string, CanvasRuntime>();
   const handOver = new HandOver();
   const started = crypto.randomUUID();
@@ -178,21 +202,19 @@ export function serve(
       owner: due.owner,
     };
   };
-  /** How many things on each canvas need the owner: each canvas's switcher points to the others. */
-  const counted = (c: CanvasRuntime, snapshot = c.board.snapshot()) => waitingOn(snapshot);
-  const waiting: Record<string, number> = {};
+  /** What waits for the owner on each canvas: every page lists it in its navigation, the other canvases' too. */
+  const waiting: Record<string, Waiting> = {};
+  /** Each canvas's part of it as last sent, to send it again only when it changed. */
+  const waitingSent: Record<string, string> = {};
   const waitingMessage = () => JSON.stringify({ type: 'waiting', waiting } satisfies ServerMessage);
-  /** What waits for the owner on each canvas, kept for the inbox every page shows. */
-  const inboxes = new Map<string, InboxEntry[]>();
-  const inboxMessage = () => JSON.stringify({ type: 'inbox', inbox: inboxOrder([...inboxes.values()].flat()) } satisfies ServerMessage);
-  let inboxSent = '';
-  /** Reads the canvas's entries anew and sends the inbox to every page if it changed. */
-  const refreshInbox = (c: CanvasRuntime, snapshot = c.board.snapshot()) => {
-    inboxes.set(c.id, inboxOf(c.board.canvas, snapshot));
-    const text = inboxMessage();
-    if (text === inboxSent) return;
-    inboxSent = text;
-    everyone(text);
+  /** Takes in what waits on `c` now; whether that changed. */
+  const counted = (c: CanvasRuntime, snapshot = c.board.snapshot()) => {
+    const w = waitingIn(snapshot);
+    const text = JSON.stringify(w);
+    if (text === waitingSent[c.id]) return false;
+    waiting[c.id] = w;
+    waitingSent[c.id] = text;
+    return true;
   };
   const everyone = (text: string) => {
     for (const set of sockets.values()) for (const ws of set) ws.send(text);
@@ -214,8 +236,7 @@ export function serve(
   const attach = (c: CanvasRuntime) => {
     byId.set(c.id, c);
     if (!sockets.has(c.id)) sockets.set(c.id, new Set());
-    waiting[c.id] = counted(c);
-    refreshInbox(c);
+    counted(c);
     const send = (msg: ServerMessage) => sendTo(c.id, msg);
     /** The cards as last sent: what starts to wait for the owner after is pushed to their phone. */
     let seen = new Map(c.board.items().map((i) => [i.id, i]));
@@ -239,13 +260,9 @@ export function serve(
         );
         const snapshot = c.board.snapshot();
         send({ type: 'snapshot', snapshot });
-        refreshInbox(c, snapshot);
         // what the switchers show of it (its repositories, whether they run as configured) may have changed
         relist();
-        const n = counted(c, snapshot);
-        if (n === waiting[c.id]) return;
-        waiting[c.id] = n;
-        everyone(waitingMessage());
+        if (counted(c, snapshot)) everyone(waitingMessage());
       }),
       c.board.onEvent((event) => send({ type: 'event', event })),
       c.board.onEventGone((cardId, id) => send({ type: 'eventGone', cardId, id })),
@@ -270,8 +287,6 @@ export function serve(
     if (first) return;
     everyone(JSON.stringify({ type: 'canvases', canvases: now } satisfies ServerMessage));
     everyone(waitingMessage());
-    // a canvas renamed is named so in the inbox
-    for (const c of byId.values()) refreshInbox(c);
   };
   for (const c of canvases.all()) attach(c);
   relist();
@@ -284,14 +299,13 @@ export function serve(
         detach.delete(id);
         byId.delete(id);
         delete waiting[id];
-        inboxes.delete(id);
+        delete waitingSent[id];
         // the page asks for the canvases, and goes to the first there is
         for (const ws of sockets.get(id) ?? []) ws.close();
         sockets.delete(id);
       }
     for (const c of now) if (byId.get(c.id) !== c) attach(c);
     relist();
-    for (const c of now) refreshInbox(c);
   });
 
   /** A click the Rückschau counts (a card deleted, a command taken back, a rule proposal decided on), once it went through. */
@@ -535,6 +549,15 @@ export function serve(
         POST: needs(sites, async (x, req) => ({ job: x.setupRepo(await req.json()) })),
         DELETE: needs(sites, (x, req) => (x.doneWith(new URL(req.url).searchParams.get('path') ?? ''), {})),
       },
+      // „Vorschlagen lassen“ at a demo site's tags: started, followed, and taken into the field
+      '/api/tag-proposal': {
+        GET: needs(config, (_, req) => {
+          const path = new URL(req.url).searchParams.get('path') ?? '';
+          return { job: tagProposals.job(path), available: !!path && canvases.all().some((c) => c.repos.some((r) => resolve(r.info.path) === resolve(expandHome(path)))) };
+        }),
+        POST: needs(config, async (c, req) => ({ job: proposeTagsFor(c.home, await req.json()) })),
+        DELETE: needs(config, (_, req) => (tagProposals.doneWith(new URL(req.url).searchParams.get('path') ?? ''), {})),
+      },
       // what Obeya's own voice in needs here, and installing it
       '/api/voice-setup': { GET: needs(setup, (s) => s.view()) },
       '/api/voice-setup/install': { POST: needs(setup, (s) => s.install()) },
@@ -548,6 +571,7 @@ export function serve(
       '/api/setup': { GET: needs(machine, (m) => m.view()) },
       '/api/setup/install': { POST: needs(machine, async (m, req) => m.install(await req.json())) },
       '/api/setup/login': { POST: needs(machine, async (m, req) => m.login(await req.json())) },
+      '/api/setup/token': { POST: needs(machine, async (m, req) => m.saveToken(await req.json())) },
       '/api/setup/identity': { POST: needs(machine, async (m, req) => m.identity(await req.json())) },
       '/api/setup/folder': { POST: needs(machine, async (m, req) => m.folder(await req.json())) },
       // setting up git in a folder that has none: what the first commit holds, then the commit
@@ -992,7 +1016,6 @@ export function serve(
         if (usage) unwatch.set(ws.data.page, usage.watch());
         ws.send(JSON.stringify({ type: 'snapshot', snapshot: c.board.snapshot() } satisfies ServerMessage));
         ws.send(waitingMessage());
-        ws.send(inboxMessage());
         // a page that reloads within a command's undo window offers "Rückgängig" again
         for (const n of c.commander.undoable()) ws.send(JSON.stringify({ type: 'notice', ...n } satisfies ServerMessage));
       },

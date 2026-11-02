@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { Item } from '../core/types';
-import { depsOf, visibleDotSides } from './deps';
+import { depsOf, nearestHandle, waitsAmong } from './deps';
 
 const card = (id: string, ...behind: string[]) =>
   ({ id, kind: 'task', state: behind.length ? 'planned' : 'working', title: id, body: '', x: 0, y: 0, source: 'manual', repo: 'r', ...(behind.length && { queue: { behind, reason: '' } }) }) as Item;
@@ -63,13 +63,31 @@ test('a card snoozed until another card gets somewhere waits for that card', () 
   expect(depsOf('R', [snoozed])).toBeUndefined();
 });
 
+test('every direct wait on the canvas, of all kinds, not the chain; a finished card is waited for no longer', () => {
+  const snoozed = { ...card('R'), snoozed: { on: { card: 'A', title: 'A', state: 'done' }, by: 'agent' } } as Item;
+  const drawn = { ...card('M'), manualDependsOn: ['B'] } as Item;
+  const done = { ...card('F'), state: 'done' } as Item;
+  const all = [...items, snoozed, drawn, done, card('G', 'F'), { ...card('H'), state: 'live', manualDependsOn: ['A'] } as Item];
+  expect(waitsAmong(all).sort()).toEqual([['A', 'B'], ['A', 'D'], ['A', 'R'], ['B', 'C'], ['B', 'D'], ['B', 'M']]);
+});
 
-test('a dot appears near its centre or anywhere near its edge, at any zoom', () => {
-  const b = { x: 0, y: 0, w: 300, h: 100 };
-  expect(visibleDotSides(b, { x: 150, y: -18 }, 1)).toEqual(['top']);
-  expect(visibleDotSides(b, { x: 150, y: -19 }, 1)).toEqual([]);
-  expect(visibleDotSides(b, { x: 30, y: -6 }, 1)).toEqual(['top']);
-  expect(visibleDotSides(b, { x: 30, y: -7 }, 1)).toEqual([]);
-  expect(visibleDotSides(b, { x: 150, y: -36 }, 0.5)).toEqual(['top']);
-  expect(visibleDotSides(b, { x: 0, y: 0 }, 1)).toEqual(['top', 'left']);
+test('the dot nearest the pointer shows, only within reach', () => {
+  const cards = [
+    { id: 'A', b: { x: 0, y: 0, w: 200, h: 100 } },
+    { id: 'B', b: { x: 0, y: 130, w: 200, h: 100 } },
+  ];
+  expect(nearestHandle(cards, { x: 100, y: 108 }, 16)).toEqual({ id: 'A', side: 'bottom' });
+  expect(nearestHandle(cards, { x: 100, y: 124 }, 16)).toEqual({ id: 'B', side: 'top' });
+  expect(nearestHandle(cards, { x: 205, y: 50 }, 16)).toEqual({ id: 'A', side: 'right' });
+  // in the middle of a card, and beside an edge but far from its middle, no dot
+  expect(nearestHandle(cards, { x: 100, y: 50 }, 16)).toBeNull();
+  expect(nearestHandle(cards, { x: 20, y: 100 }, 16)).toBeNull();
+});
+
+test('with an edge reach, a dot also shows near any point of its edge, the nearest one winning', () => {
+  const cards = [{ id: 'A', b: { x: 0, y: 0, w: 300, h: 100 } }];
+  expect(nearestHandle(cards, { x: 30, y: -6 }, 18, 6)).toEqual({ id: 'A', side: 'top' });
+  expect(nearestHandle(cards, { x: 30, y: -7 }, 18, 6)).toBeNull();
+  expect(nearestHandle(cards, { x: 150, y: -18 }, 18, 6)).toEqual({ id: 'A', side: 'top' });
+  expect(nearestHandle(cards, { x: 2, y: 3 }, 18, 6)).toEqual({ id: 'A', side: 'left' });
 });

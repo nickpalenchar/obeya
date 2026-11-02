@@ -132,19 +132,27 @@ On a phone the page shows the phone view instead of the canvas, at the same addr
 same bundle. A phone is a device with a coarse pointer whose screen's shorter side is under 600 px;
 a tablet and a narrow window at the desk keep the canvas. `?view=phone` or `?view=canvas` decides
 instead. The view is settled at load; turning the phone does not switch it. It uses each canvas's
-own WebSocket. It shows three lists:
+own WebSocket. It shows four lists:
 
-- **„Für dich“**: what waits for the owner across every canvas, canvas by canvas and within one in
+- **„Braucht dich“**: what waits for the owner across every canvas, canvas by canvas and within one in
   Tab's order, then „Obeya hat geantwortet“ where an answer waits unread. Each card says what it waits
   for (its state line: „Demo bereit“, „Frage an dich“ …) and since when (the server keeps that across
-  restarts). Snoozed cards stand at the end (see Snoozing a card).
+  restarts). Snoozed cards stand at the end (see Snoozing a card). The canvas's navigation shows the
+  same entries in the same order, built once for both, as light rows (see The navigation).
 - **„Läuft“**: the cards an agent or Obeya is at that wait for nobody (working, taking in the owner's
   words, landing, queued, in a PR, an idea's agent thinking …), with their status line, snoozed ones
-  at the end. Every card that leaves „Für dich“ without being done stands here.
-- **„Erledigt“**, closed until its head (with the count) is tapped: the finished cards that are not
-  archived yet, those the archive's „… erledigte Aufgaben archivieren“ would take, and none the lists above
-  hold. Opened, its head moves up to the bar so its cards show; it stays open while a card is open
-  and over a reload, and is closed again in a new tab. Without such cards it is not there.
+  at the end. Every card that leaves „Braucht dich“ without being done stands here.
+- **„Geplant“**: the tasks no agent has started yet and that wait for nobody: planned ones (a follow-up
+  the owner accepted, say), stopped ones, and those set to start at a time. Opened, a card offers
+  what it does on the canvas („Agent starten“, „Später …“), so a task can be started from the phone.
+  Without this list an accepted proposal left the phone until it was started (2026-10-31).
+- **„Erledigt“**: the finished cards that are not archived yet, those the archive's „… erledigte
+  Aufgaben archivieren“ would take, and none the lists above hold.
+
+„Geplant“ and „Erledigt“ are closed until their head (with the count) is tapped, since either may
+hold many cards the owner rarely needs on the phone. Opened, the head moves up to the bar so its
+cards show; it stays open while a card is open and over a reload, and is closed again in a new tab.
+Without such cards it is not there.
 
 The cards look as on the canvas, as wide as the screen and without the pin, their kind line led by
 the canvas's name where there are several; where two of at least
@@ -273,7 +281,7 @@ phone's choice (Android held Chrome's messages until unlock on the owner's Pixel
 *Several at once:* the first goes out at once; what starts waiting within the minute after goes out
 as one push at its end („3 Karten warten auf dich“, the titles as text, leaving out what no longer
 waits), and a further minute starts. *Tapping a push* opens its card in the phone view
-(at its address), „Für dich“ for several, in the open app if there is one; a later push for the same
+(at its address), „Braucht dich“ for several, in the open app if there is one; a later push for the same
 card replaces the earlier.
 
 *The web app.* The page names a manifest (standalone, icons `/icons/180.png`, `/icons/512.png`), and
@@ -373,12 +381,13 @@ or `.github/`), it restarts the server, running `bun install --frozen-lockfile` 
 `package.json` or `bun.lock` changed (a failure is logged and the restart goes ahead). Workers resume,
 and an open page reloads when it reconnects to a new server process. What counts as new is measured from
 the commit the server started from, and a restart waits until HEAD has held still for a round (a
-landing under way finishes first), HEAD checked once more after git has told what changed. The
-server looks every two seconds at the files HEAD stands on, by their `stat`s: HEAD, each ref it names
-on the way to a commit (a branch may name another branch; refs of a worktree's own, such as
-`refs/worktree/` and `refs/bisect/`, are in its own git directory), and `packed-refs`; only once
-they changed does it ask git, without waiting for it, what HEAD is. A repository that keeps its refs
-in a reftable, which has no such files, is asked every round.
+landing under way finishes first), HEAD checked once more after git has told what changed. While
+nothing moves, the watch starts no process: every two seconds it compares the files HEAD stands on
+(HEAD, each ref it names on the way to a commit, a branch possibly naming another, and
+`packed-refs`; refs of a worktree's own, such as `refs/worktree/` and `refs/bisect/`, are in its
+own git directory) and asks git what HEAD is only once one of them changed. Where the files cannot
+tell (refs in a reftable, a symbolic ref whose target cannot be read safely), git is asked every
+round.
 
 #### Waiting for the workers
 
@@ -512,8 +521,11 @@ starts, the Python sidecars ignore Ctrl-C instead, and the agents stay in the co
   landed one after another, the server stood still for half a second at a time. The cards alone
   (what code reads back between its writes) are built apart from the rest of that view (the sheet's
   outdated pages, the workspaces, the notes on the plan directories), and one archived card is built
-  without the whole archive. The owner's settings file, asked for the language with every text the
-  server writes, is read again only once it changed. Rejected: reacting to each change at once and
+  without the whole archive. Which cards are prototypes (an idea lists its own, archived ones too)
+  is read once per change, and each is made into a card when one first needs it, once per change
+  too, not again for every card looked up: a pass of sharing looks up every shared card, hundreds of
+  them, and stood still for half a second doing so. The owner's settings file, asked for the
+  language with every text the server writes, is read again only once it changed. Rejected: reacting to each change at once and
   only making the view cheaper (the reactions still build it once per change).
 - **A page's freezes are found by a worker's heartbeat, not by its own timer running late**
   (2026-10-30): the app's webview on macOS runs a page's timers about once a second when its window
@@ -546,8 +558,9 @@ starts, the Python sidecars ignore Ctrl-C instead, and the agents stay in the co
   on a busy laptop `git rev-parse HEAD` held it 330 ms at the median and up to 11 s waited for
   (`spawnSync`), 60 ms and up to 1.5 s started without waiting. Asked every two seconds, it delayed
   the requests in that rhythm, a video's ranges among them. The files are told apart by inode, size
-  and mtime in nanoseconds: `packed-refs` written anew can keep both its size and its millisecond. Rejected: git without waiting alone (still a process every two seconds, each holding
-  the server up to a second); watching the git directory (watches miss changes, which is why plan
+  and mtime in nanoseconds: `packed-refs` written anew can keep both its size and its millisecond.
+  Rejected: git without waiting alone (still a process every two seconds, each holding the server
+  up to a second); watching the git directory (watches miss changes, which is why plan
   directories are polled as well).
 - **Git is called directly, and test repositories are copied**: on macOS Obeya calls the binary
   `xcrun --find git` names, not the `/usr/bin/git` shim, which looks it up on every call (10 ms instead

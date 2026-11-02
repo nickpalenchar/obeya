@@ -82,6 +82,46 @@ export interface Clip {
   id: string;
   file: string;
   seconds: number;
+  /**
+   * What a voice that hears its clips back (Qwen3) heard, a line per sentence: `stumbled` where
+   * every take differed from the script by a stretch, `misheard` the words heard as others.
+   */
+  heard?: { script: string; heard: string | null; stumbled?: true; misheard?: [string, string][] }[];
+  /** Why such a voice heard nothing of the clip. */
+  unheard?: string;
+}
+
+/**
+ * What the review table says of what was heard: per scene, each sentence that stumbled in every
+ * take; once per word heard as another, how it was heard and in which scenes; why nothing was
+ * heard, if so.
+ */
+export function heardNotes(clips: Clip[]) {
+  const stumbled = clips.map((c) =>
+    (c.heard ?? []).filter((h) => h.stumbled).map((h) => `stumbled in every take, the best kept: "${h.script}" heard as "${h.heard}"`),
+  );
+  const words = new Map<string, { as: Set<string>; scenes: Set<number> }>();
+  clips.forEach((c, i) =>
+    c.heard?.forEach((h) =>
+      h.misheard?.forEach(([word, as]) => {
+        const seen = words.get(word) ?? { as: new Set(), scenes: new Set() };
+        seen.as.add(as);
+        seen.scenes.add(i + 1);
+        words.set(word, seen);
+      }),
+    ),
+  );
+  const misheard = [...words].map(
+    ([word, { as, scenes }]) => `"${word}" heard as ${[...as].map((a) => `"${a}"`).join(', ')} (scene ${[...scenes].join(', ')})`,
+  );
+  const unheard = clips.find((c) => c.unheard)?.unheard;
+  return { stumbled, misheard, unheard };
+}
+
+/** The notes on what was heard that follow the review table, or the scene list of `--narration`. */
+function printHeard({ misheard, unheard }: ReturnType<typeof heardNotes>) {
+  if (misheard.length) console.log(`heard differently (a word the voice cannot read goes into lib/lexicon.qwen3.<language>.json):\n${misheard.map((m) => `  ${m}`).join('\n')}`);
+  if (unheard) console.log(`narration not heard back: ${unheard}`);
 }
 
 export class Director {
@@ -467,9 +507,13 @@ export function synthesize(says: string[], dir: string, settings: DemoSettings =
  * Headless Chrome with its window the size of the viewport: in a window of another size the
  * screencast captured only the top 813 of 900 pixels. It asks for the stronger of two graphics
  * chips (Windows and macOS; Linux ignores it), which hands the screencast more frames on a busy machine.
+ * At `scale` above 1 the whole browser runs at that device scale: Chrome's screencast sent frames at
+ * one pixel per point whatever the page's own scale (`deviceScaleFactor`), so `sharp` was not.
  */
-async function launch(viewport: { width: number; height: number }) {
-  return launchChromium({ args: [`--window-size=${viewport.width},${viewport.height}`, '--force_high_performance_gpu'] });
+async function launch(viewport: { width: number; height: number }, scale = 1) {
+  const args = [`--window-size=${viewport.width},${viewport.height}`, '--force_high_performance_gpu'];
+  if (scale > 1) args.push(`--force-device-scale-factor=${scale}`);
+  return launchChromium({ args });
 }
 
 /** A context of the demo's browser, whose pages speak nothing out loud (`SILENT_SPEECH`). */
@@ -551,8 +595,9 @@ function sceneName(i: number, spec: DemoSpec) {
 async function openPage(spec: DemoSpec, viewport: { width: number; height: number }, work: string, paced: boolean) {
   const storageState = await login({ ...spec, viewport }, work);
   watchStillness();
-  const browser = await launch(viewport);
-  const ctx = await newContext(browser, { viewport, storageState, deviceScaleFactor: spec.sharp ? 2 : 1 });
+  const scale = spec.sharp ? 2 : 1;
+  const browser = await launch(viewport, scale);
+  const ctx = await newContext(browser, { viewport, storageState, deviceScaleFactor: scale });
   await ctx.addInitScript({ path: path.join(LIB, 'overlay.js') });
   const page = await ctx.newPage();
   const d = new Director(page, spec.baseUrl, work, paced);
@@ -658,7 +703,7 @@ async function startScreencast(ctx: BrowserContext, page: Page, dir: string, siz
       const slept = sleepCause(since);
       if (slept) throw new Error(slept);
       await answered(cdp.send('Page.stopScreencast'), 'stopping the screencast');
-      frames.splice(0, frames.length, ...onPaintTime(frames, paintTimes(frames, dir, size, scale)));
+      frames.splice(0, frames.length, ...onPaintTime(frames, paintTimes(frames, dir, size)));
     },
   };
 }
@@ -666,13 +711,16 @@ async function startScreencast(ctx: BrowserContext, page: Page, dir: string, siz
 /**
  * The time each frame was painted, read from the clock strip `overlay.js` puts into the page: one
  * gray row through the strip of every frame, cut out by ffmpeg in one pass. Null for a frame
- * whose strip cannot be read, and for all of them when ffmpeg fails.
+ * whose strip cannot be read, and for all of them when ffmpeg fails. `size` is the page in points;
+ * where the strip sits in a frame follows from the frame's own pixels, as many per point as the
+ * screencast sent (asked for twice as many, it sent one per point).
  */
-export function paintTimes(frames: Frame[], dir: string, size: { width: number; height: number }, scale: number): (number | null)[] {
+export function paintTimes(frames: Frame[], dir: string, size: { width: number; height: number }): (number | null)[] {
   const width = CLOCK.bits * CLOCK.cell;
-  const y = (size.height - CLOCK.bottom - Math.ceil(CLOCK.cell / 2)) * scale;
-  // a frame with more pixels than points (`sharp`) is read back at one pixel per point
-  const crop = `crop=${width * scale}:1:${CLOCK.left * scale}:${y}${scale > 1 ? `,scale=${width}:1:flags=neighbor` : ''}`;
+  const y = size.height - CLOCK.bottom - Math.ceil(CLOCK.cell / 2);
+  // in the frame's pixels (iw/ih), read back at one pixel per point
+  const [sx, sy] = [`iw/${size.width}`, `ih/${size.height}`];
+  const crop = `crop=w=${width}*${sx}:h=1:x=${CLOCK.left}*${sx}:y=${y}*${sy},scale=${width}:1:flags=neighbor`;
   // gray before the crop: ffmpeg 6 crops a 4:2:0 JPEG to even heights only, so a row of one pixel
   // failed every frame there and no frame was put on its paint time
   const r = spawnSync(
@@ -684,9 +732,16 @@ export function paintTimes(frames: Frame[], dir: string, size: { width: number; 
   return frames.map((f, i) => readClock(r.stdout.subarray(i * width, (i + 1) * width), f.t));
 }
 
+/** A frame's width in pixels, undefined where ffprobe cannot tell. */
+function frameWidth(file: string) {
+  const r = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width', '-of', 'csv=p=0', file], { encoding: 'utf8' });
+  return Number.parseInt(r.stdout, 10) || undefined;
+}
+
 /** Writes an ffconcat list that holds each frame until the next one, from t0 to tEnd, less the cuts. */
 function frameList(frames: Frame[], t0: number, tEnd: number, cuts: Cut[], file: string) {
   const held = frameDurations(frames, t0, tEnd, cuts);
+  if (!held.length) throw new Error(`none of the screencast's ${frames.length} frames falls into the take`);
   // Relative, with forward slashes: ffmpeg reads them on every platform, a Windows drive path not always.
   const entry = (f: string) => `file '${path.relative(path.dirname(file), f).split(path.sep).join('/')}'`;
   const lines = ['ffconcat version 1.0'];
@@ -729,14 +784,16 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   const clips = synthesize(spec.scenes.map((s) => s.say), work);
   if (process.argv.includes('--narration')) {
     console.log(`narration only: ${clips.length} clips cached, ${clips.reduce((t, c) => t + c.seconds, 0).toFixed(0)} s spoken`);
+    const heard = heardNotes(clips);
+    heard.stumbled.forEach((lines, i) => lines.forEach((line) => console.log(`  ${String(i + 1).padStart(2)}  ${line}`)));
+    printHeard(heard);
     return;
   }
 
   const { browser, ctx, page, d } = await openPage(spec, viewport, work, true);
   // this take's cuts, none so far (`Director.#cut`): after the login, which may stage a playback of the take before
   fs.writeFileSync(path.join(work, 'cuts.json'), '[]');
-  const scale = spec.sharp ? 2 : 1;
-  const cast = await startScreencast(ctx, page, framesDir, viewport, scale);
+  const cast = await startScreencast(ctx, page, framesDir, viewport, spec.sharp ? 2 : 1);
   await d.wait(500);
   const t0 = now();
   const marks: Mark[] = [];
@@ -775,6 +832,8 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   const total = videoTime(tEnd, t0, d.cuts);
   const cut = cast.frames.find((f) => Math.round(f.width) !== viewport.width || Math.round(f.height) !== viewport.height);
   if (cut) console.warn(`screencast frames are ${Math.round(cut.width)}×${Math.round(cut.height)}, not ${viewport.width}×${viewport.height}: part of the page is missing`);
+  const pixels = spec.sharp && cast.frames[0] ? frameWidth(cast.frames[0].file) : undefined;
+  if (pixels && pixels < viewport.width * 2) console.warn(`screencast frames are ${pixels} pixels wide, not ${viewport.width * 2}: the sharp video is scaled up from them`);
 
   const list = path.join(work, 'frames.txt');
   frameList(cast.frames, t0, tEnd, d.cuts, list);
@@ -870,12 +929,15 @@ export function assemble({ outDir, work, list, clips, marks, total, viewport, sh
   fs.writeFileSync(path.join(outDir, 'index.html'), reportPage(title, report, marks, language));
   console.log(`\n${Math.round(total)} s video → ${path.join(outDir, 'index.html')}`);
   console.log('\nreview:');
+  const heard = heardNotes(clips);
   marks.forEach((m, i) => {
     const end = i + 1 < marks.length ? marks[i + 1]!.start : total;
     const silent = end - m.speechEnd - GAP_SECONDS;
     const idle = silent > SILENCE_WARN ? `  ← ${Math.round(silent)} s without narration: cut it with d.skip where it only waits` : '';
     console.log(`  ${String(i + 1).padStart(2)}  ${mmss(m.start)}  ${m.title.padEnd(32).slice(0, 32)}${idle}`.trimEnd());
+    for (const line of heard.stumbled[i] ?? []) console.log(`               ${line}`);
   });
+  printHeard(heard);
   console.log(`stills → ${reviewDir}: NN-mid.jpg (middle of each scene), NN.jpg (its end)`);
 }
 

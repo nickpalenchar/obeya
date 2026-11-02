@@ -409,7 +409,7 @@ export const MIGRATIONS = [
   'ALTER TABLE talk ADD COLUMN wish TEXT; ALTER TABLE events ADD COLUMN wish TEXT;',
   // the demos of earlier handovers a later one replaced
   'ALTER TABLE cards ADD COLUMN demos TEXT;',
-  // since when a card waits for the owner, for the phone view's „Für dich“
+  // since when a card waits for the owner, for the phone view's „Braucht dich“
   'ALTER TABLE cards ADD COLUMN waiting_since TEXT;',
   // a repository's commands as the owner last confirmed them, by its path (JSON `RepoCommands`)
   `CREATE TABLE trusted_commands (
@@ -466,10 +466,12 @@ export const MIGRATIONS = [
    UPDATE cards SET short = substr(replace(id, '-', ''), 1, ${SHORT});
    ${Array.from({ length: 32 - SHORT }, (_, k) => `UPDATE cards SET short = substr(replace(id, '-', ''), 1, ${SHORT + 1 + k}) WHERE short IN (SELECT short FROM cards GROUP BY short HAVING count(*) > 1);`).join('\n   ')}
    CREATE UNIQUE INDEX cards_short ON cards (short);`,
+  // an error of a session that signed in with a token rather than this machine's account
+  'ALTER TABLE events ADD COLUMN token INTEGER;',
 ];
 
-const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, agent';
-type EventRow = Omit<CardEvent, 'images' | 'mocks' | 'replyTo' | 'spot' | 'answer' | 'picks' | 'unread' | 'readAfter' | 'wish' | 'reply' | 'forwarded' | 'agent'> & {
+const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, agent, token';
+type EventRow = Omit<CardEvent, 'images' | 'mocks' | 'replyTo' | 'spot' | 'answer' | 'picks' | 'unread' | 'readAfter' | 'wish' | 'reply' | 'forwarded' | 'agent' | 'token'> & {
   agent: string | null;
   code: CardEvent['code'] | null;
   images: string | null;
@@ -483,8 +485,9 @@ type EventRow = Omit<CardEvent, 'images' | 'mocks' | 'replyTo' | 'spot' | 'answe
   wish: string | null;
   reply: number | null;
   forwarded: number | null;
+  token: number | null;
 };
-const eventOf = ({ code, images, mocks, replyTo, spot, answer, picks, unread, readAfter, wish, reply, forwarded, agent, ...e }: EventRow): CardEvent => ({
+const eventOf = ({ code, images, mocks, replyTo, spot, answer, picks, unread, readAfter, wish, reply, forwarded, agent, token, ...e }: EventRow): CardEvent => ({
   ...e,
   ...(agent ? { agent: JSON.parse(agent) as AgentIdentity } : {}),
   ...(code ? { code } : {}),
@@ -499,6 +502,7 @@ const eventOf = ({ code, images, mocks, replyTo, spot, answer, picks, unread, re
   ...(wish ? { wish: JSON.parse(wish) as Wish } : {}),
   ...(reply ? { reply: true as const } : {}),
   ...(forwarded ? { forwarded: true as const } : {}),
+  ...(token ? { token: true as const } : {}),
 });
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -603,9 +607,11 @@ export class Store {
     return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND plan_docs IS NOT NULL').all({ c: canvasId }) as CardRow[];
   }
 
-  /** The canvas's prototypes, on the canvas or archived, the oldest first. */
-  prototypes(canvasId: string): CardRow[] {
-    return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND prototype_of IS NOT NULL ORDER BY created_at, rowid').all({ c: canvasId }) as CardRow[];
+  /** The canvas's prototypes, on the canvas or archived, the oldest first: which they are, without the rest of their rows. */
+  prototypes(canvasId: string): Pick<CardRow, 'id' | 'prototype_of' | 'archived_at'>[] {
+    return this.db
+      .query('SELECT id, prototype_of, archived_at FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND prototype_of IS NOT NULL ORDER BY created_at, rowid')
+      .all({ c: canvasId }) as Pick<CardRow, 'id' | 'prototype_of' | 'archived_at'>[];
   }
 
   /** The workstreams of the given projects. */
@@ -751,7 +757,7 @@ export class Store {
     const agent = 'agent' in e ? e.agent : (e.author !== 'owner' && e.author !== 'obeya' ? currentAgent() : undefined);
     const { id } = this.db
       .query(
-        'INSERT INTO events (card_id, at, kind, author, text, code, images, mocks, reply_to, spot, answer, picks, unread, wish, reply, forwarded, agent) VALUES ($cardId, $at, $kind, $author, $text, $code, $images, $mocks, $replyTo, $spot, $answer, $picks, $unread, $wish, $reply, $forwarded, $agent) RETURNING id',
+        'INSERT INTO events (card_id, at, kind, author, text, code, images, mocks, reply_to, spot, answer, picks, unread, wish, reply, forwarded, agent, token) VALUES ($cardId, $at, $kind, $author, $text, $code, $images, $mocks, $replyTo, $spot, $answer, $picks, $unread, $wish, $reply, $forwarded, $agent, $token) RETURNING id',
       )
       .get({
         ...e,
@@ -767,6 +773,7 @@ export class Store {
         wish: e.wish ? JSON.stringify(e.wish) : null,
         reply: e.reply ? 1 : null,
         forwarded: e.forwarded ? 1 : null,
+        token: e.token ? 1 : null,
         at,
       }) as { id: number };
     return { ...e, ...(agent ? { agent } : {}), id, at };
