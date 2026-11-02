@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import type { CodexModel } from '../core/types';
 import { z } from 'zod';
 import { messageOf } from '../core/text';
+import { sessionRegistry } from './session-registry';
 import { codexConnection, CodexRpcError, type CodexConnection, type CodexHandlers } from './codex-rpc';
 import { cleanEnv, type AgentEvent, type AgentRuntime, type AgentSpec } from './runtime';
 
@@ -27,11 +28,16 @@ const connectInstalled: Connect = (spec, handlers) => {
   // executable on Windows; do not work around that by introducing a shell into the transport.
   const executable = Bun.which(process.env.OBEYA_CODEX ?? 'codex', { PATH: process.env.PATH ?? '' });
   if (!executable || !isAbsolute(executable) || /\.(cmd|bat|ps1)$/i.test(executable)) throw new Error('Installed Codex executable unavailable; set OBEYA_CODEX to its native executable path');
+  // An earlier Obeya crashed and its sweep could not end this workspace's old session: a new one
+  // could write beside it. The sweep tries again when Obeya next starts.
+  const left = sessionRegistry()?.unaccounted(spec.cwd);
+  if (left?.length) throw new Error(`An earlier session in this workspace left processes that are still running (${left.map((l) => l.label).join('; ')}); Obeya tries to end them when it starts`);
   return codexConnection({
     command: executable,
     args: ['app-server', '--listen', 'stdio://'],
     cwd: spec.cwd,
     env: { ...cleanEnv(), ...spec.env },
+    label: `Codex in ${spec.cwd}`,
   }, handlers);
 };
 

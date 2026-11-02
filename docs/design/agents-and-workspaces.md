@@ -76,13 +76,7 @@ process identities and their creation ticks from `/proc`, without depending on `
 unreadable unrelated processes but fails if it cannot inspect one it already owns. This is cleanup,
 not an OS containment boundary: a process that detaches and loses its ancestry between observations
 may escape tracking. Windows and Linux native-PTY failure cleanup remain preview acceptance gates.
-Observed work ends on a graceful or forced stop and when the app-server dies, whatever `app.keep`
-says: that setting only keeps a waiting card's app from being parked, and an app started as
-session work does not outlive its session. When Obeya itself crashes nothing runs the cleanup, and
-processes Codex did not end itself keep running. A Claude Code worker has no such tracking: a stop
-ends its process group, but when its process dies on its own, what it started in a group of its own
-keeps running, as after a crash of Obeya (macOS, checked with real agents of both harnesses). With
-Obeya running, a card whose agent died keeps its state, with the agent's exit as an error line in its log.
+What this tracking ends, and what outlives it, is set out in Lifetimes below.
 
 ### Models and effort
 
@@ -334,6 +328,62 @@ arriving during the stop waits for it. A failed stop is an error on the card; th
 nothing of it. After a restart,
 waiting cards are parked the same way. Only processes go; the workspace stays the card's.
 
+### Lifetimes
+
+An agent's session can leave three kinds of thing running. Each has its own end, and none stands in
+for another.
+
+- **Session work**: processes the agent's session started and Obeya observed. For Codex that is
+  every descendant of the app-server (native PTYs and background terminals included, wherever their
+  process group is), found by creation identity as described above. It ends with the session: a
+  stop, a forced stop, the session closing, its agent dying, and, after a crash of Obeya, the next
+  start of an Obeya on the same home (Recovery after a crash). `app.keep` has no part in it. A
+  Claude Code worker's session work is only its own process group: a stop ends that, and what the
+  agent started in a group of its own is not observed, so it outlives the agent's death and a crash
+  of Obeya alike (macOS, real agents, both harnesses). A harness added later says what it observes;
+  it never claims more than it checked. A card whose agent died while Obeya runs keeps its state, with
+  the exit as an error line in its log.
+- **The app**: what serves the card's workspace for the owner to try, started by a worker as the
+  repository's `app.run` says. Parking, „Stoppen“, handing a clone over and discarding end it with
+  `app.stop`; `app.keep` and the 30 minutes after „App öffnen“ hold it back from parking only.
+  Obeya never ends an app by process identity. An app started by a Codex native terminal is session
+  work as well as the app, and the shorter lifetime wins: it ends with the session, `app.keep` or
+  not. Parking then still runs `app.keep` and logs that the app keeps running, which was no longer
+  true. An app meant to outlive a session needs a handoff Obeya does not have: no ancestry says
+  which process is meant to stay, so none is specified.
+- **External operations**: pushes and pull requests, deploys, forge calls, and commands run on
+  another machine (see Hosts). They are not session work and no cleanup or recovery of Obeya
+  touches them; a session ending does not cancel them.
+
+#### Recovery after a crash
+
+A crash of Obeya runs no cleanup. While a Codex session runs, the server records what it observed in
+`sessions/` of its home: one record per session (host, boot, PID namespace, the working directory,
+and the pid and creation time of the app-server and each observed descendant, no command lines or
+credentials) beside a lease file on which the server holds a SQLite write lock, which the kernel
+drops when the server dies. The record is written before the app-server can run any session code and
+again whenever the observed set grows; a session that ends in order removes both.
+
+The next Obeya on that home sweeps before any card resumes. A record is looked at only while the
+sweep holds its lease, so a live Obeya's sessions, this one's or another's on the same directory,
+are never candidates. A record from an earlier boot is dropped without a signal; one from another
+host or PID namespace, or that cannot be judged, is left alone and reported; an unreadable or
+foreign-version one is moved to `sessions/quarantine/`. Otherwise only the recorded processes whose
+pid still shows the recorded creation time are ended, each by its own pid and with their current
+descendants, never by process group (a group number proves nothing about who else is in it, unlike
+in a live session); every other process is left alone. The record goes once none of them runs. If one does, or
+the signal is refused, the record stays, the next start tries again, and a new Codex session in that
+workspace refuses to start meanwhile, so a second writer never works beside an old one. The sweep
+reports each outcome in the server's log (card pages do not show it).
+
+Limits, by nature of numeric signalling: between the check and the signal the process can end and
+its pid be given to another; the creation time (to the tick on Linux, to the second on macOS)
+makes that need a pid reused in the same second as the recorded process started. An observation lost
+to a crash before it was written, a child that detached unseen between two samples, and a session
+whose app-server was never recorded are not recovered. Windows records nothing and recovers nothing
+(its identities were not checked). A Claude Code worker is not recorded at all. Recovery is
+cleanup, not containment.
+
 ### Hosts
 
 Other machines a repository's workers run on, over SSH. The configuration lists them per repository
@@ -407,6 +457,12 @@ a container say, reuses pids). A host needs git, Claude Code and what the reposi
   swap, while Claude Code took 2.3 GB. So waiting cards park, machines count slots for busy workers,
   and a card finding none goes to another machine, where it stays until its work lands. Rejected:
   clones as the only cap; stacks running until stopped by hand.
+- **Crash recovery by record and lease, ending only what was observed and still has its recorded
+  identity** (2026-11-02). Rejected: a command-line or workspace-wide search for stray agents
+  (could hit another Obeya's or unrelated processes); a liveness pipe or supervisor alone (it
+  cannot act once it dies itself, and a record can); report-only recovery (it leaves the processes
+  running until the owner finds them); an app-process identity contract to keep apps alive through a
+  crash (no ancestry shows which process the owner means to keep).
 - **Worktrees by default** (2026-10-14); a canvas whose configuration names clones keeps them.
 - **A host's forwarded port reaches a server that answers only narration clips** (2026-10-16).
   Rejected: forwarding to Obeya itself, which let anyone on that machine run commands here.

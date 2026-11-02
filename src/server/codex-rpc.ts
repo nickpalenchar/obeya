@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { messageOf } from '../core/text';
 import { OWN_GROUP } from './spawn';
 import { AgentProcesses } from './agent-processes';
+import { sessionRegistry } from './session-registry';
 
 const running = new Map<() => void, { done: Promise<void>; force: () => void }>();
 /** Ordinary shutdown waits for escalation; an explicit force signals without waiting. */
@@ -48,11 +49,19 @@ const envelope = z.object({
 
 /** An argv override is for contract tests; the runtime uses the installed CLI (or OBEYA_CODEX). */
 export function codexConnection(
-  options: { command: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv; timeoutMs?: number },
+  options: { command: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv; timeoutMs?: number; /** What the session is, for the crash record. */ label?: string },
   handlers: CodexHandlers,
 ): CodexConnection {
   const child = spawn(options.command, options.args, { cwd: options.cwd, env: options.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: OWN_GROUP });
   const terminals = child.pid ? new AgentProcesses(child.pid) : undefined;
+  // What a crash of Obeya would leave behind is recorded as it is observed (session-registry.ts).
+  const record = terminals ? sessionRegistry()?.begin(options.label ?? 'Codex session', options.cwd) : undefined;
+  const publish = () => {
+    try { record?.publish(terminals!.observed()); } catch (error) { console.warn(`Session record not updated: ${messageOf(error)}`); }
+  };
+  if (terminals && record) { terminals.onChange = publish; publish(); }
+  /** The session's processes have ended, or the attempt failed and the record stays for a sweep. */
+  const settleRecord = (ended: boolean) => { if (ended) record?.finish(); else record?.abandon(); };
   const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
   let nextId = 0;
   let closing = false;
@@ -170,7 +179,9 @@ export function codexConnection(
   child.on('close', (code, exitSignal) => {
     clearInterval(observe);
     // Identities a refused signal left owed at `exit` are tried once more before the transport is gone.
-    try { terminals?.kill(); } catch (error) { failure ??= new Error(messageOf(error)); }
+    let ended = true;
+    try { terminals?.kill(); } catch (error) { ended = false; failure ??= new Error(messageOf(error)); }
+    settleRecord(ended);
     running.delete(close);
     clearTimeout(terminate);
     clearTimeout(kill);
