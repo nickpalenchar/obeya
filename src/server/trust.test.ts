@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readShared } from '../adapters';
@@ -80,6 +80,18 @@ describe("a workspace's Codex configuration", () => {
     unlinkSync(join(repo, '.codex/rules/a.rules'));
     expect(codexAsTrusted(repo, trusted)).toBe(false);
     git(repo, 'checkout', '--quiet', '--', '.codex');
+    expect(codexAsTrusted(repo, trusted)).toBe(true);
+  });
+
+  test('compares by SHA-256 in a repository whose objects are named so', () => {
+    const repo = join(dir, 'sha256');
+    git(dir, 'init', '--quiet', '--object-format=sha256', '-b', 'main', repo);
+    git(repo, 'config', 'user.email', 'a@b'); git(repo, 'config', 'user.name', 'a');
+    mkdirSync(join(repo, '.codex'));
+    writeFileSync(join(repo, '.codex/config.toml'), 'model = "x"\n');
+    git(repo, 'add', '.codex'); git(repo, 'commit', '--quiet', '-m', 'codex');
+    const trusted = commandsOf(readShared(repo)).codex;
+    expect(trusted!['.codex/config.toml']!.id).toHaveLength(64);
     expect(codexAsTrusted(repo, trusted)).toBe(true);
   });
 
