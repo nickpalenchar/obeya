@@ -133,7 +133,7 @@ export function execTools(lane: ExecLane): AgentTool[] {
         if (!command) return 'Not run: no command.';
         const cwd = placeFor(lane, typeof args.cwd === 'string' ? args.cwd : undefined);
         if (!cwd) return 'Not run: cwd is not a directory in the workspace, a temporary directory or the demos directory.';
-        if (!allowed(lane.rules(), command)) {
+        if (!allowed(lane.rules(), command, undefined, [lane.workspace, ...lane.places()])) {
           const answer = await lane.ask({ name: 'Bash', input: { command }, ...(typeof args.reason === 'string' && args.reason ? { reason: args.reason } : {}) });
           if (!answer.allow) return `Not run: ${answer.message}`;
         }

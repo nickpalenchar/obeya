@@ -2,7 +2,12 @@
 // confirmed it in "Konfiguration") applied to a harness that has no such list of its own: Claude
 // Code checks it itself, a Codex worker asks the owner for each command its sandbox does not
 // cover. A command counts only when it is plain: one program with arguments, none of the shell's
-// own syntax, so that a rule for `bun test *` never lets `bun test x; rm -rf y` through.
+// own syntax, so that a rule for `bun test *` never lets `bun test x; rm -rf y` through. In front
+// of covered commands, preparing the shell needs no rule of its own (`setup`): `source` of a file
+// the agent cannot change, `nvm use`.
+
+import { realpathSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 
 /** The patterns of the `Bash(...)` rules of a `.claude/settings.json` text; none where it does not read. */
 export function bashRules(settingsText: string): string[] {
@@ -47,10 +52,16 @@ function words(text: string): string[] | null {
     } else if (c === ' ' || c === '\t') {
       if (word !== null) out.push(word);
       word = null;
-    } else word = (word ?? '') + c;
+    } else if (c === '~' && word === null && text[i + 1] === '/') word = homedir();
+    else word = (word ?? '') + c;
   }
   if (word !== null) out.push(word);
   return out;
+}
+
+/** `rule` with a leading `~/` of each of its words as the home directory, as the shell reads a command. */
+function atHome(rule: string): string {
+  return rule.replace(/(^|\s)~\//g, `$1${homedir()}/`);
 }
 
 /** Where a command may send its output to: the temporary directories, and no `..` out of them. */
@@ -87,7 +98,8 @@ function parts(script: string): string[] | null {
     } else if (c === ';' || c === '\n' || c === '\r') {
       out.push(cur);
       cur = '';
-    } else if (/[|\\$`(){}!~#*?[\]<]/.test(c)) return null;
+    } else if (c === '~' && /(^|\s)$/.test(cur) && script[i + 1] === '/') cur += c;
+    else if (/[|\\$`(){}!~#*?[\]<]/.test(c)) return null;
     else cur += c;
   }
   out.push(cur);
@@ -158,15 +170,56 @@ export function plainCommand(command: unknown): string | null {
 
 /** Whether `rule` (a `Bash(...)` pattern, `*` for any text, a space before it making the word end there) covers `command`. */
 function covers(rule: string, command: string): boolean {
-  const parts = rule.trim().split('*');
+  const pattern = atHome(rule.trim());
+  const parts = pattern.split('*');
   const star = parts.length > 1;
-  if (!star) return rule.trim() === command;
+  if (!star) return pattern === command;
   const escaped = parts.map((p) => p.replace(/[.+?^${}()|[\]\\]/g, '\\$&'));
   return new RegExp(`^${escaped.join('.*')}$`, 's').test(command);
 }
 
-/** Whether allow rules cover every command of an approval request: only then may it be granted without asking. */
-export function allowed(rules: string[], command: unknown, roots?: readonly string[]): boolean {
+/** Whether `dir` is `root` or lies in it. */
+const inside = (dir: string, root: string) => dir === root.replace(/\/$/, '') || dir.startsWith(root.endsWith('/') ? root : `${root}/`);
+
+/** `path` as the file or directory it really is, symlinks resolved; null where it does not exist. */
+function real(path: string): string | null {
+  try { return realpathSync(path); } catch { return null; }
+}
+
+/**
+ * Whether a plain command only prepares the shell for the commands after it: `source` (or `.`) of
+ * an absolute file outside the places the agent can write (`writable`, the temporary directories),
+ * since what it runs is then what the owner's machine holds, not what the agent wrote,
+ * that exists, or `nvm use` with at most a version and `--silent`/`--lts`. Never with nothing writable named:
+ * then it is unknown where the agent writes.
+ */
+function setup(plain: string, writable: readonly string[]): boolean {
+  const w = plain.split(' ');
+  if ((w[0] === 'source' || w[0] === '.') && w.length === 2) {
+    const file = w[1]!;
+    // a file that is not there yet, or a link to one, the agent could still make
+    const resolved = file.startsWith('/') ? real(file) : null;
+    if (!writable.length || !resolved) return false;
+    const places = [...writable, ...TEMP_ROOTS, tmpdir()].flatMap((p) => [p, real(p) ?? p]);
+    return ![file, resolved].some((f) => places.some((p) => inside(f, p)));
+  }
+  if (w[0] === 'nvm' && w[1] === 'use') {
+    const rest = w.slice(2).filter((a) => a !== '--silent');
+    return rest.length <= 1 && rest.every((a) => /^--lts(?:=[\w-]+)?$/.test(a) || /^[\w.][\w./-]*$/.test(a));
+  }
+  return false;
+}
+
+/**
+ * Whether allow rules cover every command of an approval request: only then may it be granted
+ * without asking. Leading commands that only prepare the shell (`setup`, given the places the agent
+ * can write) need no rule, as long as a covered command follows them.
+ */
+export function allowed(rules: string[], command: unknown, roots?: readonly string[], writable: readonly string[] = []): boolean {
   const all = plainCommands(command, roots);
-  return all !== null && all.every((plain) => rules.some((r) => covers(r, plain)));
+  if (all === null) return false;
+  let first = 0;
+  while (first < all.length && setup(all[first]!, writable)) first++;
+  const rest = all.slice(first);
+  return rest.length > 0 && rest.every((plain) => rules.some((r) => covers(r, plain)));
 }

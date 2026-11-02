@@ -334,6 +334,15 @@ test('a Codex agent is not asked for a command the owner-confirmed allow list co
   expect((await answer({}, 'Edit', { command: "/bin/zsh -lc 'bun run typecheck'" })).allow).toBe(false);
   expect((await answer({ cwd: '/other' }, 'Bash', { command: "/bin/zsh -lc 'bun run typecheck'" })).allow).toBe(false);
   expect(asked).toHaveLength(11);
+  // setting the shell up in front: sourcing a file the agent cannot write, not one in its writable places
+  const home = mkdtempSync(join(homedir(), '.obeya-runtime-test-'));
+  try {
+    writeFileSync(join(home, 'nvm.sh'), '');
+    const nvm = `/bin/zsh -lc 'source ${home}/nvm.sh && nvm use 24 && pnpm -C app install --frozen-lockfile'`;
+    expect(await answer({}, 'Bash', { command: nvm, additionalPermissions: { network: { enabled: true } } })).toEqual({ allow: true });
+    expect((await answer({ dirs: [home] }, 'Bash', { command: nvm })).allow).toBe(false);
+  } finally { rmSync(home, { recursive: true, force: true }); }
+  expect(asked).toHaveLength(12);
   for (const over of [{ untrusted: true }, { claudeHeld: true }]) {
     const held = spec(over);
     wrapped.start(held, '', []);

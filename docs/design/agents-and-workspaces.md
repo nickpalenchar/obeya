@@ -71,8 +71,17 @@ the repository's `.claude/settings.json` allow list covers, as the owner last co
 asked: Claude Code applies that list itself, Obeya applies it to Codex. A command counts when it is
 plain: one or more programs joined by `&&`, `;` or new lines, each covered by a rule, alone or in
 the shell Codex wraps it in; leading `NAME=value` assignments (not `PATH`, `GIT_*` and the like) and
-output redirected to a file under a temporary directory or `2>&1` are looked through. Pipes, `||`,
-substitution, heredocs, other redirection and `..` in a path never ride on a rule. Such a command
+output redirected to a file under a temporary directory or `2>&1` are looked through, and so is
+setting the shell up in front of covered commands without a rule of its own: `source` (or `.`) of
+an existing file, symlinks resolved, outside every place the worker writes (its workspace, the
+demos directory, the temporary directories), and `nvm use` with at most a version, `--lts` and
+`--silent`. A leading `~/` in a command or a rule is the home directory. Pipes, `||`,
+substitution, heredocs, other redirection, other `~` and `..` in a path never ride on a rule. Decided
+2026-11-02 (owner): workers set up Node with `source ~/.nvm/nvm.sh && nvm use 24 && …` before
+nearly every command, and a file the worker cannot change runs what the owner put there, not what
+the agent wrote; such a file that `obeya_run` changed on the owner's question is the one way around
+it. Both: the rules for those who want only their own files, the look-through for everyone else.
+Such a command
 also gets network without a question, whether Codex asks for it with the command or for a host of
 its managed network; Obeya accepts only that one command's access, never one for the session, a
 host for good or an amended rule. A path grant or permissions beyond network are always asked, and

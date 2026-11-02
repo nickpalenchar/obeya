@@ -237,7 +237,7 @@ export function withTrustedAllow(runtime: AgentRuntime, rules: (cwd: string) => 
         ...spec,
         askOwner: (request, signal) => {
           const { command, kind, grantRoot } = request.input;
-          if (request.name === 'Bash' && (kind == null || kind === 'command') && grantRoot == null && networkOnly(request.input) && allowed(rules(spec.cwd), command)) return Promise.resolve({ allow: true });
+          if (request.name === 'Bash' && (kind == null || kind === 'command') && grantRoot == null && networkOnly(request.input) && allowed(rules(spec.cwd), command, undefined, [spec.cwd, ...(spec.dirs ?? [])])) return Promise.resolve({ allow: true });
           return ask(request, signal);
         },
       }, firstMessage, images);

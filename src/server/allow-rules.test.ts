@@ -1,5 +1,8 @@
 import { expect, test } from 'bun:test';
 import { allowed, bashRules, plainCommand, plainCommands } from './allow-rules';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 
 const rules = [
   'bun install',
@@ -50,7 +53,7 @@ test('shell syntax never rides on a rule', () => {
     'bun test "$HOME"',
     'bun test x\nrm -rf y',
     'bun test *.ts',
-    'bun test ~/x',
+    'bun test ~root/x',
     'bun test x & ',
     'mkdir -p /tmp/obeya-x/../../etc/y',
     'node /Users/nick/demos/obeya-../../x/demo.ts',
@@ -112,4 +115,57 @@ test('variables in front of a command and output to a temporary file do not hide
 test('where the temporary directories are can be told', () => {
   expect(allowed(rules, zsh('bun test a > /var/scratch/x.log'), ['/var/scratch/'])).toBe(true);
   expect(allowed(rules, zsh('bun test a > /tmp/x.log'), ['/var/scratch/'])).toBe(false);
+});
+
+test('a rule and a command name the home directory by ~/ or in full alike; a ~ elsewhere is shell syntax', () => {
+  const home = homedir();
+  const nvm = ['source ~/.nvm/nvm.sh', 'pnpm install *'];
+  expect(allowed(nvm, zsh('source ~/.nvm/nvm.sh && pnpm install --frozen-lockfile'))).toBe(true);
+  expect(allowed(nvm, zsh(`source ${home}/.nvm/nvm.sh && pnpm install --frozen-lockfile`))).toBe(true);
+  expect(allowed([`source ${home}/.nvm/nvm.sh`, 'pnpm install *'], zsh('source ~/.nvm/nvm.sh && pnpm install x'))).toBe(true);
+  for (const script of ['bun test ~root/x', 'bun test a~/b', 'bun test ~']) expect([script, allowed(rules, zsh(script))]).toEqual([script, false]);
+  // between quotes the shell keeps ~ as it is
+  expect(plainCommands(zsh('bun test "~/x"'))).toEqual(['bun test ~/x']);
+});
+
+test('sourcing a file the agent cannot change and nvm use need no rule in front of covered commands', () => {
+  const dir = mkdtempSync(join(homedir(), '.obeya-allow-test-'));
+  const temp = mkdtempSync(join(tmpdir(), 'obeya-allow-test-'));
+  try {
+    const workspace = join(dir, 'workspace');
+    const demos = join(dir, 'demos');
+    for (const d of [workspace, demos]) mkdirSync(d);
+    for (const f of [join(dir, 'nvm.sh'), join(dir, 'env.sh'), join(workspace, 'env.sh'), join(demos, 'env.sh'), join(temp, 'env.sh')]) writeFileSync(f, '');
+    const nvm = `~/${basename(dir)}/nvm.sh`;
+    const writable = [workspace, demos];
+    const pnpm = ['pnpm -C * install *', 'pnpm -C * test'];
+    const install = 'pnpm -C papercrane install --frozen-lockfile && pnpm -C extension install --frozen-lockfile';
+    const ok = (script: string) => allowed(pnpm, zsh(script), undefined, writable);
+    expect(ok(`source ${nvm} && nvm use 24 && ${install}`)).toBe(true);
+    expect(ok(`. ${dir}/env.sh && nvm use --silent lts/iron && pnpm -C x test`)).toBe(true);
+    expect(ok('nvm use && pnpm -C x test')).toBe(true);
+    expect(ok('nvm use --lts && pnpm -C x test')).toBe(true);
+    // a file the agent writes (its workspace, the demos, a temporary directory), relative, or through a link into one
+    symlinkSync(join(workspace, 'evil.sh'), join(dir, 'link.sh'));
+    for (const file of [`${workspace}/env.sh`, `${demos}/env.sh`, `${temp}/env.sh`, `${dir}/missing.sh`, 'env.sh', './env.sh', `${dir}/link.sh`, `${workspace}/../env.sh`])
+      expect([file, ok(`source ${file} && pnpm -C x test`)]).toEqual([file, false]);
+    // only in front, only with a covered command after it, nothing but setup
+    for (const script of [
+      `source ${nvm}`,
+      `source ${nvm} && nvm use 24`,
+      `source ${nvm} && rm -rf x`,
+      `pnpm -C x test && source ${nvm} && pnpm -C x test`,
+      `source ${nvm} extra && pnpm -C x test`,
+      'nvm install 24 && pnpm -C x test',
+      'nvm use 24 --delete-prefix && pnpm -C x test',
+      'nvm use 24 20 && pnpm -C x test',
+      'nvm use -s && pnpm -C x test',
+    ]) expect([script, ok(script)]).toEqual([script, false]);
+    // where it is not known what the agent writes, a source rides on no rule
+    expect(allowed(pnpm, zsh(`source ${nvm} && pnpm -C x test`))).toBe(false);
+    expect(allowed(pnpm, zsh('nvm use 24 && pnpm -C x test'))).toBe(true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(temp, { recursive: true, force: true });
+  }
 });
