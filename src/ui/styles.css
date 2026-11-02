@@ -899,6 +899,9 @@ textarea.p-body:focus { border-color: var(--muted); }
    pointer is on the bubble, on a touch screen always; paused, it stands still in pencil grey with Resume */
 .talk .msg:is(.thinking, .paused) .who { display: flex; align-items: center; column-gap: 8px; min-height: 20px; }
 .talk .msg.thinking .who::after { order: 0; margin-left: 0; }
+/* its name and the model of its session stay on one line each, the bubble as wide as they need */
+.talk .msg:is(.thinking, .paused) .who { white-space: nowrap; }
+.talk .msg:is(.thinking, .paused) .who .agent-model { margin-left: 0; overflow-wrap: normal; }
 .turn-pause, .turn-resume { order: 1; margin-left: auto; flex: none; }
 .turn-pause { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 20px; padding: 0;
   border: 1px solid var(--line); border-radius: 3px; background: none; color: var(--muted); opacity: .55; cursor: pointer; transition: opacity .12s; }
