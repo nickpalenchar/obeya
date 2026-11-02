@@ -75,7 +75,7 @@ output redirected to a file under a temporary directory or `2>&1` are looked thr
 setting the shell up in front of covered commands without a rule of its own: `source` (or `.`) of
 an existing file, symlinks resolved, outside every place the worker writes (its workspace, the
 demos directory, the temporary directories), and `nvm use` with at most a version, `--lts` and
-`--silent`. A leading `~/` in a command or a rule is the home directory. Pipes, `||`,
+`--silent`, neither with a variable set in front (`NVM_DIR=…` would choose what it loads). A leading `~/` in a command or a rule is the home directory. Pipes, `||`,
 substitution, heredocs, other redirection, other `~` and `..` in a path never ride on a rule. Decided
 2026-11-02 (owner): workers set up Node with `source ~/.nvm/nvm.sh && nvm use 24 && …` before
 nearly every command, and a file the worker cannot change runs what the owner put there, not what

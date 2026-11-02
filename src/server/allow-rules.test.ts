@@ -160,6 +160,8 @@ test('sourcing a file the agent cannot change and nvm use need no rule in front 
       'nvm use 24 --delete-prefix && pnpm -C x test',
       'nvm use 24 20 && pnpm -C x test',
       'nvm use -s && pnpm -C x test',
+      `NVM_DIR=${workspace} source ${nvm} && pnpm -C x test`,
+      `source ${nvm} && NVM_DIR=${workspace} nvm use 24 && pnpm -C x test`,
     ]) expect([script, ok(script)]).toEqual([script, false]);
     // where it is not known what the agent writes, a source rides on no rule
     expect(allowed(pnpm, zsh(`source ${nvm} && pnpm -C x test`))).toBe(false);

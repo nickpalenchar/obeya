@@ -137,6 +137,11 @@ function withoutRedirects(part: string, roots: readonly string[]): string | null
  * directory. Null for anything else.
  */
 export function plainCommands(command: unknown, roots: readonly string[] = TEMP_ROOTS): string[] | null {
+  return plainParts(command, roots)?.map((p) => p.command) ?? null;
+}
+
+/** `plainCommands`, each with whether variables were set in front of it. */
+function plainParts(command: unknown, roots: readonly string[]): { command: string; set: boolean }[] | null {
   const argv = Array.isArray(command) ? command.map(String) : typeof command === 'string' ? words(command) : null;
   if (!argv?.length) return null;
   let script: string;
@@ -146,18 +151,20 @@ export function plainCommands(command: unknown, roots: readonly string[] = TEMP_
   } else script = Array.isArray(command) ? argv.join(' ') : String(command);
   const split = parts(script);
   if (!split) return null;
-  const commands: string[] = [];
+  const commands: { command: string; set: boolean }[] = [];
   for (const part of split) {
     const bare = withoutRedirects(part, roots);
     const inner = bare === null ? null : words(bare);
     if (!inner?.length) return null;
+    let set = false;
     while (inner.length && /^[A-Za-z_]\w*=/.test(inner[0]!)) {
       if (UNSAFE_VARIABLES.test(inner[0]!.split('=')[0]!)) return null;
       inner.shift();
+      set = true;
     }
     // `..` in a path would take a text pattern out of the directory it names
     if (!inner.length || inner.some((w) => w.split('/').includes('..'))) return null;
-    commands.push(inner.join(' '));
+    commands.push({ command: inner.join(' '), set });
   }
   return commands;
 }
@@ -216,10 +223,11 @@ function setup(plain: string, writable: readonly string[]): boolean {
  * can write) need no rule, as long as a covered command follows them.
  */
 export function allowed(rules: string[], command: unknown, roots?: readonly string[], writable: readonly string[] = []): boolean {
-  const all = plainCommands(command, roots);
+  const all = plainParts(command, roots ?? TEMP_ROOTS);
   if (all === null) return false;
   let first = 0;
-  while (first < all.length && setup(all[first]!, writable)) first++;
+  // a variable set in front of the setup (`NVM_DIR=…`) would let the agent choose what it loads
+  while (first < all.length && !all[first]!.set && setup(all[first]!.command, writable)) first++;
   const rest = all.slice(first);
-  return rest.length > 0 && rest.every((plain) => rules.some((r) => covers(r, plain)));
+  return rest.length > 0 && rest.every((plain) => rules.some((r) => covers(r, plain.command)));
 }
