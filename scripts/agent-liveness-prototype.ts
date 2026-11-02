@@ -1,10 +1,13 @@
 // Experimental POSIX-only liveness supervisor, not used by Obeya.
 // The caller starts this script with a private pipe as fd 3 and keeps its write end open.
-// It passes the command after `--`. On EOF the supervisor kills the child and descendants it
-// observed. Only fd 0/1/2 reach the child: it cannot accidentally keep the liveness pipe alive.
+// It passes the command after `--`. On EOF the supervisor kills the child, its process group and
+// the descendants it observed. Only fd 0/1/2 reach the child: it cannot accidentally keep the
+// liveness pipe alive. With OBEYA_LIVENESS_REPORT_FD set, each identity it observes, the child's
+// first and before any agent code runs, goes to the caller there as a JSON line, so the caller can
+// clean up when this supervisor dies (`agent-liveness-owner.ts`).
 // This is a sampling experiment, not containment or a production crash-recovery mechanism.
 import { spawn } from 'node:child_process';
-import { createReadStream } from 'node:fs';
+import { createReadStream, writeSync } from 'node:fs';
 import { AgentProcesses } from '../src/server/agent-processes';
 import { createGeneration, processIdentity, type ProcessIdentity } from './agent-registry-prototype';
 
@@ -27,8 +30,10 @@ if (registryRoot) {
     console.error(`registry-generation:${registry.id}`);
   } catch (error) { console.error('registry startup:', error); process.exit(1); }
 }
+const reportFd = process.env.OBEYA_LIVENESS_REPORT_FD ? Number(process.env.OBEYA_LIVENESS_REPORT_FD) : undefined;
 const env = { ...process.env };
 delete env.OBEYA_PROTO_REGISTRY;
+delete env.OBEYA_LIVENESS_REPORT_FD;
 // The shell cannot execute agent code until the supervisor releases fd 3. If the supervisor dies
 // first, EOF makes the shell exit; closing the descriptor before exec keeps it out of the agent.
 const child = spawn('/bin/sh', ['-c', 'IFS= read -r gate <&3 || exit 125; exec 3<&-; exec "$@"', 'obeya-gate', ...argv], {
@@ -39,10 +44,18 @@ let finished = false;
 let failed = false;
 let timer: ReturnType<typeof setInterval> | undefined;
 const recorded = new Map<string, ProcessIdentity>();
+const reported = new Set<string>();
 
 function snapshot() {
   tracker?.track();
-  if (!registry || !tracker) return;
+  if (!tracker) return;
+  if (reportFd !== undefined) for (const observed of tracker.observed()) {
+    const key = `${observed.pid}:${observed.born}`;
+    if (reported.has(key)) continue;
+    writeSync(reportFd, `${JSON.stringify(observed)}\n`);
+    reported.add(key);
+  }
+  if (!registry) return;
   let changed = false;
   for (const observed of tracker.observed()) {
     const current = processIdentity(observed.pid);
@@ -60,7 +73,14 @@ function cleanup() {
   if (timer) clearInterval(timer);
   try { snapshot(); } catch (e) { failed = true; console.error('liveness snapshot:', e); }
   try { tracker?.kill(); } catch (e) { failed = true; console.error('liveness cleanup:', e); }
-  // Signal the actual child handle, not a numeric group whose leader may already have exited.
+  // The child leads its own group: a same-group process it started before the first snapshot is
+  // reached only this way. Signalled once, here. While the leader or another member lives, the
+  // number cannot have been given to another process; once the group has emptied, it can, and this
+  // signal can reach a reused number, as every numeric signal can.
+  if (child.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ESRCH') { failed = true; console.error('agent group kill:', e); }
+  }
+  // Signal the actual child handle too, should the group signal have been refused.
   if (child.exitCode === null && child.signalCode === null) {
     try { child.kill('SIGKILL'); } catch (e) { failed = true; console.error('agent kill:', e); }
   }
@@ -75,7 +95,9 @@ child.on('exit', () => { cleanup(); pipe.destroy(); });
 child.on('close', (code) => {
   cleanup(); pipe.destroy();
   try { registry?.close(); } catch (e) { failed = true; console.error('registry close:', e); }
-  process.exitCode = failed ? 1 : code ?? 1;
+  // Exit explicitly: on Linux a pending read of the liveness pipe keeps the process alive until the
+  // caller closes it, which is not the caller's job once the agent has ended.
+  process.exit(failed ? 1 : code ?? 1);
 });
 try {
   if (!tracker) throw new Error('Cannot establish agent process ownership');
