@@ -51,7 +51,7 @@ function resources(dir: string) {
   cpSync(join(ROOT, 'LICENSE'), join(dir, 'LICENSE'));
   // the settings skill reads the reference up the tree, as in the checkout
   cpSync(join(ROOT, 'docs', 'settings.md'), join(dir, 'docs', 'settings.md'));
-  for (const script of ['plugin/skills/demo/lib/recipe.ts', 'plugin/skills/settings/lib/check.ts'])
+  for (const script of ['plugin/skills/demo/lib/recipe.ts', 'plugin/skills/settings/lib/check.ts', 'plugin/skills/settings/lib/allow-list.ts'])
     run([process.execPath, 'build', script, '--target', 'bun', '--outfile', join(dir, script)]);
   // A compiled binary's embedded modules cannot be imported by a separate process. Bundle the
   // liveness supervisor and its dependencies into a real resource executable by Obeya's Bun.

@@ -88,8 +88,9 @@ host for good or an amended rule. A path grant or permissions beyond network are
 so is network for a command the list does not cover. Decided 2026-11-02, the same as `obeya_run`
 gives a covered command: an owner who listed `pnpm install` meant it to install, and the question
 said no more than the rule did; rejected: asking for every network grant, as before. The same list also gives `.codex/rules/obeya.rules` for
-Codex's own rule engine (`scripts/codex-rules.ts`), for the rules that are literal word prefixes,
-loaded once the owner trusts the repository's `.codex/`.
+Codex's own rule engine (`scripts/codex-rules.ts` here, the settings skill in other repositories,
+see Writing the settings), for the rules that are literal word prefixes, loaded once the owner
+trusts the repository's `.codex/`.
 
 What the sandbox keeps from a Codex worker (network, a browser, a local server, git writes in its
 worktree, whose `.git` lies in the main repository, the demos) goes through two tools Obeya runs

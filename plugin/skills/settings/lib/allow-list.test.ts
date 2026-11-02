@@ -1,0 +1,56 @@
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { gitRepo } from '../../../../src/server/testing';
+
+let dir: string;
+let n = 0;
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'obeya-allow-list-'));
+});
+afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+const SCRIPT = join(import.meta.dir, 'allow-list.ts');
+
+/** Runs the script in a repository with these files, as a worker runs it. */
+function run(files: Record<string, string>, ...args: string[]): { code: number; out: string; repo: string } {
+  const repo = gitRepo(join(dir, `shop${n++}`), { 'README.md': 'Shop\n', ...files });
+  const r = Bun.spawnSync([process.execPath, SCRIPT, ...args], { cwd: repo });
+  return { code: r.exitCode, out: r.stdout.toString(), repo };
+}
+
+const allow = (...rules: string[]) => ({ '.claude/settings.json': JSON.stringify({ permissions: { allow: rules } }) });
+
+describe('allow-list.ts', () => {
+  test('says which commands the list covers, and fails while one is not', () => {
+    const { code, out } = run(allow('Bash(bun install)', 'Bash(bun test *)', 'Read(*)'), 'bun install', 'bun test src/a.test.ts', 'bun run lint');
+    expect(out).toContain('2 Bash rules in .claude/settings.json:');
+    expect(out).toContain('  covered      bun test src/a.test.ts');
+    expect(out).toContain('  NOT covered  bun run lint');
+    expect(code).toBe(1);
+    expect(run(allow('Bash(bun run lint)'), 'bun run lint').code).toBe(0);
+  });
+
+  test('marks the rules that let through more than a command', () => {
+    const { out } = run({ '.claude/settings.json': JSON.stringify({ permissions: { allow: ['Bash', 'Bash(npm *)', 'Bash(*)', 'Bash(npm run build)'] } }) });
+    expect(out).toContain('"Bash" alone: every shell command runs without asking');
+    expect(out).toContain('Bash(npm *)   <- broad: lets through anything npm runs');
+    expect(out).toContain('Bash(*)   <- broad: lets through any program at all');
+    expect(out).toMatch(/Bash\(npm run build\)\n/);
+  });
+
+  test('without the file, nothing runs unasked; a file that does not read fails', () => {
+    expect(run({}, 'make').out).toContain('No .claude/settings.json yet');
+    expect(run({ '.claude/settings.json': '{ nope' }).code).toBe(1);
+  });
+
+  test('--codex writes the rules for Codex from the same list', () => {
+    const { repo, out } = run(allow('Bash(bun test *)', 'Bash(mkdir -p /tmp/shop-*)'), '--codex');
+    const file = join(repo, '.codex', 'rules', 'obeya.rules');
+    expect(existsSync(file)).toBe(true);
+    expect(readFileSync(file, 'utf8')).toContain('prefix_rule(pattern=["bun","test"], decision="allow")');
+    expect(readFileSync(file, 'utf8')).toContain('#   Bash(mkdir -p /tmp/shop-*)');
+    expect(out).toContain('wrote .codex/rules/obeya.rules (1 rule with a * inside a word');
+  });
+});

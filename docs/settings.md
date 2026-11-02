@@ -11,7 +11,11 @@ The quickest way to get them: in "Konfiguration", a repository without settings 
 „Von einem Agenten ausfüllen lassen“ ("Have an agent fill them in"). It puts a card on the
 repository's canvas whose worker writes them with the `obeya:settings` skill: it reads the
 repository, starts the app, records a demo with it to prove the recipe, and asks you what it
-cannot find out (a login, test data). This page is the reference for what it writes, and for
+cannot find out (a login, test data). It also drafts the allow list of commands agents run there
+without asking (the `Bash` rules of `.claude/settings.json`, which Obeya applies to its Codex
+workers too), from the repository's scripts and documented commands, adding to a list already
+there; with Codex signed in on the machine as well, it asks you which agents to set it up for. You
+review it and trust it under Commands you trust. This page is the reference for what it writes, and for
 writing or changing them yourself.
 
 ## A complete example

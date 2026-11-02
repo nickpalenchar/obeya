@@ -20,6 +20,36 @@ export function bashRules(settingsText: string): string[] {
   }
 }
 
+/** The rule's words as a Codex prefix, or null where a `*` stands for part of a word. */
+export function prefixOf(rule: string): string[] | null {
+  const words = rule.trim().split(/\s+/);
+  if (words.at(-1) === '*') words.pop();
+  return words.length && !words.some((w) => w.includes('*')) ? words : null;
+}
+
+/**
+ * The Codex rules file (`.codex/rules/*.rules`) for the allow list of a `.claude/settings.json`
+ * text, and the rules that have no form there: a Codex rule is a literal word prefix. `by` names
+ * how the file is made again, for its header.
+ */
+export function codexRules(settingsText: string, by: string): { file: string; skipped: string[] } {
+  const lines: string[] = [];
+  const skipped: string[] = [];
+  for (const rule of bashRules(settingsText)) {
+    const prefix = prefixOf(rule);
+    if (prefix) lines.push(`prefix_rule(pattern=${JSON.stringify(prefix)}, decision="allow")`);
+    else skipped.push(rule);
+  }
+  const header = [
+    `# Generated from .claude/settings.json by ${by}; edit that file, not this one.`,
+    '# A Codex rule is a word prefix: a Claude rule without a `*` (an exact command) allows arguments after it here.',
+    '# Rules whose `*` stands inside a word have no form here; Obeya applies them itself to its Codex workers:',
+    ...skipped.map((r) => `#   Bash(${r})`),
+    '',
+  ];
+  return { file: [...header, ...lines, ''].join('\n'), skipped };
+}
+
 /** The words of `text` as a POSIX shell reads them between plain single and double quotes; null for any other shell syntax. */
 function words(text: string): string[] | null {
   const out: string[] = [];

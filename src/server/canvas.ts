@@ -35,6 +35,7 @@ import { ProjectAgents } from './project-agents';
 import { ghHosts, onGitHub, outsidePlanDir, readPlanDocs, watchPlanDocs } from './repo';
 import { boundsOf, GAP, type Place, planDirNoteBox, unionBounds } from '../core/layout';
 import { type AgentRuntime, idleRuntime, withAgentSetting, withCodexTrust, withLimitWait, withRepoTrust, withTrustedAllow } from './runtime';
+import { codexConnected } from './codex-runtime';
 import { bashRules } from './allow-rules';
 import { type TagCard, tagCards } from './tag-proposal';
 import { commandsOf, heldGroups, withoutHeld } from './trust';
@@ -766,6 +767,7 @@ export class CanvasRuntime {
       adapter,
       machineSettings: this.settingsOf(rc),
       allowRules: this.allowRules,
+      harnesses: () => ['Claude Code', ...(codexConnected() ? ['Codex'] : [])],
       shares: () => !!repo.ref.share,
       repo: ref.id,
       otherBoards: () => (deps.canvases?.() ?? []).filter((c) => c !== this).map((c) => c.board),

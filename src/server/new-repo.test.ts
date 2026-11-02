@@ -120,6 +120,7 @@ describe('building an idea in a new repository', () => {
     expect(brief).toContain('This repository is new');
     expect(brief).toContain('obeya:settings');
     expect(brief).toContain('CLAUDE.md');
+    expect(brief).toContain('The agent harnesses that can work on this machine, for the allow list the skill `obeya:settings` drafts: Claude Code');
   });
 
   test('„Rückgängig“ in the undo window leaves everything as it was', async () => {

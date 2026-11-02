@@ -24,6 +24,17 @@ describe('workers', () => {
     expect(runtime.last.inbox[0]).toContain('This card follows up on the card “Zählerstände exportieren”. Its worker handed it over with this summary:\n\nCSV-Export gebaut; Excel fehlt noch.');
   });
 
+  test('the setup card names the agent harnesses that can work on this machine, for the allow list it drafts; other cards do not', async () => {
+    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, harnesses: () => ['Claude Code', 'Codex'] }));
+    const setup = board.setupCard(board.home, 'shop');
+    await workers.start(setup.id);
+    expect(runtime.last.inbox[0]).toContain('allow list');
+    expect(runtime.last.inbox[0]).toContain('The agent harnesses that can work on this machine, for the allow list the skill `obeya:settings` drafts: Claude Code, Codex.');
+    await workers.stop(setup.id);
+    await workers.start(manual().id);
+    expect(runtime.last.inbox[0]).not.toContain('agent harnesses');
+  });
+
   test('with an English interface and a German conversation, the worker writes the owner in German until their words say otherwise, commits in English, and the log says what happens in English', async () => {
     setLanguage('en');
     setConversation('de');

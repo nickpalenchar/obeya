@@ -112,6 +112,8 @@ export interface WorkerOptions {
   demoLanguage?: () => Language;
   /** The `Bash` rules of the allow list the owner confirmed for the repository `cwd` lies in: what a Codex worker's `obeya_run` runs without asking. None when left out. */
   allowRules?: (cwd: string) => string[];
+  /** The agent harnesses that can work on this machine (Claude Code; Codex where it is signed in), for the allow list a setup card drafts; Claude Code alone when left out. */
+  harnesses?: () => string[];
   /** The directory demos go into on this machine (the demo settings'); `~/demos` when left out. */
   demoDirectory?: () => string;
   /** A card's work ended (landed, closed without a change, a prototype discarded or built): its runs can be read now. */
@@ -4894,10 +4896,15 @@ ${idea.idea.brief}` : '',
     );
     if (this.o.adapter.setup) parts.push(`First run \`${this.o.adapter.setup}\` in the clone.`);
     const made = this.o.board.row(card.id).new_repo;
-    if (made && (JSON.parse(made) as StoredNewRepo).made)
+    const isNew = !!made && !!(JSON.parse(made) as StoredNewRepo).made;
+    if (isNew)
       parts.push(
         `This repository is new: Obeya created it for this card with a first commit of what its folder held (a default .gitignore, else nothing). It is local only, with no remote. Besides the task, set it up as part of your work: a CLAUDE.md with what the task says about how to work in this repository, and its Obeya settings (\`.obeya/settings.json\`) with the skill \`obeya:settings\`, as the card “${this.o.board.t.adapterSetup.title(basename(this.o.repoPath ?? ''))}” would.`,
       );
+    if (isNew || this.o.board.isSetupCard(card)) {
+      const harnesses = this.o.harnesses?.() ?? ['Claude Code'];
+      parts.push(`The agent harnesses that can work on this machine, for the allow list the skill \`obeya:settings\` drafts: ${harnesses.join(', ')}.`);
+    }
     const { run, stop } = this.o.adapter.app ?? {};
     const parking = stop ? ' While the card waits for the owner, Obeya stops the app in your workspace; your next message then says so.' : '';
     const far = hostName(this.o.board.row(card.id).workspace) ? " (this workspace is on another machine: Obeya forwards that address's port, and only that one, to the owner's)" : '';
