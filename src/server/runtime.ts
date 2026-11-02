@@ -108,6 +108,12 @@ export interface AgentSpec {
    */
   untrusted?: boolean;
   /**
+   * The repository's own Claude Code settings in `cwd` wait for the owner to confirm them, for a
+   * Codex session (`withRepoTrust`), which reads none of them anyway: it just takes no command from
+   * their allow list without asking (`withTrustedAllow`).
+   */
+  claudeHeld?: boolean;
+  /**
    * The repository's own Codex configuration in `cwd` (its `.codex/`) is to the byte what the owner
    * trusted (`withCodexTrust`): a Codex session loads it. Without, it loads none of the repository's.
    */
@@ -216,14 +222,14 @@ export function withAgentSetting(
  * A runtime whose Codex agents do not ask the owner for a command that a rule of the repository's
  * allow list covers (`allow-rules.ts`): Claude Code applies that list itself, Codex has none of
  * its own that Obeya sets. `rules` are those the owner confirmed for the agent's `cwd`; none while
- * the repository's configuration is held (`untrusted`). A request for more than the command (a
+ * the repository's configuration is held (`claudeHeld`) or not read at all (`untrusted`). A request for more than the command (a
  * network or path grant) is always asked.
  */
 export function withTrustedAllow(runtime: AgentRuntime, rules: (cwd: string) => string[]): AgentRuntime {
   return {
     start(spec, firstMessage, images) {
       const ask = spec.askOwner;
-      if (!ask || spec.untrusted || spec.setting?.harness !== 'codex') return runtime.start(spec, firstMessage, images);
+      if (!ask || spec.untrusted || spec.claudeHeld || spec.setting?.harness !== 'codex') return runtime.start(spec, firstMessage, images);
       return runtime.start({
         ...spec,
         askOwner: (request, signal) => {
@@ -275,6 +281,8 @@ export function claudeExecutable(env: Record<string, string | undefined> = proce
  * the owner's confirmation (`untrusted`, by the agent's `cwd`) without them: their hooks, MCP
  * servers and helpers would run outside the permission checks. Claude Code then reads none of the
  * repository's files, its CLAUDE.md neither, so the agent gets that in its instructions instead.
+ * A Codex agent reads none of them anyway (nor CLAUDE.md), so it starts as it would, only marked
+ * (`claudeHeld`): `untrusted` stays for the sessions that must not run on Codex (a review card's).
  * Where finding that out takes git, the agent starts once git has answered (`startingLater`): the
  * server does not wait for it.
  */
@@ -285,6 +293,7 @@ export function withRepoTrust(runtime: AgentRuntime, untrusted: (cwd: string) =>
       if (spec.untrusted) return runtime.start(spec, firstMessage, images);
       const start = (held: boolean) => {
         if (!held) return runtime.start(spec, firstMessage, images);
+        if (spec.setting?.harness === 'codex') return runtime.start({ ...spec, claudeHeld: true }, firstMessage, images);
         const file = join(spec.cwd, 'CLAUDE.md');
         const notes = !remote(spec.cwd) && existsSync(file) ? readFileSync(file, 'utf8').trim() : '';
         const system = notes ? `${spec.system}\n\nThe repository's CLAUDE.md:\n\n${notes}` : spec.system;

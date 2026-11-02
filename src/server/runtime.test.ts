@@ -282,6 +282,22 @@ test("an agent whose repository's trust takes git to tell starts once it is told
   expect(fake.sessions).toHaveLength(1);
 });
 
+test("a Codex agent in a repository whose Claude Code configuration is held starts as it would, only marked: not as one that must not run on Codex", () => {
+  const fake = new FakeRuntime();
+  const runtime = withRepoTrust(fake, () => true);
+  const spec = { cwd: '/nowhere', system: 'Work.', tools: [], onEvent: () => {} };
+  runtime.start({ ...spec, setting: { model: 'opus', effort: 'high', harness: 'codex' } }, 'Start.');
+  expect(fake.last.spec).toMatchObject({ claudeHeld: true, system: 'Work.' });
+  expect(fake.last.spec.untrusted).toBeUndefined();
+  runtime.start(spec, 'Start.');
+  expect(fake.last.spec.untrusted).toBe(true);
+  expect(fake.last.spec.claudeHeld).toBeUndefined();
+  // a review card's comes untrusted already, and stays so
+  runtime.start({ ...spec, untrusted: true, setting: { model: 'opus', effort: 'high', harness: 'codex' } }, 'Start.');
+  expect(fake.last.spec).toMatchObject({ untrusted: true });
+  expect(fake.last.spec.claudeHeld).toBeUndefined();
+});
+
 test('a Codex agent is not asked for a command the owner-confirmed allow list covers, and only for that', async () => {
   const seen: { spec: Parameters<FakeRuntime['start']>[0] }[] = [];
   const base = { start: (spec: Parameters<FakeRuntime['start']>[0]) => { seen.push({ spec }); return undefined as never; } };
@@ -303,9 +319,11 @@ test('a Codex agent is not asked for a command the owner-confirmed allow list co
   expect((await answer({}, 'Edit', { command: "/bin/zsh -lc 'bun run typecheck'" })).allow).toBe(false);
   expect((await answer({ cwd: '/other' }, 'Bash', { command: "/bin/zsh -lc 'bun run typecheck'" })).allow).toBe(false);
   expect(asked).toHaveLength(5);
-  const held = spec({ untrusted: true });
-  wrapped.start(held, '', []);
-  expect(seen.at(-1)!.spec).toBe(held);
+  for (const over of [{ untrusted: true }, { claudeHeld: true }]) {
+    const held = spec(over);
+    wrapped.start(held, '', []);
+    expect(seen.at(-1)!.spec).toBe(held);
+  }
   const claude = spec({ setting: { harness: 'claude' } });
   wrapped.start(claude, '', []);
   expect(seen.at(-1)!.spec).toBe(claude);

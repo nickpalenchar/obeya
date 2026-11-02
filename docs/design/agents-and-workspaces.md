@@ -50,6 +50,12 @@ Decided 2026-11-02: stricter than for Claude, whose workspace changes count whil
 are trusted, since Codex's configuration runs outside the sandbox Obeya relies on; rejected:
 refusing any `.codex/` (it stopped Codex workers in every repository with one, Obeya's own
 included). The user's global Codex configuration is trusted.
+A repository's Claude Code configuration (`.claude/`, `.mcp.json`) waiting for the owner's trust
+does not stop a Codex worker, which reads none of it: the worker starts as it would, only without
+the allow-list shortcut below (no command runs unasked on that list until the owner has trusted the
+configuration). Decided 2026-11-02; rejected: refusing it, as before, which stopped Codex workers in
+every repository with a change to `.claude/` not trusted yet, for no protection. A review card, whose
+workspace holds a stranger's code, stays refused for Codex.
 Other roles, setup and the usage meter remain Claude-based; Codex transcript-based work retrospectives
 are not available. An unsupported capability fails visibly, never by substituting Claude.
 

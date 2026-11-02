@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { boundsOf, CARD_SIZE } from '../core/layout';
-import type { CardAction, RepoConfig, RepoSettings } from '../core/types';
+import { AGENT_DEFAULTS, type CardAction, type RepoConfig, type RepoSettings } from '../core/types';
 import type { BadRequest } from './board';
 import { Canvases, CanvasRuntime, startCanvases } from './canvas';
 import { Store } from './db';
@@ -719,6 +719,26 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
     // its agent starts once git has read the default branch, which moved
     await until(() => runtime.sessions.length > started);
     expect(runtime.last.spec.untrusted).toBe(true);
+  });
+
+  test("a held Claude Code configuration does not stop a Codex worker, which reads none of it: it starts marked, not as one that must not run on Codex", async () => {
+    fresh();
+    const shop = gitRepo(join(dir, 'shop'), {
+      'README.md': 'Shop\n',
+      'CLAUDE.md': 'Run the tests with bun test.\n',
+      '.claude/settings.json': JSON.stringify({ permissions: { allow: ['Bash(bun test)'] }, hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'touch ran' }] }] } }),
+    });
+    const store = new Store(':memory:');
+    const workers = new FakeRuntime();
+    canvas.shutdown();
+    canvas = new CanvasRuntime({ repos: [{ path: shop }] }, { store, home: dir, runtime, workerRuntime: workers, forge: noForge, agents: (role) => ({ ...AGENT_DEFAULTS[role], ...(role === 'worker' ? { harness: 'codex' as const } : {}) }) });
+    const card = canvas.board.create({ title: 'Karte', x: 0, y: 0 });
+    await canvas.repos[0]!.workers.start(card.id);
+    await until(() => workers.sessions.length > 0);
+    const spec = workers.last.spec;
+    expect(spec).toMatchObject({ claudeHeld: true, setting: { harness: 'codex' } });
+    expect(spec.untrusted).toBeUndefined();
+    expect(spec.system).not.toContain("The repository's CLAUDE.md:");
   });
 
   test("a repository's agents go by its own Claude Code configuration, not by the home repository's whose workspaces hold its own", async () => {
