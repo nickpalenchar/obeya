@@ -92,7 +92,7 @@ Agents ask the owner before each shell command no rule allows. The repository's 
 `Bash` rules under `permissions.allow` in `.claude/settings.json`, lets the everyday ones run
 without a question: Claude Code applies it itself, and Obeya applies the same list to its Codex
 workers (network included for a covered command). The owner reviews it and trusts it in
-"Konfiguration" before any of it counts.
+the configuration before any of it counts.
 
 Gather the commands an agent working here runs: the `setup` and `checks` you wrote, the steps of
 `app.run` and of stopping the app, the scripts (`package.json`, `Makefile`, `justfile`, `bin/`,
@@ -139,4 +139,4 @@ wrote it), nothing else. In the summary say what the settings set and why where 
 call (the checks you left out, clones or worktrees), what the owner answered, and
 that they count once they are on the default branch (at once; where they move the workers between
 clones and worktrees, Obeya restarts the repository's agents by itself), and that the allow
-list counts once they trusted it in "Konfiguration".
+list counts once they trusted it in the configuration.
