@@ -213,7 +213,8 @@ A foreground Bash command that sleeps longer than 30 seconds (`sleep N`, an unbo
 judged from the command line) is refused with that reason. `timeout N` (or `gtimeout`) bounds the
 command it starts wherever it stands in the line. Heredoc text counts only when a shell runs it
 (`bash <<EOF`, `ssh host <<EOF`). The refusal names two bounded waits that pass, one without
-`timeout`, which macOS lacks.
+`timeout`, which macOS lacks. The refusal is Claude's only: a note sent to a Codex worker reaches it
+while a foreground command is still running, so Codex has no such guard (see Native Codex workers).
 
 ### Refused and confirmed tool calls
 

@@ -44,8 +44,12 @@ Harden the local Codex worker preview and complete its remaining acceptance and 
   harness and model of the session at work; see `docs/design/conversation-on-the-card.md`.
 - [ ] **W8:** Codex configuration trust. Explicit repository Codex configuration trust and configuration-change checks; until then,
   project `.codex` is rejected and the user's global Codex configuration is trusted.
-- [ ] **W9:** Foreground-wait guard. Decide whether native Codex pre-command hooks can provide the foreground-wait guard, rather
-  than pretending Claude's hooks apply. Context updates currently use native completion/steering.
+- [x] **W9:** Foreground-wait guard. Decided (2026-11-02): no guard for Codex. Native `PreToolUse` hooks exist
+  (Claude-shaped input and `permissionDecision: deny`) and work, but only once trusted in the user's
+  own `config.toml`; session-level hooks stay untrusted and never run. And none is needed: steering
+  lands during a running foreground command, which then continues as a background terminal. Now in
+  `docs/design/agents-and-workspaces.md` (Native Codex workers). Still open, and W8's: if Obeya ever
+  manages Codex hooks, that is a write into the user's configuration.
 - [ ] **W10:** Transcripts and retrospectives. Portable transcripts and work retrospectives, or continue showing them as unavailable.
 - [ ] **W11:** Feature parity. SSH, non-Git folder undo, contributor reviews and record/replay, each with its own parity tests
   before removing the current refusal. User/repository skill discovery is separate from bundled

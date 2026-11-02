@@ -52,8 +52,15 @@ path never ride on a rule, and a request for a network or path grant is always a
 also gives `.codex/rules/obeya.rules` for Codex's own rule engine (`scripts/codex-rules.ts`), for
 the rules that are literal word prefixes, in a project the owner trusts in Codex.
 Obeya's tools and their card scope are shared. Bundled skills are supplied as readable skill files, not Claude plugins.
-Context changes reach Codex in Obeya tool results or by steering after native command/file-change
-completion; there is no equivalent of Claude's pre-command foreground-wait hook. Background
+Context changes reach Codex in Obeya tool results or by steering; a Codex worker has no
+foreground-wait guard, because it needs none. Steering reaches Codex while a foreground command is
+still running (checked with a 120 s `sleep` and a note sent after 15 s: the agent answered four
+seconds later, and the command carried on as a background terminal Obeya tracks like any other),
+so a long foreground wait never keeps an owner's note from the agent, which is all Claude's guard
+protects. A native pre-command hook would not be a substitute: Codex runs a hook only once its
+hash is trusted in the user's own `config.toml` (`hooks.state`); a hook passed per session
+(`-c`, `thread/start` config) stays untrusted and never runs, and Obeya does not write the user's
+Codex configuration. Background
 terminals keep the worker active. Each completed background task wakes result inspection even
 while another terminal keeps serving the app; unchanged status polls do not extend the worker's
 background timeout. Closing a session cleans its terminals before the server exits. Since native
