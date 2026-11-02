@@ -72,8 +72,13 @@ asked: Claude Code applies that list itself, Obeya applies it to Codex. A comman
 plain: one or more programs joined by `&&`, `;` or new lines, each covered by a rule, alone or in
 the shell Codex wraps it in; leading `NAME=value` assignments (not `PATH`, `GIT_*` and the like) and
 output redirected to a file under a temporary directory or `2>&1` are looked through. Pipes, `||`,
-substitution, heredocs, other redirection and `..` in a path never ride on a rule, and a request for
-a network or path grant is always asked. The same list also gives `.codex/rules/obeya.rules` for
+substitution, heredocs, other redirection and `..` in a path never ride on a rule. Such a command
+also gets network without a question, whether Codex asks for it with the command or for a host of
+its managed network; Obeya accepts only that one command's access, never one for the session, a
+host for good or an amended rule. A path grant or permissions beyond network are always asked, and
+so is network for a command the list does not cover. Decided 2026-11-02, the same as `obeya_run`
+gives a covered command: an owner who listed `pnpm install` meant it to install, and the question
+said no more than the rule did; rejected: asking for every network grant, as before. The same list also gives `.codex/rules/obeya.rules` for
 Codex's own rule engine (`scripts/codex-rules.ts`), for the rules that are literal word prefixes,
 loaded once the owner trusts the repository's `.codex/`.
 

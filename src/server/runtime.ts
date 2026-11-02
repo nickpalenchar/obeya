@@ -224,8 +224,9 @@ export function withAgentSetting(
  * A runtime whose Codex agents do not ask the owner for a command that a rule of the repository's
  * allow list covers (`allow-rules.ts`): Claude Code applies that list itself, Codex has none of
  * its own that Obeya sets. `rules` are those the owner confirmed for the agent's `cwd`; none while
- * the repository's configuration is held (`claudeHeld`) or not read at all (`untrusted`). A request for more than the command (a
- * network or path grant) is always asked.
+ * the repository's configuration is held (`claudeHeld`) or not read at all (`untrusted`). Such a
+ * command may also have network (`networkOnly`), as `obeya_run` gives it; a request for anything
+ * beyond that (a path grant, other permissions) is always asked.
  */
 export function withTrustedAllow(runtime: AgentRuntime, rules: (cwd: string) => string[]): AgentRuntime {
   return {
@@ -235,13 +236,30 @@ export function withTrustedAllow(runtime: AgentRuntime, rules: (cwd: string) => 
       return runtime.start({
         ...spec,
         askOwner: (request, signal) => {
-          const { command, additionalPermissions, networkApprovalContext, grantRoot } = request.input;
-          if (request.name === 'Bash' && !additionalPermissions && !networkApprovalContext && grantRoot == null && allowed(rules(spec.cwd), command)) return Promise.resolve({ allow: true });
+          const { command, kind, grantRoot } = request.input;
+          if (request.name === 'Bash' && (kind == null || kind === 'command') && grantRoot == null && networkOnly(request.input) && allowed(rules(spec.cwd), command)) return Promise.resolve({ allow: true });
           return ask(request, signal);
         },
       }, firstMessage, images);
     },
   };
+}
+
+/**
+ * Whether a Codex approval asks for no more than its command and, at most, network for it: no
+ * additional permissions but network (`{ network: { enabled: true } }`), or a host of Codex's
+ * managed network (`networkApprovalContext`). A path grant or anything else rides on no rule.
+ */
+export function networkOnly(input: Record<string, unknown>): boolean {
+  const extra = input.additionalPermissions;
+  if (extra != null) {
+    if (typeof extra !== 'object' || Array.isArray(extra)) return false;
+    const { network, ...rest } = extra as Record<string, unknown>;
+    if (Object.values(rest).some((v) => v != null)) return false;
+    if (network != null && network !== true && !(typeof network === 'object' && Object.keys(network).length === 1 && (network as Record<string, unknown>).enabled === true)) return false;
+  }
+  const context = input.networkApprovalContext;
+  return context == null || (typeof context === 'object' && typeof (context as Record<string, unknown>).host === 'string');
 }
 
 /**
