@@ -46,10 +46,10 @@ describe('allow-list.ts', () => {
   });
 
   test('--codex writes the rules for Codex from the same list', () => {
-    const { repo, out } = run(allow('Bash(bun test *)', 'Bash(mkdir -p /tmp/shop-*)'), '--codex');
+    const { repo, out } = run(allow('Bash(bun test *)', 'Bash(bun test)', 'Bash(mkdir -p /tmp/shop-*)'), '--codex');
     const file = join(repo, '.codex', 'rules', 'obeya.rules');
     expect(existsSync(file)).toBe(true);
-    expect(readFileSync(file, 'utf8')).toContain('prefix_rule(pattern=["bun","test"], decision="allow")');
+    expect(readFileSync(file, 'utf8').split('prefix_rule(pattern=["bun","test"], decision="allow")')).toHaveLength(2);
     expect(readFileSync(file, 'utf8')).toContain('#   Bash(mkdir -p /tmp/shop-*)');
     expect(out).toContain('wrote .codex/rules/obeya.rules (1 rule with a * inside a word');
   });

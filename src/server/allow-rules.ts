@@ -37,7 +37,9 @@ export function codexRules(settingsText: string, by: string): { file: string; sk
   const skipped: string[] = [];
   for (const rule of bashRules(settingsText)) {
     const prefix = prefixOf(rule);
-    if (prefix) lines.push(`prefix_rule(pattern=${JSON.stringify(prefix)}, decision="allow")`);
+    const line = prefix && `prefix_rule(pattern=${JSON.stringify(prefix)}, decision="allow")`;
+    // `bun test` and `bun test *` are one prefix
+    if (line) lines.includes(line) || lines.push(line);
     else skipped.push(rule);
   }
   const header = [
