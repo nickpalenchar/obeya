@@ -4903,7 +4903,9 @@ ${idea.idea.brief}` : '',
       );
     if (isNew || this.o.board.isSetupCard(card)) {
       const harnesses = this.o.harnesses?.() ?? ['Claude Code'];
-      parts.push(`The agent harnesses that can work on this machine, for the allow list the skill \`obeya:settings\` drafts: ${harnesses.join(', ')}.`);
+      parts.push(
+        `The agent harnesses that can work on this machine, for the allow list the skill \`obeya:settings\` drafts: ${harnesses.join(', ')}.${harnesses.length > 1 ? ' Ask the owner which of them to set it up for, with each one as an option, in the question the skill has you ask.' : ''}`,
+      );
     }
     const { run, stop } = this.o.adapter.app ?? {};
     const parking = stop ? ' While the card waits for the owner, Obeya stops the app in your workspace; your next message then says so.' : '';

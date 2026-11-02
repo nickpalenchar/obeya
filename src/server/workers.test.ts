@@ -29,7 +29,7 @@ describe('workers', () => {
     const setup = board.setupCard(board.home, 'shop');
     await workers.start(setup.id);
     expect(runtime.last.inbox[0]).toContain('allow list');
-    expect(runtime.last.inbox[0]).toContain('The agent harnesses that can work on this machine, for the allow list the skill `obeya:settings` drafts: Claude Code, Codex.');
+    expect(runtime.last.inbox[0]).toContain('The agent harnesses that can work on this machine, for the allow list the skill `obeya:settings` drafts: Claude Code, Codex. Ask the owner which of them to set it up for');
     await workers.stop(setup.id);
     await workers.start(manual().id);
     expect(runtime.last.inbox[0]).not.toContain('agent harnesses');
