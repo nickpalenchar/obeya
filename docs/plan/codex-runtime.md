@@ -26,26 +26,13 @@ Harden the local Codex worker preview and complete its remaining acceptance and 
   external operations as distinct lifetimes. Use probe results to design and validate safe
   recovery of observed processes after an Obeya crash. This is not a Codex preview gate; it is
   a Pi gate. Recovery must not kill another live Obeya instance's processes or unrelated processes.
-- [ ] **W4:** Liveness-pipe prototype. Evaluate the isolated POSIX liveness-pipe prototype in `scripts/agent-liveness-prototype.ts`:
-  it launches one child, keeps a private owner pipe out of the child's inherited descriptors, samples
-  descendants, and kills the child and observed descendants on owner-pipe EOF or child exit. A
-  synthetic macOS test closes the pipe and checks an observed separately grouped child and an
-  unrelated canary; it is not a real harness, owner SIGKILL or Windows test. The build bundles the
-  supervisor as a resource; a macOS compiled-binary smoke test ran it using `BUN_BE_BUN=1`, but
-  Obeya does not yet launch its agents through it. An initial Codex transport integration was
-  reverted: on a supervisor SIGKILL, the app-server could retain its pipes after being reparented,
-  and a fast app-server exit could leave a same-group child running before sampling observed it.
-  Tracking a reported descendant now also retains each verified intermediate ancestor, rather
-  than only the leaf. A real-process test on macOS and in a Linux ARM64 container kills a synthetic
-  supervisor after reporting a separately grouped leaf, then checks cleanup of both the intermediate
-  app-server and leaf while an unrelated canary survives. This addresses one way the app-server was
-  missed but does not establish full transport recovery or solve the fast-exit case. The transport's process identity must remain distinguishable from the
-  supervisor's, and both failure cases need regression coverage before replacing the direct launch.
-  Its supervisor can itself die, sampling can miss descendants,
-  numeric signalling still races PID reuse, and root exit and startup before the first observation
-  leave windows. Do not use it as containment or promise crash recovery. Compare or combine it with
-  a boot-aware registry and startup sweep; address concurrent instances, a supervisor's own failure,
-  ownership of apps and external work, normal shutdown and cross-platform packaging before adoption.
+  Launching agents through the liveness supervisor, and what must hold before that, belongs here
+  (see "Liveness-pipe prototype: evaluation").
+- [x] **W4:** Liveness-pipe prototype. Evaluated (2026-11-01): the two failure cases that reverted
+  the first Codex transport integration are fixed in the prototype and have regression tests, and
+  the transport's process identity is the agent's own, not the supervisor's. Verdict: combine it
+  with the registry rather than adopt it alone, and keep it out of Obeya's launch path until W3; see
+  "Liveness-pipe prototype: evaluation" below.
 - [ ] **W5:** Platform process boundaries. Investigate stronger platform boundaries separately: native Windows Job Objects with a
   gated launch, and Linux systemd user scopes including no-manager, no-D-Bus and read-only-cgroup
   fallback. Test native harnesses, nested jobs and breakaway, and preserve app parking semantics.
@@ -338,6 +325,73 @@ not a production registry, a startup sweep or proof that an identity is safe to 
   supported OS. A failed or unavailable recovery must be visible and must not silently widen the
   kill scope. Preserve the distinction between a session that can safely resume and one whose old
   writer is still unaccounted for.
+
+### Liveness-pipe prototype: evaluation
+
+`scripts/agent-liveness-prototype.ts` (the supervisor) and `scripts/agent-liveness-owner.ts` (its
+caller) are POSIX-only experiments; Obeya does not launch agents through them. The build bundles the
+supervisor as a resource, and a macOS compiled-binary smoke test ran it with `BUN_BE_BUN=1`.
+
+How they work. The caller starts the supervisor in a group of its own with two private pipes: a
+liveness pipe whose write end only the caller holds, and a report pipe the supervisor writes to.
+The supervisor launches the agent in a group of its own behind a gate (a shell that waits on a
+third private pipe, then closes it and execs the agent), so none of the three pipes reaches the
+agent. It samples the agent's descendants every 100 ms and, through the report pipe, tells the
+caller each identity it observes (PID plus creation time), the agent's first and before agent code
+runs. The caller adopts each reported identity only while a process still has that creation
+time; no ancestry is needed, so the identities stay attributable after the supervisor has died
+and its processes have been reparented. On liveness-pipe EOF or agent exit, the supervisor kills
+the observed processes, then signals the agent's group once. When the supervisor exits, for any
+reason, the caller signals every adopted identity that still matches, plus their children at that
+moment. The caller acts on the supervisor's `exit`, not on its pipes closing: the agent inherits
+the supervisor's stdio, so after a supervisor SIGKILL a reparented agent still holds them.
+
+The two failures that reverted the first Codex transport integration, and their regression tests
+(`scripts/agent-liveness-prototype.test.ts`; each was checked to fail with its fix removed):
+
+- *Supervisor SIGKILL while the agent holds its pipes.* A synthetic agent starts a separately
+  grouped leaf; the supervisor is killed after reporting it. The caller's `done` settles while the
+  supervisor's stdout is still held open, both agent and leaf are stopped, an unrelated canary
+  survives. The agent identity the caller receives is the agent's, distinct from the supervisor's.
+- *Fast agent exit.* The agent starts a same-group child and exits before the first sample. The
+  group signal at exit stops the child; a canary survives.
+
+Two more tests: neither the liveness nor the report pipe is open in the agent, and ending one of two
+concurrent supervisors' pipes stops only its own agent. All pass on macOS and in a Linux ARM64
+container (Bun 1.3.14, 2026-11-01), together with the earlier registry tests. These are synthetic
+processes, not a real Claude or Codex harness, and nothing was run on Windows.
+
+What the combination covers, by what dies:
+
+| Dies | Who cleans up | Left over |
+| --- | --- | --- |
+| Obeya server | supervisor, on liveness-pipe EOF | descendants not yet sampled that left the agent's group |
+| supervisor | caller, from the adopted identities | the same, and a same-group child of an agent that also exited already |
+| both (power loss, OS killing both) | nobody until a registry sweep, Linux report-only today | everything |
+
+Verdict: combine, do not adopt alone. The supervisor answers the server's death, the caller's
+adoption answers the supervisor's death, and only a durable registry with a startup sweep (above)
+can answer both dying; none of them makes an unobserved descendant recoverable. Before agents are
+launched through it (W3):
+
+- *Normal shutdown.* Liveness EOF means SIGKILL at once. Graceful stop (busy turns, Codex's
+  EOF/TERM/KILL escalation) must stay with the server over the transport; the pipe is only for the
+  server's death, and an ordinary stop closes it only after the transport has finished.
+- *Apps and external work.* Everything observed under the agent dies with the session, including an
+  app `app.keep` protects from parking, which matches the owner's decision that a crash ends session
+  work. Work outside the agent's ancestry (a daemon's children, containers, remote hosts) is not
+  reached and not owned.
+- *Concurrent instances.* Each session has its own pipes and process groups; nothing is found by
+  search. A startup sweep across instances still needs the registry's lease.
+- *Remaining windows.* A descendant that leaves the agent's group between two samples; a fast agent
+  exit combined with a supervisor death; macOS creation times have one-second resolution; every
+  numeric signal (PID or group) races reuse; the group signal at exit can reach a reused number once
+  the group has emptied.
+- *Packaging.* POSIX only, with `/bin/sh` as the gate; Windows needs a different mechanism (W5). A
+  compiled Obeya must start the bundled resource with `BUN_BE_BUN=1`, which the caller side does
+  not set yet.
+- *Both harnesses.* Claude's processes survived the host's death in the probes above; the launch path
+  should be shared by Claude and Codex, not a Codex transport detail.
 
 ## Phase 2: Pi
 

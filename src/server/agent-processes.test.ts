@@ -53,6 +53,15 @@ test('a reported descendant retains its verified intermediate ancestors', () => 
   ]);
 });
 
+test('a supervisor\'s reported identities are adopted only while their creation identity holds', () => {
+  const supervisor = { pid: 90001, parent: process.pid, group: 90001, born: 'supervisor' };
+  const agent = { pid: 90002, parent: 1, group: 90002, born: 'agent' }; // reparented: no ancestry left
+  const reused = { pid: 90003, parent: 1, group: 90003, born: 'someone else' };
+  const tracker = new AgentProcesses(supervisor.pid, () => [supervisor, agent, reused]);
+  tracker.adopt([{ pid: agent.pid, born: 'agent' }, { pid: reused.pid, born: 'leaf' }, { pid: supervisor.pid, born: 'supervisor' }]);
+  expect(tracker.observed()).toEqual([{ pid: supervisor.pid, born: 'supervisor' }, { pid: agent.pid, born: 'agent' }]);
+});
+
 test('a reused app-server PID does not make an unrelated process its descendant', () => {
   const root = { pid: 90001, parent: process.pid, group: 90001, born: 'original' };
   let rows = [root];

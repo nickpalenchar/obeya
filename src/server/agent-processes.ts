@@ -94,6 +94,21 @@ export class AgentProcesses {
     // Keep registered identities until transport exit, including descendants whose leader ended.
   }
 
+  /**
+   * Identities that Obeya's own liveness supervisor (the root) observed, never ones an agent
+   * reported: each is kept only while its process still has the reported creation identity (to the
+   * second on macOS, so a PID reused within that second passes). Unlike `track`, no ancestry is
+   * needed, so they stay attributable after the supervisor has died.
+   */
+  adopt(reported: { pid: number; born: string }[]) {
+    if (this.snapshotError) throw this.snapshotError;
+    const table = new Map(this.snapshot(new Set([this.parent, ...this.owned.keys(), ...reported.map((r) => r.pid)])).map((p) => [p.pid, p]));
+    for (const { pid, born } of reported) {
+      const current = table.get(pid);
+      if (current?.born === born && pid !== this.parent) this.owned.set(pid, current);
+    }
+  }
+
   /** Snapshot of previously observed identities, for report-only experiments; not signal authority. */
   observed(): { pid: number; born: string }[] {
     return [
