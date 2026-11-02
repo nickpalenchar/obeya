@@ -48,6 +48,7 @@ import { type CanvasConfig, Canvases } from './canvas';
 import { Config, CONFIG_FILE, expandConfig, readConfigFile } from './config';
 import { checkPlugin } from './demo';
 import { Store, UnusableDatabase } from './db';
+import { SessionRegistry, useSessionRegistry } from './session-registry';
 import { ghForge, routedForge } from './forge';
 import { forgejoForge, originOf } from './forgejo';
 import { fileForge } from './file-forge';
@@ -183,6 +184,17 @@ if (source === 'file' && !values.config && !existsSync(configFile)) {
   ];
 }
 const configs = expandConfig(started);
+
+// What a crash of the Obeya before this one left running: agent sessions' processes it recorded
+// (session-registry.ts). Ended before any card resumes; what cannot be ended stays recorded.
+{
+  const registry = new SessionRegistry(join(home, 'sessions'));
+  useSessionRegistry(registry.supported ? registry : undefined);
+  for (const r of registry.recover()) {
+    if (r.outcome === 'busy' || r.outcome === 'cleared') continue;
+    console.log(`Obeya: session ${r.label ?? r.generation} left by an earlier Obeya: ${r.outcome} (${r.detail})`);
+  }
+}
 
 const store = (() => {
   try {

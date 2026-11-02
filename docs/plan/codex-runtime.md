@@ -22,10 +22,12 @@ Harden the local Codex worker preview and complete its remaining acceptance and 
   Obeya home: agent death and Obeya death, with a separately grouped background process and an
   unrelated canary. Check whether the app is meant to remain running, clean up every test-owned
   process, and report blocked authentication or incomplete runs rather than extrapolating.
-- [ ] **W3:** Session lifetimes and crash recovery. Before adding Pi, specify session work, the app governed by parking and `app.keep`, and
+- [x] **W3:** Session lifetimes and crash recovery. Before adding Pi, specify session work, the app governed by parking and `app.keep`, and
   external operations as distinct lifetimes. Use probe results to design and validate safe
   recovery of observed processes after an Obeya crash. This is not a Codex preview gate; it is
   a Pi gate. Recovery must not kill another live Obeya instance's processes or unrelated processes.
+  Done for Codex on macOS and Linux (container); see "Recovery boundary" below. The lifetimes and
+  the recovery are now in `docs/design/agents-and-workspaces.md` (Lifetimes).
   Launching agents through the liveness supervisor, and what must hold before that, belongs here
   (see "Liveness-pipe prototype: evaluation").
 - [x] **W4:** Liveness-pipe prototype. Evaluated (2026-11-01): the two failure cases that reverted
@@ -187,7 +189,7 @@ So cleanup follows from the host's tracker, not from Codex: when Obeya itself di
 separately grouped and the same-group jobs alike outlive it. This differs from the earlier
 host-death probe above, where the heartbeat stopped; the earlier job was most likely a Codex-managed
 terminal that the app-server ended itself on EOF, whereas `shellCommand` jobs are not. Treat the host-death result as
-"depends on how Codex started the process", never as a guarantee either way. Crash recovery is W3/W4.
+"depends on how Codex started the process", never as a guarantee either way. Crash recovery is W3 (below) and W4.
 
 Review changes from this pass: a refused signal (EPERM) no longer leaves the other observed
 processes alive, and the identities still owed are kept and retried when the transport's pipes
@@ -201,7 +203,7 @@ Lifecycle summary, as verified: for Codex, normal and forced stop and agent deat
 (observed descendants and the app-server's group), unrelated processes are left alone, and
 `app.keep` is not involved: it only decides whether a waiting card's app is stopped by parking. An
 app started as session work dies with its session on any shutdown, graceful or forced; one the owner
-wants to outlive a shutdown needs a handoff that does not exist (W3). A crash of Obeya runs no
+wants to outlive a shutdown needs a handoff that does not exist (W3 left it unspecified). A crash of Obeya runs no
 cleanup. A Claude agent's death ends nothing it started outside its own process group (W2 below).
 
 W2 comparable crash probes (2026-11-02, macOS 26.6.2, Claude Code 2.1.316 through the
@@ -250,7 +252,56 @@ an agent killed mid-turn instead of while waiting, a same-group background job, 
 native Codex background terminal (W1 covers that through the transport alone), and resuming after
 the crash.
 
-### Proposed recovery boundary (not implemented)
+### Recovery boundary (W3, implemented 2026-11-02)
+
+What W3 built from the proposal below, for Codex sessions (`src/server/session-registry.ts`; the
+rules are in the design chapter, Lifetimes). Differences from the proposal, with reasons:
+
+- **No separate supervisor.** The Obeya server itself holds the per-session lease and writes the
+  record; its death releases the lease. The supervisor of W4 is a different failure (a launcher that
+  dies on its own) and stays a prototype; the production registry is independent of it.
+- **The sweep is destructive, not report-only.** The proposal held it back until an OS mechanism
+  binds a signal to a process identity, which neither macOS nor Bun offers. Report-only leaves the
+  processes running until someone finds them, and the live tracker already ends processes by exactly
+  the same check (pid and creation time, then a numeric signal). The sweep makes no stronger claim
+  than that: the residual race (a pid reused between check and signal) is the live one's, and on
+  macOS the creation time has second resolution, so a false match needs the same pid reused in the
+  same second the recorded process started. Windows, which has no identity here, records nothing.
+- **No group signals in the sweep** (Codex review): a recorded leader is signalled by its own pid; the
+  live tracker's group signal stays. Also from that review: a record that cannot be read now is
+  retried, not quarantined; a file that cannot be removed keeps the record; a replaced pid with a
+  new creation time is republished.
+- **Record content:** also the working directory, so that a new Codex session in a workspace whose
+  old session could not be accounted for refuses to start (the proposal's "session that can safely
+  resume versus one whose old writer is unaccounted for"). Refusing is only for Codex so far.
+- **Visibility** is the server's log; an unrecovered record is reported again at each start. Not on
+  the card.
+
+Validated (macOS 26, Bun 1.3.14; Linux ARM64 container with `--init`, same tests):
+
+- `src/server/session-registry.test.ts`, real processes and real SIGKILL of the owner: recorded work
+  ends while an unrelated canary and a process recorded with another creation time (a reused pid)
+  stay; a live owner's lease (a second owner on the same directory, the sweeper's own process)
+  protects its record; refused or ineffective signals keep the record and report `unrecovered`, and
+  the next sweep finishes; another host, an earlier boot, an unreadable record and an unwritable
+  registry never signal; a crashed host of the real Codex transport (stub app-server and a detached
+  PTY observed through the tracker) is recovered from its record, and an orderly close removes it.
+  Linux passes the same tests and `agent-processes.test.ts`.
+- Real Claude Code 2.1.316 and Codex CLI 0.162.0 (`scripts/harness-crash-probe.ts`, case
+  `obeya-restart`: the W2 setup, then SIGKILL of the server and a start of Obeya again on the same
+  home): Codex: the app the worker started stayed alive after the crash (as in W2) and the next
+  start logged `recovered (ended <app pid>)`, the app stopped, the canary lived, the record was gone.
+  Claude: nothing recorded, nothing recovered, the app kept running (unchanged from W2). Repetitions:
+  Claude 1, Codex 3, all measured, none blocked; the probe's own stop of the restarted scratch server
+  reported "still runs after the stop" each time, though nothing of it was left a moment later.
+
+Open after W3: Claude Code (and Pi) record nothing, so their sessions recover nothing; whether the
+Claude worker should observe descendants like Codex is a decision for the harness work. The parking
+note "the app keeps running" after Codex's tracker ended the app is still wrong (a lifetime the
+design now names but does not resolve). The registry stays unproven on Windows and in a packaged
+build, and a power-loss test of the record's durability is untested.
+
+### Proposed recovery boundary (the original proposal)
 
 Use the supervisor and a registry for different failures, not as substitutes. A private liveness
 pipe lets the session's supervisor react when its Obeya server dies. A durable registry is a fallback

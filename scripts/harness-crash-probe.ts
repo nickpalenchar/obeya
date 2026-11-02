@@ -1,17 +1,19 @@
 // What happens to an app a real Claude or Codex worker started when its agent, or Obeya, dies?
-// bun scripts/harness-crash-probe.ts [claude|codex ...] [agent-death|obeya-death ...] [--out <file>]
+// bun scripts/harness-crash-probe.ts [claude|codex ...] [agent-death|obeya-death|obeya-restart ...] [--out <file>]
 // For each harness and case it stages a scratch Obeya with real workers (scripts/scratch-obeya.ts,
 // its own repository and OBEYA_HOME), starts one card whose worker runs `python3 job.py` (a heartbeat
 // that leaves for a session and process group of its own; the launcher exits after three seconds)
 // and asks a question. Once parking has asked the trusted `app.keep` (which logs and keeps the app)
-// it SIGKILLs the worker's agent process or the Obeya server, waits, and records what still runs:
+// it SIGKILLs the worker's agent process or the Obeya server (obeya-restart: and then starts an
+// Obeya again on the same home, whose startup sweep ends what the crash left, session-registry.ts),
+// waits, and records what still runs:
 // heartbeat, agent, server, an unrelated canary, the card and the settings commands that ran. Then
 // it ends every process it started or saw under the server, and checks nothing of them is left.
 // Each line printed (and appended to --out) is one case as JSON; `status` is `measured`, `blocked`
 // (the worker never got there: not logged in, refused, timed out) or `failed` (the probe broke).
 // It reports what it saw on this machine with these CLI versions; it proves no containment.
 import { spawn, spawnSync } from 'node:child_process';
-import { appendFileSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { Database } from 'bun:sqlite';
@@ -64,7 +66,7 @@ const TASK =
   'question PROBE_READY and no options, and end your turn. Do not stop the heartbeat, edit files, commit or start anything else.';
 
 const HARNESSES = ['claude', 'codex'] as const;
-const CASES = ['agent-death', 'obeya-death'] as const;
+const CASES = ['agent-death', 'obeya-death', 'obeya-restart'] as const;
 type Harness = (typeof HARNESSES)[number];
 type Case = (typeof CASES)[number];
 
@@ -156,6 +158,7 @@ async function run(harness: Harness, kind: Case) {
     const tick = tickIn(workspace);
     const lastEvent = (db.query('select max(id) as id from events where card_id = ?').get(id) as { id: number | null }).id ?? 0;
     kill(kind === 'agent-death' ? agent.pid : s.pid);
+    const sweptBefore = read(join(s.dir, 'server.log')).length;
     await Bun.sleep(8000);
     const after = tickIn(workspace);
     result.after = {
@@ -175,6 +178,35 @@ async function run(harness: Harness, kind: Case) {
       stop: read(join(workspace, 'stop.log')),
       serverLog: read(join(s.dir, 'server.log')).split('\n').filter((l) => /error|exit|died|stopp|kill|park/i.test(l)).slice(-12),
     };
+    if (kind === 'obeya-restart') {
+      // the same home, as a supervisor would start it again after the crash
+      const log = openSync(join(s.dir, 'server.log'), 'a');
+      const again = spawn(process.execPath, ['src/server/main.ts', '--config', join(s.dir, 'canvases.json'), '--port', String(s.port), '--dev'], {
+        cwd: ROOT, env: { ...probeEnv(), OBEYA_HOME: home }, detached: true, stdio: ['ignore', log, log],
+      });
+      again.unref();
+      writeFileSync(join(s.dir, 'server.pid'), String(again.pid));
+      s.pid = again.pid!;
+      let up = false;
+      for (let i = 0; i < 240 && !up && alive(s.pid); i++) {
+        up = await fetch(`http://127.0.0.1:${s.port}/api/canvases`, { headers: { 'x-obeya-key': key } }).then((r) => r.ok, () => false);
+        if (!up) await Bun.sleep(500);
+      }
+      await Bun.sleep(3000);
+      const tickA = tickIn(workspace);
+      await Bun.sleep(1000);
+      result.restart = {
+        up,
+        appAlive: alive(job),
+        ticksIn1s: tickIn(workspace) - tickA,
+        heartbeats: heartbeats(work).length,
+        agentAlive: alive(agent.pid),
+        canaryAlive: alive(canary.pid!),
+        card: card(),
+        sweep: read(join(s.dir, 'server.log')).slice(sweptBefore).split('\n').filter((l) => /left by an earlier Obeya/.test(l)),
+        registry: (() => { try { return readdirSync(join(home, 'sessions')); } catch { return []; } })(),
+      };
+    }
     result.status = 'measured';
     return result;
   } catch (e) {
