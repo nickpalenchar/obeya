@@ -2,7 +2,13 @@ import { expect, test } from 'bun:test';
 import type { HookInput, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { type AgentEvent, askOwner, BOUNDED_WAITS, Inbox, backgroundWork, deniedBy, claudeExecutable, cleanEnv, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resetIn, resultFailure, spawnHere, endAgentsHere, usageLimit, withLimitWait, withRepoTrust, withStderr, withTrustedAllow } from './runtime';
+import { type AgentEvent, askOwner, BOUNDED_WAITS, Inbox, backgroundWork, deniedBy, claudeExecutable, cleanEnv, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resetIn, resultFailure, spawnHere, endAgentsHere, usageLimit, withCodexTrust, withLimitWait, withRepoTrust, withStderr, withTrustedAllow } from './runtime';
+import { readShared } from '../adapters';
+import { commandsOf } from './trust';
+import { gitRepo as repoWith } from './testing';
+import { git } from './workspaces';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { FakeRuntime } from './testing';
 import { MESSAGES } from '../core/messages';
 
@@ -303,4 +309,33 @@ test('a Codex agent is not asked for a command the owner-confirmed allow list co
   const claude = spec({ setting: { harness: 'claude' } });
   wrapped.start(claude, '', []);
   expect(seen.at(-1)!.spec).toBe(claude);
+});
+
+test("a Codex agent loads the repository's .codex only where its workspace has it as the owner trusted it, asked at every start", () => {
+  const dir = mkdtempSync(join(tmpdir(), 'obeya-codex-trust-'));
+  try {
+    const repo = repoWith(join(dir, 'repo'), { '.codex/config.toml': 'model = "x"\n' });
+    let trusted = commandsOf(readShared(repo)).codex;
+    const seen: Parameters<FakeRuntime['start']>[0][] = [];
+    const wrapped = withCodexTrust({ start: (spec) => { seen.push(spec); return undefined as never; } }, (cwd) => (cwd === repo ? trusted : undefined));
+    const spec = (over: Record<string, unknown> = {}) => ({ cwd: repo, system: '', tools: [], onEvent: () => {}, setting: { harness: 'codex' }, ...over }) as never;
+    wrapped.start(spec());
+    expect(seen.at(-1)!.codexConfig).toBe(true);
+    // changed in the workspace since (by the card, or a rebase onto a change not trusted yet)
+    writeFileSync(join(repo, '.codex/config.toml'), 'model = "x"\n[mcp_servers.x]\ncommand = "x"\n');
+    wrapped.start(spec());
+    expect(seen.at(-1)!.codexConfig).toBeUndefined();
+    // trusted as it is now; another repository, or a claim from the caller, does not count
+    git(repo, 'commit', '--quiet', '-am', 'an MCP server');
+    trusted = commandsOf(readShared(repo)).codex;
+    wrapped.start(spec());
+    expect(seen.at(-1)!.codexConfig).toBe(true);
+    wrapped.start(spec({ cwd: join(dir, 'other'), codexConfig: true }));
+    expect(seen.at(-1)!.codexConfig).toBeUndefined();
+    const claude = spec({ setting: { harness: 'claude' } });
+    wrapped.start(claude);
+    expect(seen.at(-1)).toBe(claude);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

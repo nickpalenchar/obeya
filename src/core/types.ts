@@ -1886,10 +1886,12 @@ export interface RepoCommands {
   site?: Pick<DemoSite, 'url' | 'deploy' | 'env' | 'headers' | 'publish'>;
   /** The repository's own Claude Code configuration by file (everything under `.claude/`, `.mcp.json`): hooks, MCP servers, helpers. */
   claude?: Record<string, ClaudeFile>;
+  /** The repository's own Codex configuration by file (everything under `.codex/`): settings, hooks, MCP servers, rules. */
+  codex?: Record<string, ClaudeFile>;
 }
 
 /**
- * A file of a repository's Claude Code configuration: its git object, which tells one content from
+ * A file of a repository's Claude Code or Codex configuration: its git object, which tells one content from
  * another to the byte (a blob; a submodule's commit), and its text to read (a submodule's commit).
  */
 export interface ClaudeFile {
@@ -1910,7 +1912,7 @@ export interface RepoTrust {
 export function commandLines(c: RepoCommands | undefined, g: TrustGroup): string[] {
   const v = c?.[g];
   if (!v) return [];
-  if (g === 'claude') return Object.entries(v as Record<string, ClaudeFile>).flatMap(([file, f]) => [`${file}:`, ...f.text.split('\n').map((l) => `  ${l}`)]);
+  if (g === 'claude' || g === 'codex') return Object.entries(v as Record<string, ClaudeFile>).flatMap(([file, f]) => [`${file}:`, ...f.text.split('\n').map((l) => `  ${l}`)]);
   return Object.entries(v).map(([k, x]) => `${g === 'app' ? 'app' : 'demo.site'}.${k}: ${typeof x === 'string' ? x : JSON.stringify(x)}`);
 }
 

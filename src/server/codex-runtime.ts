@@ -1,6 +1,9 @@
 // Native installed Codex app-server adapter. Worker routing and portability live separately.
-import { isAbsolute } from 'node:path';
+import { basename, dirname, isAbsolute, join } from 'node:path';
 import { homedir } from 'node:os';
+import { realpathSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { GIT } from './workspaces';
 import type { CodexModel } from '../core/types';
 import { z } from 'zod';
 import { messageOf } from '../core/text';
@@ -21,6 +24,28 @@ const backgroundPage = z.object({ data: z.array(z.object({ itemId: z.string(), c
 const turnEvent = z.object({ turn: z.object({ id: z.string(), status: z.string(), error: z.object({ message: z.string(), codexErrorInfo: z.unknown() }).nullable().optional() }) });
 const toolCall = z.object({ threadId: z.string(), turnId: z.string(), callId: z.string(), namespace: z.string().nullable(), tool: z.string(), arguments: z.unknown() });
 const jsonObject = z.record(z.string(), z.unknown());
+const configLayers = z.object({ layers: z.array(z.object({ name: z.object({ type: z.string(), dotCodexFolder: z.string().optional() }).passthrough(), disabledReason: z.string().nullable().optional() })).nullable().optional() });
+
+/**
+ * The paths Codex may key the trust of the project `cwd` lies in by (`[projects."<path>"]`): its
+ * checkout's top level and, for a linked worktree, the main checkout's, as the file system has them.
+ */
+export function projectRoots(cwd: string): string[] {
+  const r = spawnSync(GIT, ['-C', cwd, 'rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir'], { encoding: 'utf8', windowsHide: true });
+  const [top, common] = r.status === 0 ? r.stdout.trim().split('\n') : [];
+  const real = (p: string) => { try { return realpathSync(p); } catch { return p; } };
+  const roots = [top ? real(top) : real(cwd), ...(common && basename(common) === '.git' ? [real(dirname(common))] : [])];
+  return [...new Set(roots)];
+}
+
+/**
+ * The `-c` override that makes Codex load the repository's own configuration (`.codex/`) in `cwd`
+ * or none of it (`trusted`), over what the user's Codex configuration says of the project.
+ */
+export function projectTrust(cwd: string, trusted: boolean): string {
+  const level = trusted ? 'trusted' : 'untrusted';
+  return `projects={${projectRoots(cwd).map((p) => `${JSON.stringify(p)}={trust_level="${level}"}`).join(',')}}`;
+}
 
 type Connect = (spec: AgentSpec, handlers: CodexHandlers) => CodexConnection;
 const connectInstalled: Connect = (spec, handlers) => {
@@ -34,7 +59,7 @@ const connectInstalled: Connect = (spec, handlers) => {
   if (left?.length) throw new Error(`An earlier session in this workspace left processes that are still running (${left.map((l) => l.label).join('; ')}); Obeya tries to end them when it starts`);
   return codexConnection({
     command: executable,
-    args: ['app-server', '--listen', 'stdio://'],
+    args: ['app-server', '--listen', 'stdio://', '-c', projectTrust(spec.cwd, !!spec.codexConfig)],
     cwd: spec.cwd,
     env: { ...cleanEnv(), ...spec.env },
     label: `Codex in ${spec.cwd}`,
@@ -312,6 +337,8 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
         try {
           const models = await discover(connection, () => closing);
           if (closing) return;
+          await checkProjectConfig(connection, spec);
+          if (closing) return;
           const model = spec.model ? models.find((m) => m.model === spec.model) : models.find((m) => m.isDefault);
           if (!model) throw new Error(`Codex model unavailable: ${spec.model ?? '(account default)'}`);
           if (spec.effort && !model.supportedReasoningEfforts.some((e) => e.reasoningEffort === spec.effort)) throw new Error(`Codex model ${model.model} does not support effort ${spec.effort}`);
@@ -335,6 +362,20 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
       return { send, close, done };
     },
   };
+}
+
+/**
+ * Codex's own account of the configuration it reads in `spec.cwd` agrees with the trust it was
+ * started with: no project layer when the repository's is not trusted (`codexConfig`), and none
+ * but the workspace's own `.codex/` when it is. Anything else ends the start, before a thread runs.
+ */
+async function checkProjectConfig(connection: CodexConnection, spec: AgentSpec) {
+  const { layers } = configLayers.parse(await connection.request('config/read', { cwd: spec.cwd, includeLayers: true }));
+  const own = join(spec.cwd, '.codex');
+  const real = (p: string) => { try { return realpathSync(p); } catch { return p; } };
+  const loaded = (layers ?? []).filter((l) => l.name.type === 'project' && !l.disabledReason).map((l) => l.name.dotCodexFolder ?? '(unknown)');
+  const stray = loaded.filter((folder) => !spec.codexConfig || real(folder) !== real(own));
+  if (stray.length) throw new Error(`Codex would load repository configuration the owner has not trusted: ${stray.join(', ')}`);
 }
 
 async function discover(connection: CodexConnection, closing: () => boolean): Promise<CodexModel[]> {

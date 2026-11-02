@@ -1,5 +1,11 @@
-import { describe, expect, test } from 'bun:test';
-import { canonical, commandsOf, heldGroups, trustTakenOver, withoutHeld } from './trust';
+import { afterAll, describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { readShared } from '../adapters';
+import { gitRepo } from './testing';
+import { git } from './workspaces';
+import { canonical, codexAsTrusted, commandsOf, heldGroups, trustTakenOver, withoutHeld } from './trust';
 
 const site = { title: 'Demos', url: 'https://demos.example.dev', deploy: 'wrangler pages deploy {dir}', maxFile: 1000 };
 
@@ -44,5 +50,46 @@ describe("a repository's commands", () => {
     // someone else's stop that came with it is not
     expect(trustTakenOver(null, { app: { stop: 'evil' }, checks: ['x'] }, { checks: ['x'] })).toBeNull();
     expect(trustTakenOver(null, { demo: { site } }, { demo: { site } })).toEqual({ site: { url: site.url, deploy: site.deploy } });
+  });
+});
+
+describe("a workspace's Codex configuration", () => {
+  const dir = mkdtempSync(join(tmpdir(), 'obeya-codex-trust-'));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  test('is held on the default branch like the others, until the owner trusts it', () => {
+    const repo = gitRepo(join(dir, 'held'), { '.codex/config.toml': 'model = "x"\n' });
+    const now = commandsOf(readShared(repo));
+    expect(Object.keys(now.codex!)).toEqual(['.codex/config.toml']);
+    expect(heldGroups(now, null)).toEqual(['codex']);
+    expect(heldGroups(now, now)).toEqual([]);
+  });
+
+  test('counts only where it is to the byte what the owner trusted, a change of its own included', () => {
+    const repo = gitRepo(join(dir, 'ws'), { '.codex/config.toml': 'model = "x"\n', '.codex/rules/a.rules': 'r\n' });
+    const trusted = commandsOf(readShared(repo)).codex;
+    expect(codexAsTrusted(repo, trusted)).toBe(true);
+    expect(codexAsTrusted(repo, undefined)).toBe(false);
+    // a blank line git keeps apart, though the text read for the dialog is trimmed
+    writeFileSync(join(repo, '.codex/config.toml'), 'model = "x"\n\n');
+    expect(codexAsTrusted(repo, trusted)).toBe(false);
+    git(repo, 'checkout', '--quiet', '--', '.codex/config.toml');
+    writeFileSync(join(repo, '.codex/hooks.json'), '{}');
+    expect(codexAsTrusted(repo, trusted)).toBe(false);
+    unlinkSync(join(repo, '.codex/hooks.json'));
+    unlinkSync(join(repo, '.codex/rules/a.rules'));
+    expect(codexAsTrusted(repo, trusted)).toBe(false);
+    git(repo, 'checkout', '--quiet', '--', '.codex');
+    expect(codexAsTrusted(repo, trusted)).toBe(true);
+  });
+
+  test('never counts with a symbolic link in it, which may point where the agent writes', () => {
+    const repo = gitRepo(join(dir, 'link'), { 'shared.toml': 'model = "x"\n', '.codex/rules/a.rules': 'r\n' });
+    symlinkSync('../shared.toml', join(repo, '.codex/config.toml'));
+    git(repo, 'add', '.codex');
+    git(repo, 'commit', '--quiet', '-m', 'link');
+    const trusted = commandsOf(readShared(repo)).codex;
+    expect(Object.keys(trusted!)).toEqual(['.codex/config.toml', '.codex/rules/a.rules']);
+    expect(codexAsTrusted(repo, trusted)).toBe(false);
   });
 });

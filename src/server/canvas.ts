@@ -34,7 +34,7 @@ import { Revisions } from './revisions';
 import { ProjectAgents } from './project-agents';
 import { ghHosts, onGitHub, outsidePlanDir, readPlanDocs, watchPlanDocs } from './repo';
 import { boundsOf, GAP, type Place, planDirNoteBox, unionBounds } from '../core/layout';
-import { type AgentRuntime, idleRuntime, withAgentSetting, withLimitWait, withRepoTrust, withTrustedAllow } from './runtime';
+import { type AgentRuntime, idleRuntime, withAgentSetting, withCodexTrust, withLimitWait, withRepoTrust, withTrustedAllow } from './runtime';
 import { bashRules } from './allow-rules';
 import { commandsOf, heldGroups, withoutHeld } from './trust';
 import { bundledSkills, Skills } from './skills';
@@ -261,7 +261,7 @@ export class CanvasRuntime {
     const agents = deps.agents ?? ((role: AgentRole) => AGENT_DEFAULTS[role]);
     // the agents other than workers and Obeya's chat wait for the usage limit through it, each where it shows;
     // each names its harness and model where it shows at work
-    const runtime = (r: AgentRuntime) => withLimitWait(withRepoTrust(withAgentSetting(withTrustedAllow(r, this.allowRules), agents, (at, agent, session) => this.board?.showAtWork(at, agent, session)), this.claudeHeld), deps.limitMargin);
+    const runtime = (r: AgentRuntime) => withLimitWait(withRepoTrust(withAgentSetting(withCodexTrust(withTrustedAllow(r, this.allowRules), this.codexTrusted), agents, (at, agent, session) => this.board?.showAtWork(at, agent, session)), this.claudeHeld), deps.limitMargin);
     const workerRuntime = deps.workerRuntime ?? (deps.idleWorkers ? idleRuntime : undefined);
     deps = { ...deps, runtime: runtime(deps.runtime), ...(workerRuntime ? { workerRuntime: runtime(workerRuntime) } : {}) };
     this.deps = deps;
@@ -574,6 +574,12 @@ export class CanvasRuntime {
     const repo = this.repoAt(cwd);
     const file = repo && this.deps.store.trustedCommands(repo.info.path)?.claude?.['.claude/settings.json'];
     return file ? bashRules(file.text) : [];
+  };
+
+  /** The Codex configuration of the repository `cwd` lies in as the owner last trusted it (`withCodexTrust`); none where nothing was. */
+  private codexTrusted = (cwd: string) => {
+    const repo = this.repoAt(cwd);
+    return repo ? this.deps.store.trustedCommands(repo.info.path)?.codex : undefined;
   };
 
   /**
@@ -1289,7 +1295,7 @@ export class CanvasRuntime {
   private problemSources(path: string, adapterModule = hasAdapterModule(path)): string {
     this.adapterModules.set(path, adapterModule);
     const read = this.shared.get(path);
-    return JSON.stringify([read?.raw, read?.problems, read?.claude, this.heldOf(path), adapterModule]);
+    return JSON.stringify([read?.raw, read?.problems, read?.claude, read?.codex, this.heldOf(path), adapterModule]);
   }
 
   /**
@@ -1300,7 +1306,7 @@ export class CanvasRuntime {
   private reread(r: Repo, now: SharedRead): boolean {
     const path = r.info.path;
     const before = this.shared.get(path);
-    if (JSON.stringify([now.settings, now.claude]) === JSON.stringify([before?.settings, before?.claude])) {
+    if (JSON.stringify([now.settings, now.claude, now.codex]) === JSON.stringify([before?.settings, before?.claude, before?.codex])) {
       // a field that does not count changed alone: the problems change, the settings do not
       this.shared.set(path, now);
       return false;

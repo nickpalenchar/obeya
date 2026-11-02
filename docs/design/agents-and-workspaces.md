@@ -31,9 +31,22 @@ Refused and confirmed tool calls); Obeya's own tools are allowed by a `PreToolUs
 Task workers can instead use the installed Codex CLI's app-server, with its own login. Obeya finds
 `codex` on the server process's PATH, or the native executable named by `OBEYA_CODEX`; a repository
 or per-session environment cannot select a different executable. Only local Git workspaces are
-supported: no SSH, folders without Git, contributor reviews, or record/replay. A project `.codex`
-directory in the workspace or its ancestors is refused rather than silently loading configuration
-not covered by Obeya's repository-trust dialog. The user's global Codex configuration is trusted.
+supported: no SSH, folders without Git, contributor reviews, or record/replay. The repository's own
+Codex configuration (its `.codex/`: settings, hooks, MCP servers, rules, which run outside Codex's
+sandbox and approvals) is loaded only where the workspace's `.codex/` is, to the byte, what the owner
+last trusted for the repository (the `codex` group, see Trusting a repository's commands), checked
+at every start and resume; otherwise, and with a symbolic link in it (Codex would read a file the
+owner never saw), the session loads none of it and works without. Obeya tells Codex so per session,
+over whatever the user's Codex configuration says of the project (`-c projects={"<path>"={trust_level=…}}`
+for the checkout and, from a linked worktree, the main checkout, which is how Codex keys it), and
+before any thread runs checks Codex's own account of the layers it reads (`config/read`): a project
+layer it should not load ends the start. Codex reads no project layer above the checkout's top level
+(Codex CLI 0.162.0). Codex's sandbox keeps a worker from writing `.codex/` itself; a change there
+reaches the workspace through the owner (a granted command, a rebase) and counts once trusted.
+Decided 2026-11-02: stricter than for Claude, whose workspace changes count while the main branch's
+are trusted, since Codex's configuration runs outside the sandbox Obeya relies on; rejected:
+refusing any `.codex/` (it stopped Codex workers in every repository with one, Obeya's own
+included). The user's global Codex configuration is trusted.
 Other roles, setup and the usage meter remain Claude-based; Codex transcript-based work retrospectives
 are not available. An unsupported capability fails visibly, never by substituting Claude.
 
@@ -50,8 +63,8 @@ the shell Codex wraps it in; leading `NAME=value` assignments (not `PATH`, `GIT_
 output redirected to a file under a temporary directory or `2>&1` are looked through. Pipes, `||`,
 substitution, heredocs, other redirection and `..` in a path never ride on a rule, and a request for
 a network or path grant is always asked. The same list also gives `.codex/rules/obeya.rules` for
-Codex's own rule engine (`scripts/codex-rules.ts`), for the rules that are literal word prefixes, in
-a project the owner trusts in Codex.
+Codex's own rule engine (`scripts/codex-rules.ts`), for the rules that are literal word prefixes,
+loaded once the owner trusts the repository's `.codex/`.
 
 What the sandbox keeps from a Codex worker (network, a browser, a local server, git writes in its
 worktree, whose `.git` lies in the main repository, the demos) goes through two tools Obeya runs

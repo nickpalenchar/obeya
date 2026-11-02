@@ -3,19 +3,22 @@
 // permission checks, counts only as the owner last confirmed it. A command new on the default
 // branch, or changed there, is held until the owner confirms it in "Konfiguration".
 
-import type { SharedRead } from '../adapters';
-import type { RepoCommands, RepoSettings, SharedSettings, TrustGroup } from '../core/types';
+import { lstatSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { CODEX_PATHS, type SharedRead } from '../adapters';
+import type { ClaudeFile, RepoCommands, RepoSettings, SharedSettings, TrustGroup } from '../core/types';
 
-const GROUPS: TrustGroup[] = ['app', 'site', 'claude'];
+const GROUPS: TrustGroup[] = ['app', 'site', 'claude', 'codex'];
 
-/** The commands of a repository's `.obeya/settings.json` and Claude Code settings as read; a group it has none of is left out. */
-export function commandsOf(read: Pick<SharedRead, 'settings' | 'claude'> | undefined): RepoCommands {
+/** The commands of a repository's `.obeya/settings.json` and Claude Code and Codex settings as read; a group it has none of is left out. */
+export function commandsOf(read: Pick<SharedRead, 'settings' | 'claude' | 'codex'> | undefined): RepoCommands {
   const out: RepoCommands = {};
   const { stop, keep } = read?.settings?.app ?? {};
   if (stop?.trim() || keep?.trim()) out.app = { ...(stop?.trim() ? { stop } : {}), ...(keep?.trim() ? { keep } : {}) };
   const site = read?.settings?.demo?.site;
   if (site) out.site = { url: site.url, deploy: site.deploy, ...(site.env !== undefined ? { env: site.env } : {}), ...(site.headers ? { headers: site.headers } : {}), ...(site.publish ? { publish: site.publish } : {}) };
   if (read?.claude && Object.keys(read.claude).length) out.claude = read.claude;
+  if (read?.codex && Object.keys(read.codex).length) out.codex = read.codex;
   return out;
 }
 
@@ -85,4 +88,36 @@ export function trustTakenOver(trusted: RepoCommands | null, after: SharedSettin
     changed = true;
   }
   return changed ? next : null;
+}
+
+/** A file's contents as git names them (its blob's object id), so that a workspace's file compares with one read from a commit. */
+function blobId(bytes: Uint8Array): string {
+  return new Bun.CryptoHasher('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+}
+
+/**
+ * Whether the Codex configuration of the workspace `dir` (everything under its `.codex/`, as the
+ * files are now, a change of the card's own included) is to the byte what the owner trusted
+ * (`trusted`, by git object). None trusted, or none in the workspace, is no match: there is nothing
+ * to load. Nor is one with a symbolic link: Codex reads the file it points to, which may lie where
+ * the agent can write and which the owner never saw.
+ */
+export function codexAsTrusted(dir: string, trusted: Record<string, ClaudeFile> | undefined): boolean {
+  if (!trusted || !Object.keys(trusted).length) return false;
+  const files = new Map<string, string>();
+  const add = (rel: string) => {
+    const abs = join(dir, rel);
+    const stat = lstatSync(abs, { throwIfNoEntry: false });
+    if (!stat) return;
+    if (stat.isSymbolicLink()) throw new Error(`${rel} is a symbolic link`);
+    if (stat.isDirectory()) for (const name of readdirSync(abs)) add(`${rel}/${name}`);
+    else files.set(rel, blobId(readFileSync(abs)));
+  };
+  try {
+    for (const p of CODEX_PATHS) add(p);
+  } catch {
+    return false;
+  }
+  const want = Object.entries(trusted);
+  return files.size === want.length && want.every(([f, { id }]) => files.get(f) === id);
 }

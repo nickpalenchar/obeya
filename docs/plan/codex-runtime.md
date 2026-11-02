@@ -42,8 +42,15 @@ Harden the local Codex worker preview and complete its remaining acceptance and 
 - [ ] **W6:** Live phase 1 acceptance. Rerun live mixed-harness cards, rate-limit recovery and longer-running pause/restart scenarios.
 - [x] **W7:** Active session identity. Done (2026-11-02): the working and reading bubbles name the
   harness and model of the session at work; see `docs/design/conversation-on-the-card.md`.
-- [ ] **W8:** Codex configuration trust. Explicit repository Codex configuration trust and configuration-change checks; until then,
-  project `.codex` is rejected and the user's global Codex configuration is trusted.
+- [x] **W8:** Codex configuration trust. Done (2026-11-02): `.codex/` is the trust group `codex`
+  of the repository-trust dialog; a Codex worker loads it only where its workspace's `.codex/` is
+  to the byte what the owner trusted, checked at every start and resume, with Codex's own layer
+  report (`config/read`) checked before a thread runs. See `docs/design/agents-and-workspaces.md`
+  (Native Codex workers). Verified against Codex CLI 0.162.0 on macOS: the per-session trust
+  override wins over the user's `[projects]` in both directions, project layers above the
+  checkout are never read, and the workspace-write sandbox refuses creating or writing `.codex/`.
+  Not verified: Linux and Windows Codex; whether Codex reloads project configuration that changes
+  during a running session (Obeya checks only at start and resume).
 - [x] **W9:** Foreground-wait guard. Decided (2026-11-02): no guard for Codex. Native `PreToolUse` hooks exist
   (Claude-shaped input and `permissionDecision: deny`) and work, but only once trusted in the user's
   own `config.toml`; session-level hooks stay untrusted and never run. And none is needed: steering

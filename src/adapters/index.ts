@@ -86,6 +86,8 @@ export interface SharedRead {
   problems: string[];
   /** The repository's own Claude Code configuration on the default branch, by file (`CLAUDE_PATHS`); none where it has none. */
   claude?: Record<string, ClaudeFile>;
+  /** The repository's own Codex configuration on the default branch, by file (`CODEX_PATHS`); none where it has none. */
+  codex?: Record<string, ClaudeFile>;
 }
 
 /**
@@ -94,6 +96,20 @@ export interface SharedRead {
  * `.claude/settings.json`; the hooks and MCP servers of its skills, commands and subagents; `.mcp.json`).
  */
 export const CLAUDE_PATHS = ['.claude', '.mcp.json'];
+
+/**
+ * Where a repository keeps its own Codex configuration: a Codex session that loads it runs what it
+ * names (its `config.toml`'s hooks and MCP servers, its rules) outside Codex's sandbox and approvals.
+ */
+export const CODEX_PATHS = ['.codex'];
+
+/** The files of `files` (by path, sorted) as the configuration of each harness, those of none left out. */
+function byHarness(files: [string, ClaudeFile][]): Pick<SharedRead, 'claude' | 'codex'> {
+  const of = (paths: string[]) => files.filter(([f]) => paths.some((p) => f === p || f.startsWith(`${p}/`)));
+  const claude = of(CLAUDE_PATHS);
+  const codex = of(CODEX_PATHS);
+  return { ...(claude.length ? { claude: Object.fromEntries(claude) } : {}), ...(codex.length ? { codex: Object.fromEntries(codex) } : {}) };
+}
 
 /** Reads the text of a `.obeya/settings.json`: a field that is unknown or of the wrong type does not count, the rest does. */
 export function parseShared(text: string): SharedRead {
@@ -119,7 +135,7 @@ export function readShared(repoPath: string, commit = defaultBranchCommit(repoPa
   return gitStepsSync(repoPath, readingShared(commit));
 }
 
-/** `readShared` of a folder without git: its `.obeya/settings.json` and Claude Code configuration as the folder has them. */
+/** `readShared` of a folder without git: its `.obeya/settings.json` and Claude Code and Codex configuration as the folder has them. */
 export function readSharedFiles(dir: string): SharedRead {
   const file = join(dir, REPO_SETTINGS_FILE);
   const read: SharedRead = existsSync(file) ? parseShared(readFileSync(file, 'utf8')) : { problems: [] };
@@ -131,22 +147,24 @@ export function readSharedFiles(dir: string): SharedRead {
       else files.push(rel);
     } catch {}
   };
-  for (const p of CLAUDE_PATHS) add(p);
+  for (const p of [...CLAUDE_PATHS, ...CODEX_PATHS]) add(p);
   if (!files.length) return read;
-  const claude = Object.fromEntries(
-    files.sort().map((f) => {
-      const text = readFileSync(join(dir, f), 'utf8');
-      return [f, { id: Bun.hash(text).toString(16), text }];
-    }),
-  );
-  return { ...read, claude };
+  return {
+    ...read,
+    ...byHarness(
+      files.sort().map((f) => {
+        const text = readFileSync(join(dir, f), 'utf8');
+        return [f, { id: Bun.hash(text).toString(16), text }];
+      }),
+    ),
+  };
 }
 
-/** `readShared` at `commit` as git steps, with the repository's Claude Code configuration beside it. */
+/** `readShared` at `commit` as git steps, with the repository's Claude Code and Codex configuration beside it. */
 export function* readingShared(commit: string): GitSteps<SharedRead> {
   const [text, listed] = yield [
     ['cat-file', 'blob', `${commit}:${REPO_SETTINGS_FILE}`],
-    ['ls-tree', '-r', '-z', commit, '--', ...CLAUDE_PATHS],
+    ['ls-tree', '-r', '-z', commit, '--', ...CLAUDE_PATHS, ...CODEX_PATHS],
   ];
   const read: SharedRead = text != null ? parseShared(text) : { problems: [] };
   // `<mode> <type> <object>\t<path>`: a blob's text is read (trimmed, for reading: its object tells
@@ -161,10 +179,7 @@ export function* readingShared(commit: string): GitSteps<SharedRead> {
   if (!entries.length) return read;
   const blobs = entries.filter((e) => e.type === 'blob');
   const texts = blobs.length ? yield blobs.map((e) => ['cat-file', 'blob', e.id]) : [];
-  const claude = Object.fromEntries(
-    entries.map((e) => [e.file, { id: e.id, text: e.type === 'blob' ? (texts[blobs.indexOf(e)] ?? '') : `(${e.type} ${e.id})` }]),
-  );
-  return { ...read, claude };
+  return { ...read, ...byHarness(entries.map((e) => [e.file, { id: e.id, text: e.type === 'blob' ? (texts[blobs.indexOf(e)] ?? '') : `(${e.type} ${e.id})` }])) };
 }
 
 /**

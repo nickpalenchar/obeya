@@ -29,7 +29,8 @@ import { COMPILED } from './resources';
 import { OWN_GROUP } from './spawn';
 import type { Messages } from '../core/messages';
 import type { ToolCall, ToolWatch } from './folder';
-import type { AgentAt, AgentEffort, AgentIdentity, AgentRole, AgentSetting } from '../core/types';
+import type { AgentAt, AgentEffort, AgentIdentity, AgentRole, AgentSetting, ClaudeFile } from '../core/types';
+import { codexAsTrusted } from './trust';
 import { messageOf } from '../core/text';
 
 export interface AgentTool {
@@ -106,6 +107,11 @@ export interface AgentSpec {
    * (`withRepoTrust`): the session reads the user's settings alone, none of the repository's.
    */
   untrusted?: boolean;
+  /**
+   * The repository's own Codex configuration in `cwd` (its `.codex/`) is to the byte what the owner
+   * trusted (`withCodexTrust`): a Codex session loads it. Without, it loads none of the repository's.
+   */
+  codexConfig?: boolean;
   /** Directories of local Claude Code plugins loaded into the session (skills, mainly). */
   plugins?: string[];
   permissionMode?: PermissionMode;
@@ -226,6 +232,23 @@ export function withTrustedAllow(runtime: AgentRuntime, rules: (cwd: string) => 
           return ask(request, signal);
         },
       }, firstMessage, images);
+    },
+  };
+}
+
+/**
+ * A runtime whose Codex agents load the repository's own Codex configuration (`codexConfig`) only
+ * where the workspace's `.codex/` is exactly what the owner trusted for the repository `cwd` lies
+ * in (`trusted`, `codexAsTrusted`), checked at every start and resume: one new on the default branch,
+ * or changed in the workspace since (by the card, or a rebase onto a change not trusted yet), is not
+ * loaded until the owner trusts it.
+ */
+export function withCodexTrust(runtime: AgentRuntime, trusted: (cwd: string) => Record<string, ClaudeFile> | undefined): AgentRuntime {
+  return {
+    start(spec, firstMessage, images) {
+      if (spec.setting?.harness !== 'codex' || remote(spec.cwd)) return runtime.start(spec, firstMessage, images);
+      const { codexConfig: _, ...rest } = spec;
+      return runtime.start({ ...rest, ...(codexAsTrusted(spec.cwd, trusted(spec.cwd)) ? { codexConfig: true } : {}) }, firstMessage, images);
     },
   };
 }

@@ -2496,7 +2496,7 @@ function TrustCommands({ path, trust, onDone }: { path: string; trust: RepoTrust
               </div>
             ))}
           </div>
-          {g === 'claude' && blankOnly(trust).length > 0 && <p className="hint">{c.blankOnly(blankOnly(trust).join(', '))}</p>}
+          {(g === 'claude' || g === 'codex') && blankOnly(trust, g).length > 0 && <p className="hint">{c.blankOnly(blankOnly(trust, g).join(', '))}</p>}
         </div>
       ))}
       <button className="btn small" disabled={busy} onClick={go}>
@@ -2507,10 +2507,10 @@ function TrustCommands({ path, trust, onDone }: { path: string; trust: RepoTrust
   );
 }
 
-/** The files of the Claude Code configuration whose change the diff cannot show: other contents, the same text but for space at its start or end. */
-const blankOnly = (trust: RepoTrust) =>
-  Object.entries(trust.now.claude ?? {}).flatMap(([file, f]) => {
-    const was = trust.before?.claude?.[file];
+/** The files of the Claude Code or Codex configuration whose change the diff cannot show: other contents, the same text but for space at its start or end. */
+const blankOnly = (trust: RepoTrust, g: 'claude' | 'codex') =>
+  Object.entries(trust.now[g] ?? {}).flatMap(([file, f]) => {
+    const was = trust.before?.[g]?.[file];
     return was && was.id !== f.id && was.text === f.text ? [file] : [];
   });
 
