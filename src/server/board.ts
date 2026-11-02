@@ -7,7 +7,7 @@
 // leaves its doc stays stored but is not shown.
 
 import { createHash } from 'node:crypto';
-import type { AgentIdentity } from '../core/types';
+import type { AgentAt, AgentIdentity } from '../core/types';
 import { existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { arrangeWorkstreams, type Bounds, boundsOf, CARD_SIZE, freeSpotNear, GAP, type Place, PROJECT_HEAD, placeProjects, planDirNoteBox, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
@@ -1520,10 +1520,11 @@ export class Board {
       groups: this.store.groups(this.canvas.id).map(toGroup),
       preferences: this.store.preferences(this.canvas.id, ['proposed', 'active']),
       ...(settingProposals.length ? { settingProposals } : {}),
-      talk: this.limits.size ? talk.map((x) => ({ ...x, ...this.limited(`talk:${x.id}`) })) : talk,
+      talk: this.limits.size || this.atWork.size ? talk.map((x) => ({ ...x, ...this.limited(`talk:${x.id}`), ...this.agentAt('lookUpAgent', `talk:${x.id}`) })) : talk,
       ...(pools.length ? { workspaces: pools } : {}),
       ...(reshare ? { reshare } : {}),
       ...(planDirs.length ? { planDirs } : {}),
+      ...this.agentAt('koordinatorAgent', 'koordinator'),
     };
     return this.cache;
   }
@@ -1592,6 +1593,7 @@ export class Board {
     const running = new Set(this.canvas.repos.map((r) => r.id));
     if (items.some((i) => !running.has(i.repo))) items = items.map((i) => (running.has(i.repo) || i.kind === 'question' ? i : { ...i, repoDown: true }));
     if (this.limits.size) items = items.map((i) => ({ ...i, ...this.limited(`card:${i.id}`) }));
+    if (this.atWork.size) items = items.map((i) => ({ ...i, ...this.agentAt('agentAtWork', `card:${i.id}`) }));
     this.itemsCache = items;
     return items;
   }
@@ -1759,6 +1761,32 @@ export class Board {
     if (iso) this.limits.set(key, iso);
     else this.limits.delete(key);
     this.changed();
+  }
+
+  /**
+   * The harness and model of the session that runs at each place an agent shows at work (`AgentAt`),
+   * by `card:<id>`, `talk:<id>` and `koordinator`, with the session they belong to. Held in memory:
+   * a session lives no longer than Obeya.
+   */
+  private atWork = new Map<string, { agent: AgentIdentity; session: object }>();
+
+  /** The session's identity where it shows at work (`withAgentSetting`); none once it ended, unless another session took that place since. */
+  showAtWork(at: AgentAt, agent: AgentIdentity | undefined, session: object) {
+    const key = 'card' in at ? `card:${at.card}` : 'talk' in at ? `talk:${at.talk}` : 'koordinator';
+    const was = this.atWork.get(key);
+    if (agent) {
+      if (was?.session === session && was.agent.harness === agent.harness && was.agent.model === agent.model) return;
+      this.atWork.set(key, { agent, session });
+    } else {
+      if (was?.session !== session) return;
+      this.atWork.delete(key);
+    }
+    this.changed();
+  }
+
+  private agentAt<K extends string>(field: K, key: string): { [k in K]?: AgentIdentity } {
+    const at = this.atWork.get(key);
+    return (at ? { [field]: { ...at.agent } } : {}) as { [k in K]?: AgentIdentity };
   }
 
   /** Who says which cards' workers are in a turn, each with its background work: one per repository's workers (`showTurns`). */

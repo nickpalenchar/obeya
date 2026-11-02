@@ -260,8 +260,9 @@ export class CanvasRuntime {
 
   constructor(config: CanvasConfig, private deps: CanvasDeps) {
     const agents = deps.agents ?? ((role: AgentRole) => AGENT_DEFAULTS[role]);
-    // the agents other than workers and Obeya's chat wait for the usage limit through it, each where it shows
-    const runtime = (r: AgentRuntime) => withLimitWait(withRepoTrust(withAgentSetting(withTrustedAllow(r, this.allowRules), agents), this.claudeHeld), deps.limitMargin);
+    // the agents other than workers and Obeya's chat wait for the usage limit through it, each where it shows;
+    // each names its harness and model where it shows at work
+    const runtime = (r: AgentRuntime) => withLimitWait(withRepoTrust(withAgentSetting(withTrustedAllow(r, this.allowRules), agents, (at, agent, session) => this.board?.showAtWork(at, agent, session)), this.claudeHeld), deps.limitMargin);
     const workerRuntime = deps.workerRuntime ?? (deps.idleWorkers ? idleRuntime : undefined);
     deps = { ...deps, runtime: runtime(deps.runtime), ...(workerRuntime ? { workerRuntime: runtime(workerRuntime) } : {}) };
     this.deps = deps;

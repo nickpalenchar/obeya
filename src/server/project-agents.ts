@@ -2,7 +2,7 @@
 // from the plan doc, the decision log and the repository, with a worker's tools to check what it says.
 
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
-import type { Item } from '../core/types';
+import type { AgentAt, Item } from '../core/types';
 import { oneAtATime } from '../core/one-at-a-time';
 import { type Briefing, decisionLog, INFORM_RULES, inform, type OwnerAnswer } from './advisor';
 import { type Board, pathOfRef } from './board';
@@ -30,7 +30,7 @@ export class ProjectAgents {
    * `signal` ends the turn at once; `onLimit` shows where it waits for the usage limit; `onWaiting`
    * passes the owner's words in while it waits for its background work (`Briefing.onWaiting`).
    * `asked`: written in the project's sheet, straight to it: its screenshots, and `to_obeya` for what
-   * the words ask of Obeya rather than of it.
+   * the words ask of Obeya rather than of it. `at`: where it shows at work.
    */
   inform(
     project: Item,
@@ -41,10 +41,12 @@ export class ProjectAgents {
     signal?: AbortSignal,
     onWaiting?: Briefing['onWaiting'],
     asked?: { images: string[]; toObeya?: AgentTool },
+    at?: AgentAt,
   ): Promise<OwnerAnswer> {
     return this.queued(project, () =>
       inform({
         onLimit,
+        ...(at ? { at } : {}),
         runtime: this.runtime,
         cwd: this.repoPath(),
         resume: this.board.row(project.id).session_id ?? undefined,

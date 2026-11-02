@@ -775,6 +775,7 @@ export class Commander {
       cwd: this.o.cwd,
       readOnly: true,
       role: 'koordinator',
+      at: { koordinator: true },
       system: system(language, ui),
       tools: [
         {

@@ -17,7 +17,7 @@ import { KoordinatorTalk } from './koordinator';
 import { Sign } from './logo';
 import { Notify, registerWorker } from './notify';
 import { plain } from './markdown';
-import { Cards } from './message';
+import { Cards, KoordinatorAgent } from './message';
 import { glide, type Mark, settle, speed, THROWN, thrown } from './panelHeight';
 import { CardFace, cardClass, shownState, TalkIcon } from './parts';
 import { videoOf } from './spot';
@@ -560,6 +560,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
           <div className="card-sheet ph-sheet">
             {i && c ? (
               <Cards.Provider value={{ items, open: openCard }}>
+                <KoordinatorAgent.Provider value={snaps[c.id]!.koordinatorAgent}>
                 <TalkElsewhere.Provider value={elsewhere}>
                 <Detail
                   key={i.id}
@@ -575,6 +576,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
                   onTell={(text, images, field, replyTo) => void tellTyped(text, images, { card: i.id }, field, replyTo)}
                 />
                 </TalkElsewhere.Provider>
+                </KoordinatorAgent.Provider>
               </Cards.Provider>
             ) : (
               // the snapshots are still on their way, or the card went (archived, deleted)
@@ -662,6 +664,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
         <TalkPanel title={t.koordinator.title} label={t.phone.talkTitle} banner={banner} onClose={closeTalk} leave={leaveTalk} onLeave={() => setClosing(true)}>
           {obeyaSnap && (
             <div className="ph-talk" key={obeyaId}>
+              <KoordinatorAgent.Provider value={obeyaSnap.koordinatorAgent}>
               <KoordinatorTalk
                 on
                 talk={obeyaSnap.talk}
@@ -671,6 +674,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
                 onTell={(text, images, replyTo) => void tellTyped(text, images, null, undefined, replyTo)}
                 draft={obeyaDraft(obeyaId)}
               />
+              </KoordinatorAgent.Provider>
             </div>
           )}
         </TalkPanel>

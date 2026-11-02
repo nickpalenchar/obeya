@@ -10,7 +10,7 @@ import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edge
 import { plain } from './markdown';
 import { clip } from '../core/text';
 import { type ActDone, Detail, type Pending } from './detail';
-import { Cards } from './message';
+import { Cards, KoordinatorAgent } from './message';
 import type { Heard, Where } from './api';
 import { replyOn, setReply } from './reply';
 import { ArchivePill } from './archive';
@@ -1662,6 +1662,7 @@ function Canvas({
 
   return (
     <HoldToTalk.Provider value={holdToTalk}>
+    <KoordinatorAgent.Provider value={snapshot.koordinatorAgent}>
       <div
         className={[cam.s < FAR && 'z-far', resizing && 'resizing'].filter(Boolean).join(' ') || undefined}
         style={
@@ -1972,6 +1973,7 @@ function Canvas({
           {ackLine}
         </div>
       </div>
+    </KoordinatorAgent.Provider>
     </HoldToTalk.Provider>
   );
 }

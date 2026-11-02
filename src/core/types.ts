@@ -432,6 +432,8 @@ export interface Item {
    * itself has ended and only its background work runs (the app served after the handover).
    */
   inTurn?: true;
+  /** The harness and model of the card's agent whose session runs now (`AgentAt`), as far as known: its bubble at work names them. */
+  agentAtWork?: AgentIdentity;
   /** The worker's background work that runs (a test run, a render, a watcher), the oldest first: while `inTurn`, or after the turn on a card that waits for the owner. */
   background?: BackgroundTask[];
   /**
@@ -946,6 +948,13 @@ export interface AgentIdentity {
   model?: string;
 }
 
+/**
+ * Where an agent shows at work: a card's (its worker, an idea's agent, a Question card's agent, the
+ * reviser of a proposal), the one looking up the question of an exchange in the sheet, or the
+ * Koordinator reading the owner's words.
+ */
+export type AgentAt = { card: string } | { talk: number } | { koordinator: true };
+
 export interface CardEvent {
   agent?: AgentIdentity;
   id: number;
@@ -1157,6 +1166,8 @@ export interface CanvasSnapshot {
   reshare?: Reshare;
   /** The plan directories the canvas has a note about (`PlanDir`); none when it has none. */
   planDirs?: PlanDir[];
+  /** The harness and model of the Koordinator's session that reads the owner's words, while one runs. */
+  koordinatorAgent?: AgentIdentity;
 }
 
 /**
@@ -1245,6 +1256,8 @@ export interface Talk {
   heldUntil?: string;
   /** The usage limit stopped the agent that looks the question up: it goes on by itself then (ISO time), the answer follows. */
   limitedUntil?: string;
+  /** The harness and model of the agent looking the question up now, as far as known. */
+  lookUpAgent?: AgentIdentity;
   /** Cards the Koordinator waits on, as its reply said, to take a step once each gets there (`wait_for`). */
   waits?: TalkWait[];
   /** Words of no one: the Koordinator took them up by itself, since a card it waited on got there (or no longer can). */

@@ -40,7 +40,8 @@ Harden the local Codex worker preview and complete its remaining acceptance and 
   fallback. Test native harnesses, nested jobs and breakaway, and preserve app parking semantics.
   macOS has no selected unprivileged equivalent. Do not claim an untested boundary or platform.
 - [ ] **W6:** Live phase 1 acceptance. Rerun live mixed-harness cards, rate-limit recovery and longer-running pause/restart scenarios.
-- [ ] **W7:** Active session identity. Expose the active session's own identity if working and reading bubbles should name its model.
+- [x] **W7:** Active session identity. Done (2026-11-02): the working and reading bubbles name the
+  harness and model of the session at work; see `docs/design/conversation-on-the-card.md`.
 - [ ] **W8:** Codex configuration trust. Explicit repository Codex configuration trust and configuration-change checks; until then,
   project `.codex` is rejected and the user's global Codex configuration is trusted.
 - [ ] **W9:** Foreground-wait guard. Decide whether native Codex pre-command hooks can provide the foreground-wait guard, rather
@@ -99,7 +100,7 @@ This does not close the containment gap.
 New speaker metadata persists the producing harness/model per utterance, including separate
 Koordinator replies and researched answers. Concurrency/persistence tests keep identities isolated;
 shared UI rendering and desktop/sidebar/phone screenshots cover the labels. Old messages are not
-relabelled from current defaults; active working and reading bubbles do not identify the model.
+relabelled from current defaults; active working and reading bubbles name the session at work (W7).
 Claude usage is independent of the worker harness: a live idle
 Claude SDK fetch and the scratch UI both show it. The compact toolbar keeps percentages after
 hiding the workspace pool; only its smallest stage hides them. No Codex usage is added.
@@ -110,8 +111,7 @@ hiding the workspace pool; only its smallest stage hides them. No Codex usage is
   deterministic two-card test with real Git workspaces and fake sessions verifies message, question
   and permission isolation. A later idle Claude usage fetch succeeds, but is not a repeat of the
   live mixed-card test.
-- A post-fix Codex review identified attribution losses in card logs and moved answers, since fixed;
-  active working and reading bubbles remain unlabelled rather than guessing from earlier messages.
+- A post-fix Codex review identified attribution losses in card logs and moved answers, since fixed.
 - Live rate-limit recovery and cross-platform cleanup remain unverified. Focused regression
   results are not a full-suite-green claim (the unrelated artifact-copy macro test is known to fail).
 - The running owner's instance is never a test target; all probe jobs and scratch instances used

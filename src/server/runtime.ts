@@ -29,7 +29,7 @@ import { COMPILED } from './resources';
 import { OWN_GROUP } from './spawn';
 import type { Messages } from '../core/messages';
 import type { ToolCall, ToolWatch } from './folder';
-import type { AgentEffort, AgentRole, AgentSetting } from '../core/types';
+import type { AgentAt, AgentEffort, AgentIdentity, AgentRole, AgentSetting } from '../core/types';
 import { messageOf } from '../core/text';
 import { claudeLoginFailed } from '../core/login';
 
@@ -117,6 +117,8 @@ export interface AgentSpec {
   model?: string;
   /** The group the agent belongs to, whose model and effort the owner chooses (`withAgentSetting`). */
   role?: AgentRole;
+  /** Where the agent shows at work: its harness and model show there while its session lives (`withAgentSetting`). */
+  at?: AgentAt;
   /** Pinned to a card's run; changing defaults must not switch its harness or model on resume. */
   setting?: AgentSetting;
   /**
@@ -160,29 +162,46 @@ export interface AgentRuntime {
 
 /**
  * A runtime that starts each agent of a group with its group's model and effort (`agentSetting`),
- * asked at every start; Claude Code's default model is no model given.
+ * asked at every start; Claude Code's default model is no model given. `shown` hears the identity
+ * of each session with `at` where it shows: at its start, again once the session names the model
+ * it resolved, and with none once it ended; `session` tells one session from the next at the same place.
  */
-export function withAgentSetting(runtime: AgentRuntime, setting: (role: AgentRole) => AgentSetting): AgentRuntime {
+export function withAgentSetting(
+  runtime: AgentRuntime,
+  setting: (role: AgentRole) => AgentSetting,
+  shown?: (at: AgentAt, agent: AgentIdentity | undefined, session: object) => void,
+): AgentRuntime {
   return {
     start(spec, firstMessage, images) {
       if (!spec.role) return runtime.start(spec, firstMessage, images);
       const chosen = spec.setting ?? setting(spec.role);
       const { model, effort } = chosen.harness === 'codex' ? (chosen.codex ?? { model: 'default', effort: 'high' as const }) : chosen;
       const { model: _, ...rest } = spec;
-      const identity = { harness: chosen.harness ?? 'claude', ...(model === 'default' ? {} : { model }) };
+      const identity: AgentIdentity = { harness: chosen.harness ?? 'claude', ...(model === 'default' ? {} : { model }) };
       const run = <T>(fn: () => T): T => agentIdentity.run(identity, fn);
-      return run(() => runtime.start({
+      const at = shown && spec.at;
+      const token = {};
+      if (at) shown(at, { ...identity }, token);
+      const session = run(() => runtime.start({
         ...rest, setting: chosen, effort, ...(model === 'default' ? {} : { model }),
         tools: spec.tools.map((tool) => ({ ...tool, run: (args) => run(() => tool.run(args)) })),
         ...(spec.askOwner ? { askOwner: (request, signal) => run(() => spec.askOwner!(request, signal)) } : {}),
         onEvent: (event) => {
           if (event.type === 'session') {
             const resolved = event.model ?? event.setting?.codex?.model;
-            if (resolved && resolved !== 'default') identity.model = resolved;
+            if (resolved && resolved !== 'default' && resolved !== identity.model) {
+              identity.model = resolved;
+              if (at) shown(at, { ...identity }, token);
+            }
           }
           run(() => spec.onEvent(event));
         },
       }, firstMessage, images));
+      if (at) {
+        const over = () => shown(at, undefined, token);
+        session.done.then(over, over);
+      }
+      return session;
     },
   };
 }

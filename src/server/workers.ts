@@ -3168,6 +3168,7 @@ export class Workers {
       {
         cwd: row.workspace,
         role: 'worker',
+        at: { card: cardId },
         setting,
         ...(dirs.length ? { dirs } : {}),
         ...(review ? { untrusted: true } : {}),

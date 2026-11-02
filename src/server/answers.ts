@@ -14,7 +14,7 @@ import { oneAtATime } from '../core/one-at-a-time';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { type AnswerFile, type AnswerRef, type CardEvent, type Item, pausable, pausableNow, type Talk, type TalkRef } from '../core/types';
-import type { AgentIdentity } from '../core/types';
+import type { AgentAt, AgentIdentity } from '../core/types';
 import { type Briefing, INFORM_RULES, inform, Interrupted, type OwnerAnswer } from './advisor';
 import { BadRequest, type Board, replyNote } from './board';
 import { imageNote } from './images';
@@ -114,6 +114,7 @@ export class Answers {
           this.o.board.waitsForLimit({ talk: talkId }, until);
           if (reading && until !== undefined) this.o.board.log(reading, 'state', 'obeya', this.o.board.t.answer.limited(this.o.board.t.when(until)));
         },
+        at: { talk: talkId },
         ...(follow
           ? {
               resume,
@@ -325,6 +326,7 @@ export class Answers {
         },
         onSession: (id) => this.o.board.work(cardId, { session_id: id }),
         onLimit: (until) => this.o.board.waitsForLimit({ card: cardId }, until),
+        at: { card: cardId },
         resume: this.o.board.row(cardId).session_id ?? undefined,
         message: `${resumed}${followUp(words, undefined, true)}`,
         // with the words passed in meanwhile, which the session that failed had heard
@@ -394,13 +396,15 @@ export class Answers {
     onSession: (id: string) => void;
     /** Where it shows that it waits for the usage limit. */
     onLimit: (until: number | undefined) => void;
+    /** Where it shows at work. */
+    at: AgentAt;
   }): Promise<OwnerAnswer> {
     const dir = this.o.dirOf(c.thread);
     mkdirSync(dir, { recursive: true });
     if (c.by === 'project') {
       const from = c.asked?.from;
       const asked = c.asked && { images: c.asked.images, ...(from && this.o.toObeya ? { toObeya: toObeyaTool((request) => this.o.toObeya!(from, request)) } : {}) };
-      return this.o.projectAgent(c.project!).inform(c.project!, `${c.message}\n\n${filesNote(dir)}`, c.onLimit, c.onTool, dir, c.signal, c.onWaiting, asked);
+      return this.o.projectAgent(c.project!).inform(c.project!, `${c.message}\n\n${filesNote(dir)}`, c.onLimit, c.onTool, dir, c.signal, c.onWaiting, asked, c.at);
     }
     const toObeya = c.card && this.o.toObeya ? this.o.toObeya : undefined;
     const ask = (message: string, images: string[] | undefined, resume?: string) =>
@@ -413,6 +417,7 @@ export class Answers {
         onTool: c.onTool,
         onSession: c.onSession,
         onLimit: c.onLimit,
+        at: c.at,
         language: this.o.board.conversation(),
         ...(resume ? { resume } : {}),
         ...(images?.length ? { images } : {}),

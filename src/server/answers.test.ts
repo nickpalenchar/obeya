@@ -728,6 +728,20 @@ describe('a thread on a Question card', () => {
     expect(c.inbox[0]).toContain('und Januar?');
   });
 
+  test("its agent's bubble at work names the harness and model of the session that reads, and nothing once it ended", async () => {
+    const { card } = await moved();
+    canvas.tell(card.id, 'und im Oktober?', [], false);
+    const a = answerer();
+    expect(board().item(card.id)!.agentAtWork).toEqual({ harness: 'claude', model: 'opus' });
+    a.emit({ type: 'session', id: 'q-1', model: 'claude-opus-5-5' });
+    expect(board().item(card.id)!.agentAtWork).toEqual({ harness: 'claude', model: 'claude-opus-5-5' });
+    a.call('answer_owner', { text: 'Oktober: 12 ct.' });
+    a.emit({ type: 'idle' });
+    await until(() => a.closed);
+    await settle();
+    expect(board().item(card.id)!.agentAtWork).toBeUndefined();
+  });
+
   test('its agent the usage limit stops waits on the card and answers once the limit lifts; paused meanwhile, it waits no more', async () => {
     const { card } = await moved();
     canvas.tell(card.id, 'und im Oktober?', [], false);
@@ -879,5 +893,32 @@ describe("a question asked in a project's sheet", () => {
     expect(card).toMatchObject({ kind: 'question', title: 'Was fehlt noch?' });
     const p = project();
     expect(Math.abs(card.x - p.x) + Math.abs(card.y - p.y)).toBeLessThan(2000);
+  });
+});
+
+describe('the agents at work in the sheet', () => {
+  test('the Koordinator reading and the agent looking a question up are named by their own sessions, never by the defaults', async () => {
+    const heard = canvas.commander.hear('was steht im plan zu login?', {});
+    await settle();
+    const k = runtime.sessions.filter(isKoordinator).at(-1)!;
+    expect(board().snapshot().koordinatorAgent).toEqual({ harness: 'claude', model: 'opus' });
+    k.emit({ type: 'session', id: 'k-1', model: 'claude-opus-5-5' });
+    expect(board().snapshot().koordinatorAgent).toEqual({ harness: 'claude', model: 'claude-opus-5-5' });
+    k.call('look_up', { question: 'What does the plan say about login?', confirm: 'Moment.' });
+    k.emit({ type: 'idle' });
+    await heard;
+    const a = answerer();
+    const talk = () => board().snapshot().talk.at(-1)!;
+    expect(talk().lookUpAgent).toEqual({ harness: 'claude', model: 'opus' });
+    a.emit({ type: 'session', id: 'a-1', model: 'claude-sonnet-5-5' });
+    expect(talk().lookUpAgent).toEqual({ harness: 'claude', model: 'claude-sonnet-5-5' });
+    // the Koordinator's own session is not the look-up's
+    expect(board().snapshot().koordinatorAgent).toEqual({ harness: 'claude', model: 'claude-opus-5-5' });
+    a.call('answer_owner', { text: 'Der Plan sagt nichts dazu.' });
+    a.emit({ type: 'idle' });
+    await until(() => a.closed);
+    await settle();
+    expect(talk().answer).toBe('Der Plan sagt nichts dazu.');
+    expect(talk().lookUpAgent).toBeUndefined();
   });
 });
