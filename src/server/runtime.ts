@@ -71,10 +71,12 @@ export type AgentEvent =
   | { type: 'lost'; message: string }
   /**
    * The turn failed. `limit` when the account's usage limit stopped it (the five-hour session
-   * limit, say): it lifts again at `resetsAt` (milliseconds) when the API said when. `token` when
-   * the session signed in with a token rather than this machine's account (`CardEvent.token`).
+   * limit, say): it lifts again at `resetsAt` (milliseconds) when the API said when. `ended` when
+   * the session died with it and took the work it had started along (a Codex app-server's
+   * descendants), the app in the workspace included. `token` when the session signed in with a token
+   * rather than this machine's account (`CardEvent.token`).
    */
-  | { type: 'error'; message: string; limit?: { resetsAt?: number }; token?: true };
+  | { type: 'error'; message: string; limit?: { resetsAt?: number }; ended?: true; token?: true };
 
 /** Who refused a tool call (`SDKPermissionDeniedMessage.decision_reason_type`, sorted). */
 export type DeniedBy = 'rule' | 'classifier' | 'mode' | 'hook' | 'obeya' | 'owner' | 'other';

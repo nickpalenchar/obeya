@@ -116,6 +116,31 @@ describe('parking: the app of a card that waits for the owner', () => {
     expect(board.row(c.id).parked).toBeNull();
   });
 
+  test('a session that dies with the app it started is not parked again as if the app kept running', async () => {
+    parking({ keep: 'echo keep >> keep.log; exit 0' });
+    const c = await handOver();
+    const kept = () => (existsSync(join(board.row(c.id).workspace!, 'keep.log')) ? 1 : 0);
+    await until(() => board.events(c.id).at(-1)!.text === board.t.worker.parkKept);
+    board.work(c.id, { app: 'http://localhost:5173' });
+    runtime.last.emit({ type: 'error', message: 'Codex app-server exited (SIGKILL)', ended: true });
+    runtime.last.emit({ type: 'idle' });
+    await Bun.sleep(100);
+    expect(board.events(c.id).filter((e) => e.text === board.t.worker.parkKept)).toHaveLength(1);
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'error', text: 'Codex app-server exited (SIGKILL)' });
+    expect(kept()).toBe(1);
+    expect(stopped(c.id)).toBe(false);
+    expect(board.item(c.id)!.app).toBeFalsy();
+  });
+
+  test('a session that dies before the grace is over does not claim the app keeps running', async () => {
+    parking({ keep: 'exit 0' }, 80);
+    const c = await handOver();
+    runtime.last.emit({ type: 'error', message: 'Codex app-server exited (SIGKILL)', ended: true });
+    runtime.last.emit({ type: 'idle' });
+    await Bun.sleep(250);
+    expect(board.events(c.id).some((e) => e.text === board.t.worker.parkKept)).toBe(false);
+  });
+
   test('an app that does not need keeping is stopped', async () => {
     parking({ keep: 'exit 1' });
     const c = await handOver();
@@ -170,12 +195,12 @@ describe('parking: the app of a card that waits for the owner', () => {
     runtime.last.call('app_running', { url: 'http://localhost:5173/' });
     expect(board.item(c.id)!.app).toBe('http://localhost:5173/');
     runtime.last.call('app_running', { url: '' });
-    expect(board.item(c.id)!.app).toBeUndefined();
+    expect(board.item(c.id)!.app).toBeFalsy();
     runtime.last.call('app_running', { url: 'http://localhost:5174/' });
     await runtime.last.call('ready_for_review', { summary: 'Fertig.', demo: artifact() });
     runtime.last.emit({ type: 'idle' });
     await until(() => board.row(c.id).parked);
-    expect(board.item(c.id)!.app).toBeUndefined();
+    expect(board.item(c.id)!.app).toBeFalsy();
     expect(await workers.openApp(c.id)).toBeNull();
   });
 

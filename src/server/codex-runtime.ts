@@ -133,7 +133,7 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
       const emit = (event: AgentEvent) => { if (!closing) spec.onEvent(event); };
       const connection = connect(spec, { notification, request: serverRequest });
       const done = connection.done.catch((error: unknown) => {
-        if (!closing) { emit({ type: 'error', message: messageOf(error) }); emit({ type: 'idle' }); }
+        if (!closing) { emit({ type: 'error', message: messageOf(error), ended: true }); emit({ type: 'idle' }); }
       }).finally(() => {
         closing = true;
         cancelPermissions();
@@ -142,7 +142,7 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
 
       function fail(error: unknown) {
         if (closing) return;
-        emit({ type: 'error', message: messageOf(error) });
+        emit({ type: 'error', message: messageOf(error), ended: true });
         emit({ type: 'idle' });
         close();
       }

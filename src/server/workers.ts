@@ -345,6 +345,8 @@ interface Live {
   acted: boolean;
   nudged: boolean;
   lastText: string;
+  /** The session died and ended the work it had started, the app in the workspace with it: nothing is left to park. */
+  ended?: true;
   /** The error the worker's last turn failed with (not logged in, say); gone once it says or does something. */
   failed?: string;
   /** Between a message and the end of the turn it starts: a restart now would cut the worker off. */
@@ -3483,6 +3485,12 @@ export class Workers {
         break;
       }
       case 'error':
+        if (e.ended) {
+          live.ended = true;
+          this.unpark(cardId);
+          // the address no longer answers
+          if (this.o.board.item(cardId)?.app) this.o.board.work(cardId, { app: null });
+        }
         if (e.limit) {
           live.limited = limitLifts(e.limit, this.o.limitMargin ?? 10_000);
           const t = this.o.board.t;
@@ -3764,7 +3772,7 @@ export class Workers {
 
   /** A card that waits for the owner has its app stopped once a quick reply has not come (`app.stop`). */
   private parkLater(cardId: string) {
-    if (!this.o.adapter.app?.stop || !this.waitsForOwner(cardId)) return;
+    if (!this.o.adapter.app?.stop || !this.waitsForOwner(cardId) || this.live.get(cardId)?.ended) return;
     clearTimeout(this.parking.get(cardId));
     this.parking.set(
       cardId,
@@ -3916,7 +3924,8 @@ export class Workers {
     const workspace = this.o.board.row(cardId).workspace!;
     const generation = this.generation.get(cardId);
     if (keep && (await runAppCommand(workspace, keep)).ok) {
-      if (this.generation.get(cardId) === generation) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.parkKept);
+      // the session died meanwhile and took the app: it does not keep running
+      if (this.generation.get(cardId) === generation && !this.live.get(cardId)?.ended) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.parkKept);
       return;
     }
     const result = await runAppCommand(workspace, stop);
