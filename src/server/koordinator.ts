@@ -5,7 +5,7 @@
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
 import { inQueue, movable, notStarted, queueOrder, reach, waitsOn } from '../core/queue';
-import { type AgentRole, type CardEvent, EVICT_HOLD_MS, finished, type Item, nameless, type Preference, START_ALL_HOLD_MS, titleFrom, type Wait } from '../core/types';
+import { type AgentAt, type AgentRole, type CardEvent, EVICT_HOLD_MS, finished, type Item, nameless, type Preference, START_ALL_HOLD_MS, titleFrom, type Wait } from '../core/types';
 import { ACTIVE, BadRequest, type Board } from './board';
 import type { Utterance } from './db';
 import { type AgentRuntime, type AgentTool, waitQuietly } from './runtime';
@@ -1294,6 +1294,8 @@ export function readSession(
     tools: (finish: (r: string) => string) => AgentTool[];
     brief: string;
     role: AgentRole;
+    /** Where it shows at work (`AgentSpec.at`). */
+    at?: AgentAt;
     images?: string[];
     onLimit?: (until: number | undefined) => void;
   },
@@ -1318,6 +1320,7 @@ export function readSession(
         system: o.system,
         tools: o.tools(finish),
         ...(o.onLimit ? { onLimit: o.onLimit } : {}),
+        ...(o.at ? { at: o.at } : {}),
         onEvent: (e) => {
           if (e.type === 'idle' || e.type === 'error') {
             session.close();

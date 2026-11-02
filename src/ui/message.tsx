@@ -70,8 +70,11 @@ export function Msg({
   );
 }
 
+/** The harness and model of the Koordinator's session that reads the owner's words, while one runs (the canvas's `koordinatorAgent`). */
+export const KoordinatorAgent = createContext<AgentIdentity | undefined>(undefined);
+
 /** Under the owner's words while the Koordinator reads them, in the sheet and on a card alike. */
-export const Reading = () => <Msg by="koordinator" className="thinking" who={`${t.author.koordinator} ${t.talk.reading}`} />;
+export const Reading = () => <Msg by="koordinator" className="thinking" who={`${t.author.koordinator} ${t.talk.reading}`} agent={useContext(KoordinatorAgent)} />;
 
 /**
  * Scrolls the conversation to a message (`ev` in `Msg`), which lights up once, so the eye finds it;

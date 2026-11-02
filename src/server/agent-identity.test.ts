@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { AgentSetting } from '../core/types';
+import type { AgentAt, AgentIdentity, AgentSetting } from '../core/types';
 import { Store } from './db';
 import { withAgentSetting } from './runtime';
 import { FakeRuntime } from './testing';
@@ -66,4 +66,27 @@ test('speaker metadata survives a database reopen; reply and researched answer c
     expect(store.events(card!.id).find((e) => e.text === 'Recorded')!.agent).toEqual({ harness: 'codex', model: 'gpt-research' });
     expect(store.events(card!.id).find((e) => e.text === 'Old unknown speaker')!.agent).toBeUndefined();
   } finally { store.db.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a session shows its identity where it works: at its start, once it resolves the model, and no more once it ended', async () => {
+  const fake = new FakeRuntime();
+  const heard: [AgentAt, AgentIdentity | undefined, object][] = [];
+  const runtime = withAgentSetting(fake, () => ({ model: 'default', effort: 'high' }), (at, agent, session) => heard.push([at, agent, session]));
+  const start = (at?: AgentAt) => runtime.start({ cwd: '.', system: '', role: 'worker', tools: [], onEvent: () => {}, ...(at ? { at } : {}) });
+  const first = start({ card: 'a' });
+  const s = fake.last;
+  expect(heard.map(([at, agent]) => [at, agent])).toEqual([[{ card: 'a' }, { harness: 'claude' }]]);
+  s.emit({ type: 'session', id: 's-1', model: 'claude-opus-5-5' });
+  // the same model again changes nothing
+  s.emit({ type: 'session', id: 's-1', model: 'claude-opus-5-5' });
+  expect(heard.map(([, agent]) => agent)).toEqual([{ harness: 'claude' }, { harness: 'claude', model: 'claude-opus-5-5' }]);
+  const second = start({ card: 'a' });
+  // a session without a place shows nowhere
+  start().close();
+  first.close();
+  await first.done;
+  expect(heard).toHaveLength(4);
+  expect(heard[3]).toEqual([{ card: 'a' }, undefined, heard[0]![2]]);
+  expect(heard[2]![2]).not.toBe(heard[0]![2]);
+  second.close();
 });

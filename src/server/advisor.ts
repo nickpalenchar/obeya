@@ -2,7 +2,7 @@
 // how an agent's question to the owner is put together.
 
 import { currentAgent } from './agent-identity';
-import type { AgentIdentity } from '../core/types';
+import type { AgentAt, AgentIdentity } from '../core/types';
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import { existsSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
@@ -42,6 +42,8 @@ export interface Briefing {
   signal?: AbortSignal;
   /** Where the answer shows that it waits for the account's usage limit, until when; nothing once it goes on (`AgentSpec.onLimit`). */
   onLimit: (until: number | undefined) => void;
+  /** Where the answering agent shows at work (`AgentSpec.at`). */
+  at?: AgentAt;
   /** How long a turn waits for background work that has ended to wake it, and for work that still runs (ms). */
   backgroundGrace?: number;
   backgroundLimit?: number;
@@ -105,6 +107,7 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
         ...(b.dir ? { dirs: [b.dir] } : {}),
         system: `${b.system}\n\n${ownersLanguage(b.language)}`,
         onLimit: b.onLimit,
+        ...(b.at ? { at: b.at } : {}),
         tools: [
           {
             name: 'answer_owner',

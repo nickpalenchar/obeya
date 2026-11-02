@@ -1338,6 +1338,7 @@ function Conversation({
     <Msg
       by={by}
       className={paused ? 'paused' : 'thinking'}
+      agent={item.agentAtWork}
       who={proposal ? t.revising : `${agent} ${paused ? t.pause.paused : item.pausing ? t.pause.pausingTalk : idea ? t.idea.thinking : question ? t.answer.reading : t.talk.working}`}
       head={
         paused ? (

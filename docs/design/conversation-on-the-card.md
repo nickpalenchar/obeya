@@ -35,7 +35,11 @@ The speaker's role is followed by the harness and model that produced the messag
 This holds for card replies and open questions as well as the Koordinator's reply and a looked-up
 answer, which can come from different models. Attribution is recorded when the agent speaks and
 survives a restart or a later change of defaults; old messages with no known identity stay unlabelled
-rather than taking today's model. The working and reading bubbles do not identify the active model.
+rather than taking today's model. The bubbles of an agent at work (a card's worker, an idea's or a
+Question card's agent, the reviser of a proposal, the Koordinator reading, an answer being looked
+up) name the harness and model of the session that runs there now, read from that session, never
+from the defaults: its harness and chosen model from its start, the model it resolved once it says
+(a "default" choice), and nothing once that session ended (a paused card whose session ended shows none).
 
 Agent words are kept whole up to 12 000 characters (a worker's `reply` is cut at 2000). While the
 worker works, the conversation ends with it at work and its latest step on one line, with its

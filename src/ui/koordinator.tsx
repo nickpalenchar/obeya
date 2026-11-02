@@ -355,7 +355,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
               <>
                 {/* a question it looked up: the answer follows the acknowledgement */}
                 {x.question && x.answer === undefined && (
-                  <Msg by={x.askedIn ? 'project' : 'koordinator'} className="thinking" who={t.author[x.askedIn ? 'project' : 'koordinator']}>
+                  <Msg by={x.askedIn ? 'project' : 'koordinator'} className="thinking" who={t.author[x.askedIn ? 'project' : 'koordinator']} agent={x.lookUpAgent}>
                     <div className="hint">{x.limitedUntil ? t.koordinator.lookUpLimited(clock(x.limitedUntil)) : t.koordinator.lookingUp}</div>
                   </Msg>
                 )}
