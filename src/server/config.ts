@@ -487,7 +487,7 @@ export class Config {
    * has them so. Commands that changed there since are refused (`trustChanged`).
    */
   trust(input: unknown) {
-    const parsed = z.object({ path: z.string().min(1), seen: z.unknown(), held: z.array(z.enum(['app', 'site', 'claude'])) }).safeParse(input);
+    const parsed = z.object({ path: z.string().min(1), seen: z.unknown(), held: z.array(z.enum(['app', 'site', 'claude', 'codex'])) }).safeParse(input);
     if (!parsed.success) throw new BadRequest('invalid', 'expected { path, seen, held }');
     const repoPath = resolve(expandHome(parsed.data.path));
     if (!existsSync(repoPath)) throw new BadRequest('invalid', `no repository at ${parsed.data.path}`);

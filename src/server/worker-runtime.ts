@@ -1,7 +1,4 @@
 // Roles belong to Obeya; a harness supplies the coding loop. Local workers roll out first.
-import { existsSync, realpathSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { homedir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { GIT } from './workspaces';
 import { messageOf } from '../core/text';
@@ -9,18 +6,6 @@ import { OBEYA_PLUGIN } from './demo';
 import { createCodexRuntime } from './codex-runtime';
 import { bundledSkills } from './skills';
 import type { AgentRuntime, AgentSpec } from './runtime';
-
-/** Until repository Codex config has its own trust UI, never implicitly load a project's .codex. */
-function checkProjectConfig(cwd: string) {
-  let dir = realpathSync(cwd);
-  const home = realpathSync(homedir());
-  for (;;) {
-    if (dir !== home && existsSync(join(dir, '.codex'))) throw new Error(`Codex project configuration is not supported yet: ${join(dir, '.codex')}`);
-    const parent = dirname(dir);
-    if (parent === dir) return;
-    dir = parent;
-  }
-}
 
 /** Only Obeya's bundled plugin is portable here, by explicit file-based skill instructions. */
 function portable(spec: AgentSpec): AgentSpec {
@@ -30,7 +15,6 @@ function portable(spec: AgentSpec): AgentSpec {
   if (spec.watch) throw new Error('Codex workers do not yet support folders without Git');
   const git = spawnSync(GIT, ['-C', spec.cwd, 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8', windowsHide: true });
   if (git.status !== 0 || git.stdout.trim() !== 'true') throw new Error('Codex workers currently require a local Git workspace');
-  checkProjectConfig(spec.cwd);
   const skills = bundledSkills().map((s) => `- ${s.name}: ${s.description}\n  ${s.file}`);
   const { plugins: _, permissionMode: __, ...rest } = spec;
   return { ...rest, system: `${spec.system}\n\nObeya skills are available as files, not Claude slash commands. Read the matching SKILL.md before using a skill, resolving its relative paths against its directory.\n${skills.join('\n')}\nUse the Obeya ask tool for owner questions, not a native terminal dialog.` };

@@ -6,7 +6,7 @@ import { repoInfo } from '../server/repo';
 import { gitRepo } from '../server/testing';
 import { git } from '../server/workspaces';
 import { layerSettings, type RepoSettings } from '../core/types';
-import { defaultsFor, hasAdapterModule, parseShared, readShared, repoValues, withSettings } from '.';
+import { defaultsFor, hasAdapterModule, parseShared, readShared, readSharedFiles, repoValues, withSettings } from '.';
 import { generic } from './generic';
 
 let dir: string;
@@ -163,5 +163,17 @@ describe("a repository's Claude Code configuration", () => {
     git(repo, 'update-index', '--add', '--cacheinfo', `160000,${head},.claude/skills/other`);
     git(repo, 'commit', '--quiet', '-m', 'submodule');
     expect(readShared(repo).claude!['.claude/skills/other']).toEqual({ id: head, text: `(commit ${head})` });
+  });
+});
+
+describe("a repository's Codex configuration", () => {
+  test('is every file under .codex/ on the default branch, apart from the Claude Code configuration; a folder without git as it has them', () => {
+    const repo = gitRepo(join(dir, 'codex'), { 'README.md': 'x\n', '.codex/config.toml': 'model = "x"\n', '.codex/rules/a.rules': 'r\n', '.mcp.json': '{}\n', '.codexignore': 'no\n' });
+    const read = readShared(repo);
+    expect(Object.keys(read.codex!)).toEqual(['.codex/config.toml', '.codex/rules/a.rules']);
+    expect(Object.keys(read.claude!)).toEqual(['.mcp.json']);
+    expect(read.codex!['.codex/config.toml']!.text).toBe('model = "x"');
+    expect(Object.keys(readSharedFiles(repo).codex!)).toEqual(['.codex/config.toml', '.codex/rules/a.rules']);
+    expect(readShared(gitRepo(join(dir, 'none'))).codex).toBeUndefined();
   });
 });

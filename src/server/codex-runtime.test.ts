@@ -3,7 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { CodexRpcError, type CodexConnection, type CodexHandlers } from './codex-rpc';
-import { codexSandbox, createCodexRuntime } from './codex-runtime';
+import { codexSandbox, createCodexRuntime, projectTrust } from './codex-runtime';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { gitRepo } from './testing';
+import { git } from './workspaces';
 import type { AgentEvent, AgentSession, AgentSpec } from './runtime';
 
 const model = { model: 'codex-test', isDefault: true, supportedReasoningEfforts: [{ reasoningEffort: 'high' }], inputModalities: ['text', 'image'] };
@@ -396,5 +399,40 @@ test('a worker starts its Codex thread without the sandbox where the environment
     console.warn = warn;
     if (was === undefined) delete process.env.OBEYA_CODEX_SANDBOX;
     else process.env.OBEYA_CODEX_SANDBOX = was;
+  }
+});
+
+test("a start ends before any thread where Codex would load repository configuration the owner has not trusted", async () => {
+  const layer = (folder: string, disabledReason: string | null = null) => ({ name: { type: 'project', dotCodexFolder: folder }, config: {}, version: '1', disabledReason });
+  const own = join(tmpdir(), '.codex');
+  for (const [codexConfig, layers, ok] of [
+    [false, [layer(own, 'untrusted'), { name: { type: 'user', file: '/u' }, config: {}, version: '1' }], true],
+    [false, [layer(own)], false],
+    [true, [layer(own)], true],
+    [true, [layer(join(tmpdir(), 'nested', '.codex'))], false],
+  ] as const) {
+    const wire = new Wire();
+    wire.override = (method) => (method === 'config/read' ? Promise.resolve({ config: {}, origins: {}, layers }) : undefined);
+    const { events } = fixture({ codexConfig }, wire);
+    await until(() => events.length > 0);
+    expect(wire.calls.find((c) => c.method === 'config/read')!.params).toEqual({ cwd: tmpdir(), includeLayers: true });
+    if (ok) expect(events[0]).toMatchObject({ type: 'session' });
+    else {
+      expect(events[0]).toMatchObject({ type: 'error', message: expect.stringContaining('repository configuration the owner has not trusted'), ended: true });
+      expect(wire.calls.some((c) => c.method === 'thread/start')).toBe(false);
+    }
+  }
+});
+
+test("Codex is told the trust of the project by its checkout and, from a linked worktree, by the main checkout", () => {
+  const dir = mkdtempSync(join(tmpdir(), 'obeya-codex-roots-'));
+  try {
+    const repo = gitRepo(join(dir, 'repo'));
+    git(repo, 'worktree', 'add', '--quiet', '-b', 'card', join(dir, 'ws'));
+    const [r, w] = [realpathSync(repo), realpathSync(join(dir, 'ws'))];
+    expect(projectTrust(repo, true)).toBe(`projects={${JSON.stringify(r)}={trust_level="trusted"}}`);
+    expect(projectTrust(join(dir, 'ws'), false)).toBe(`projects={${JSON.stringify(w)}={trust_level="untrusted"},${JSON.stringify(r)}={trust_level="untrusted"}}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

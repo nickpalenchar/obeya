@@ -256,12 +256,14 @@ in its `env` redirected the requests. A cloned repository or a collaborator's me
 unnoticed (VS Code has Workspace Trust for the same reason).
 
 So they count only as the owner last trusted them. Obeya keeps per repository path the trusted
-values themselves (not a hash, so the dialog shows a diff) in three groups: `app` (stop and keep
-together, since a stop without its keep could stop what it keeps), `site`, and `claude` (each file
-under `.claude/` and `.mcp.json`). A group the main branch has otherwise is held: the settings are
-read without it (no stop or keep, no site; demos are exported), and an agent working in the
-repository starts with `settingSources: ['user']` and gets its directory's CLAUDE.md in its
-instructions instead (not on another machine), trust being worked out afresh at each agent start
+values themselves (not a hash, so the dialog shows a diff) in four groups: `app` (stop and keep
+together, since a stop without its keep could stop what it keeps), `site`, `claude` (each file
+under `.claude/` and `.mcp.json`) and `codex` (each file under `.codex/`). A group the main branch
+has otherwise is held: the settings are read without it (no stop or keep, no site; demos are
+exported), and an agent working in the repository starts with `settingSources: ['user']` and gets
+its directory's CLAUDE.md in its instructions instead (not on another machine); a Codex worker
+loads the repository's Codex configuration only where its workspace has it exactly as trusted (see
+Native Codex workers). Trust is worked out afresh at each agent start
 from the main branch as it is then, a commit made there outside Obeya included. What was read there
 last stands while the repository's own branches, `origin`'s, its packed refs and the branch its
 checkout is on are as they were (a few `stat`s; the cards' branches do not count, and a branch that
@@ -275,7 +277,8 @@ lines as last trusted against the main branch's now, and „Diesen Befehlen vert
 exactly what was shown (refused where it changed meanwhile; also for a repository not saved yet), and
 the canvases follow at once. Held values show „aus dem Repository, noch nicht vertraut“. A worker's
 own workspace may change Claude Code configuration: that counts while the main branch's is trusted
-and waits for trust once it lands. Trust covers the configuration, not the code it calls: a trusted
+and waits for trust once it lands; a Codex worker's does not count until trusted (its sandbox
+is what keeps it in bounds, and the configuration runs outside it). Trust covers the configuration, not the code it calls: a trusted
 hook runs whatever its script says now, as the checks do.
 
 #### Writing the settings

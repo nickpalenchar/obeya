@@ -64,10 +64,11 @@ test('an unavailable Codex backend never falls back to Claude (including record/
   expect(claude.sessions).toHaveLength(0);
 });
 
-test('rejects ancestor repository Codex config before a CLI can load it', async () => {
-  const { runtime, spec, events, cwd, codex } = fixture({ setting });
-  mkdirSync(join(cwd, '.codex')); mkdirSync(join(cwd, 'nested'));
-  await runtime.start({ ...spec, cwd: join(cwd, 'nested') }).done;
-  expect(events).toContainEqual(expect.objectContaining({ type: 'error', message: expect.stringContaining('Codex project configuration is not supported') }));
-  expect(codex.sessions).toHaveLength(0);
+test("a repository's .codex no longer stops a Codex worker: whether Codex loads it is its trust's to say", async () => {
+  const { runtime, spec, cwd, codex, events } = fixture({ setting });
+  mkdirSync(join(cwd, '.codex'));
+  runtime.start(spec, 'build');
+  expect(codex.sessions).toHaveLength(1);
+  expect(codex.last.spec.codexConfig).toBeUndefined();
+  expect(events.filter((e) => e.type === 'error')).toEqual([]);
 });
