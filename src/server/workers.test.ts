@@ -615,6 +615,35 @@ describe('workers', () => {
     expect(board.item(c.id)!.question!.text).toContain('nicht angemeldet');
   });
 
+  test('a session that died with an error goes to the owner at once, with the reason', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    const dead = runtime.last;
+    dead.emit({ type: 'error', message: 'Codex would load repository configuration the owner has not trusted: /w/.codex', ended: true });
+    dead.emit({ type: 'idle' });
+    dead.close();
+    await Bun.sleep(0);
+    expect(state(c.id)).toBe('waiting:question');
+    expect(board.item(c.id)!.question).toMatchObject({ stuck: true });
+    expect(board.item(c.id)!.question!.text).toContain('Codex would load repository configuration');
+    // no nudge went into a session that hears nothing any more
+    expect(dead.inbox).toHaveLength(1);
+    // the owner's answer starts the worker again
+    workers.message(c.id, 'Versuch es noch einmal.');
+    await until(() => runtime.last !== dead);
+    expect(runtime.last.inbox.at(-1)).toContain('Versuch es noch einmal.');
+  });
+
+  test('a worker that cannot start at all goes to the owner with the reason', async () => {
+    setWorkers(new Workers({ board, runtime: { start() { throw new Error('Installed Codex executable unavailable'); } }, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' } }));
+    const c = manual();
+    await workers.start(c.id);
+    expect(state(c.id)).toBe('waiting:question');
+    expect(board.item(c.id)!.question).toMatchObject({ stuck: true });
+    expect(board.item(c.id)!.question!.text).toContain('Installed Codex executable unavailable');
+    expect(board.events(c.id).filter((e) => e.kind === 'error').map((e) => e.text)).toEqual(['Installed Codex executable unavailable']);
+  });
+
   test('an error of a session that signed in with a token says so in the conversation', async () => {
     const c = manual();
     await workers.start(c.id);

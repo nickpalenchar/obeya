@@ -32,11 +32,12 @@ export function workerHarnessRuntime(claude: AgentRuntime, codex: AgentRuntime =
         return codex.start(portable(spec), firstMessage, images);
       } catch (error) {
         // Orchestration attaches the returned session before observing startup errors, just as it
-        // does for SDK login/configuration failures. A failed startup must not leave a busy ghost.
+        // does for SDK login/configuration failures. A failed startup must not leave a busy ghost:
+        // the session ended with its error, so the card goes to the owner rather than staying at work.
         let closed = false;
         const done = Promise.resolve().then(() => {
           if (closed) return;
-          spec.onEvent({ type: 'error', message: messageOf(error) });
+          spec.onEvent({ type: 'error', message: messageOf(error), ended: true });
           spec.onEvent({ type: 'idle' });
         });
         return { send() {}, close() { closed = true; }, done };

@@ -47,7 +47,11 @@ landing), not what to do next: whether to record a demo again after feedback is 
 
 A turn that ends without `ask` or `ready_for_review` gets one nudge, then its last words become a
 question to the owner; a turn that failed (an SDK error result, e.g. Claude not logged in) becomes
-the error in words instead. A worker that then works on by itself takes that question back.
+the error in words instead. A session that died with its error (Codex refusing its configuration,
+say) or an agent that could not start at all gets no nudge, which nothing would hear: the error goes
+to the owner at once, and their answer starts the worker afresh (resuming its session where it had
+one). Such a card shows as failed: the owner's turn in red, its pin "!!", its state "Agent stopped
+with an error". A worker that then works on by itself takes that question back.
 
 A turn that ends while the worker's own background work runs (a render, a test suite, a watcher) is
 not such a turn: the work wakes the worker, so Obeya waits, also after the landing, where an ended

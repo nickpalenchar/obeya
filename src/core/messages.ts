@@ -49,7 +49,7 @@ const de = {
   },
   failure: {
     notLoggedIn: 'Claude ist auf diesem Rechner nicht angemeldet: im Terminal „claude“ starten und „/login“ ausführen.',
-    session: (message: string) => `Die Claude-Sitzung brach mit einem Fehler ab: ${message}`,
+    session: (message: string) => `Die Sitzung des Agenten brach mit einem Fehler ab: ${message}`,
   },
   answer: {
     failed: (why: string) => `Ich konnte die Frage nicht beantworten (${why}).`,
@@ -573,7 +573,7 @@ const en: Messages = {
   },
   failure: {
     notLoggedIn: 'Claude is not logged in on this machine: run “claude” in a terminal and then “/login”.',
-    session: (message: string) => `The Claude session failed with an error: ${message}`,
+    session: (message: string) => `The agent's session failed with an error: ${message}`,
   },
   answer: {
     failed: (why: string) => `I could not answer the question (${why}).`,

@@ -3331,30 +3331,39 @@ export class Workers {
     // CLAUDE.md are the contributor's, so the session reads none of them, the default branch's CLAUDE.md instead
     const review = !!contributionOf(row);
     const notes = review ? this.mainNotes() : '';
-    live.session = this.o.runtime.start(
-      {
-        cwd: row.workspace,
-        role: 'worker',
-        at: { card: cardId },
-        setting,
-        ...(dirs.length ? { dirs } : {}),
-        ...(review ? { untrusted: true } : {}),
-        system: `${this.system(preferences, !!row.prototype_of, this.o.board.item(cardId))}${setting.harness === 'codex' && !live.host && !review ? `\n\n${EXEC_LANE_NOTE}` : ''}${notes ? `\n\nThe repository's CLAUDE.md, as its default branch has it:\n\n${notes}` : ''}`,
-        tools: this.tools(cardId, live, !!row.prototype_of),
-        plugins: [OBEYA_PLUGIN],
-        ...(env ? { env } : {}),
-        contextUpdate: () =>
-          [this.restartStillDue(cardId, live), this.pauseStillDue(live), this.pageNewsNow(cardId, live), this.unheardNow(cardId, live), this.preferencesUpdate(live), this.decisionsUpdate(cardId, live)].filter(Boolean).join('\n\n') || undefined,
-        askOwner: (request, signal) => this.askOwner(cardId, live, request, signal),
-        ...(this.folder ? { watch: this.folder.watch(cardId) } : {}),
-        ...(resume ? { resume } : {}),
-        ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),
-        onEvent: (e) => this.onEvent(cardId, live, e),
-      },
-      message,
-      images,
-    );
-    this.extensionEvent('workerStarted', cardId);
+    try {
+      live.session = this.o.runtime.start(
+        {
+          cwd: row.workspace,
+          role: 'worker',
+          at: { card: cardId },
+          setting,
+          ...(dirs.length ? { dirs } : {}),
+          ...(review ? { untrusted: true } : {}),
+          system: `${this.system(preferences, !!row.prototype_of, this.o.board.item(cardId))}${setting.harness === 'codex' && !live.host && !review ? `\n\n${EXEC_LANE_NOTE}` : ''}${notes ? `\n\nThe repository's CLAUDE.md, as its default branch has it:\n\n${notes}` : ''}`,
+          tools: this.tools(cardId, live, !!row.prototype_of),
+          plugins: [OBEYA_PLUGIN],
+          ...(env ? { env } : {}),
+          contextUpdate: () =>
+            [this.restartStillDue(cardId, live), this.pauseStillDue(live), this.pageNewsNow(cardId, live), this.unheardNow(cardId, live), this.preferencesUpdate(live), this.decisionsUpdate(cardId, live)].filter(Boolean).join('\n\n') || undefined,
+          askOwner: (request, signal) => this.askOwner(cardId, live, request, signal),
+          ...(this.folder ? { watch: this.folder.watch(cardId) } : {}),
+          ...(resume ? { resume } : {}),
+          ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),
+          onEvent: (e) => this.onEvent(cardId, live, e),
+        },
+        message,
+        images,
+      );
+    } catch (e) {
+      // the agent could not start at all (Codex not installed, say): the card does not stay at work without one
+      this.live.delete(cardId);
+      this.o.board.log(cardId, 'error', 'obeya', messageOf(e));
+      const card = this.o.board.item(cardId);
+      if (card && (card.state === 'working' || card.state === 'inPr') && !landedOf(row)) this.toOwner(cardId, { text: failureReason(clip(messageOf(e), 1200), this.o.board.t), options: [], stuck: true });
+      else this.o.board.changed();
+      return;
+    }
     live.session.done.then(() => {
       if (this.live.get(cardId) !== live) return;
       this.live.delete(cardId);
@@ -3820,6 +3829,8 @@ export class Workers {
     // it paused for the restart, which resumes it
     if (this.restart && live.toldRestart) return this.pausedForRestart(cardId, live);
     if (live.limited) return this.waitForLimit(cardId, live, live.limited);
+    // a session that died with an error (Codex refusing to start, say) hears no nudge: the owner hears why at once
+    if (live.ended && live.failed) live.nudged = true;
     if (!acted && !live.nudged) {
       // the worker's own turn is still to come; should it not, it counts as ended after a while
       // (silence after a nudge, though, is the worker having stopped)

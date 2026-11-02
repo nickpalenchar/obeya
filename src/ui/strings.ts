@@ -45,6 +45,7 @@ const de = {
   demoWithQuestion: 'Demo bereit, mit Frage',
   answering: 'Agent arbeitet an deiner Nachricht',
   agentAnswered: 'Agent hat geantwortet, wartet auf dich',
+  agentFailed: 'Agent mit Fehler gestoppt',
   finishing: 'Live · Agent arbeitet',
   openingPr: 'Freigegeben · Agent öffnet den PR',
   finishingLong: 'Auf main. Der Agent erledigt noch, was nach dem Landen ansteht; danach endet seine Sitzung.',
@@ -2207,6 +2208,7 @@ const en: Strings = {
   demoWithQuestion: 'Demo ready, with a question',
   answering: 'Agent works on your message',
   agentAnswered: 'Agent answered, waiting for you',
+  agentFailed: 'Agent stopped with an error',
   finishing: 'Live · agent working',
   openingPr: 'Approved · agent opening the PR',
   finishingLong: 'On main. The agent still does what was waiting for the landing; then its session ends.',
@@ -4287,7 +4289,7 @@ const longDay = (d: Date, today: Date) =>
 /** A number, with `digits` decimals at most. */
 const number = (n: number, digits = 0) => n.toLocaleString(locale, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 
-export const stateLabel = (i: { kind?: string; thread?: { thinking?: boolean }; state: CardState; need?: Need; pr?: unknown; contribution?: unknown; queue?: Queue; idea?: Idea; question?: unknown; answering?: true; answered?: true; finishing?: boolean; followUp?: boolean; paused?: true; pausing?: true; snoozed?: Snooze; prototypeEnd?: 'discarded' | 'built'; retro?: string; proposal?: { setup?: true }; branch?: string }) =>
+export const stateLabel = (i: { kind?: string; thread?: { thinking?: boolean }; state: CardState; need?: Need; pr?: unknown; contribution?: unknown; queue?: Queue; idea?: Idea; question?: { stuck?: true }; answering?: true; answered?: true; finishing?: boolean; followUp?: boolean; paused?: true; pausing?: true; snoozed?: Snooze; prototypeEnd?: 'discarded' | 'built'; retro?: string; proposal?: { setup?: true }; branch?: string }) =>
   i.snoozed
     ? i.snoozed.on
       ? t.snooze.on(i.snoozed.on.title, i.snoozed.on.state, i.snoozed.until && snoozeWhen(i.snoozed.until))
@@ -4335,7 +4337,9 @@ export const stateLabel = (i: { kind?: string; thread?: { thinking?: boolean }; 
           ? t.demoWithQuestion
           : i.answered
             ? t.agentAnswered
-            : t.need[i.need]
+            : i.need === 'question' && i.question?.stuck
+              ? t.agentFailed
+              : t.need[i.need]
       : i.state === 'inPr' && i.contribution
         ? t.review.waits
       : i.state === 'inPr' && !i.pr

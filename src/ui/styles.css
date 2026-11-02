@@ -193,6 +193,10 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .card.s-waiting.underway { --c: var(--approved); box-shadow: var(--shadow); }
 /* its worker takes in the owner's answer to the demo report's question: at work, not the owner's turn */
 .card.s-waiting.answering { --c: var(--working); box-shadow: var(--shadow); }
+/* its worker failed (its session died with an error, or never started): the owner's turn, in red, with a pin "!!" */
+.card.s-waiting.failed { --c: var(--error); box-shadow: 0 0 0 2px var(--error), var(--shadow); }
+.card.s-waiting.failed:hover { box-shadow: 0 0 0 2px var(--error), var(--lift); }
+.badge.failed { --pin: var(--error); }
 /* snoozed until a time: pushed back on greyed stock, the line standing still in pencil grey with a clock, no frame of the owner's turn */
 .card.snoozed { --c: var(--muted); opacity: .72; background-color: color-mix(in srgb, var(--muted) 9%, var(--card)); }
 .card.snoozed, .card.snoozed.s-waiting, .card.snoozed.s-idea.your-turn { box-shadow: var(--shadow); }
@@ -243,6 +247,7 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .z-far .card::before { height: 8px; }
 .z-far .card.task .ttl { font-size: 26px; line-height: 1.1; -webkit-line-clamp: 3; }
 .z-far .card.s-waiting:not(.underway):not(.answering), .z-far .card.s-idea.your-turn { box-shadow: 0 0 0 5px var(--waiting), var(--shadow); }
+.z-far .card.s-waiting.failed { box-shadow: 0 0 0 5px var(--error), var(--shadow); }
 .z-far .card.chip { opacity: .45; }
 
 /* ---------- chrome ---------- */
@@ -2282,6 +2287,7 @@ button.link:hover { text-decoration: underline; }
 .connection-handles.s-waiting.answering { --c: var(--working); }
 .connection-handles:not(.snoozed):not(.underway):not(.answering):is(.s-waiting, .s-idea.your-turn), .connection-handles.dep-highlight { --c: var(--waiting); }
 .connection-handles.asking:not(.dep-highlight) { --c: var(--asking); }
+.connection-handles.s-waiting.failed:not(.snoozed) { --c: var(--error); }
 /* what an arrow does, beside the pointer while the owner draws their first */
 #dephint { position: fixed; z-index: 40; pointer-events: none; transform: translate(16px, 16px); max-width: 300px; margin: 0; padding: 6px 10px; border-radius: 3px;
   background: var(--ink); color: var(--bg); font: 13px/1.35 var(--cond); text-align: left; animation: fade .15s ease-out; }

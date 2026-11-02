@@ -200,6 +200,9 @@ export function openQuestions(i: Pick<Item, 'archivedAt' | 'state' | 'need' | 'q
   return i.state === 'waiting' && (i.need === 'question' || i.need === 'demo') && i.question ? [i.question] : [];
 }
 
+/** A card whose worker failed (its session died with an error, or it could not start at all): it waits for the owner, shown in red. */
+export const agentFailed = (i: Pick<Item, 'state' | 'need' | 'question' | 'answering'>) => i.state === 'waiting' && i.need === 'question' && !!i.question?.stuck && !answering(i);
+
 /**
  * A card needs the owner: it waits (but not while its worker takes in what the owner wrote on its
  * handover, nor once they approved it and its work lands), is a proposal or an accepted one its agent withdrew or

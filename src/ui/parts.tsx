@@ -4,7 +4,7 @@ import { memo, type MouseEvent, type ReactNode, useEffect, useRef, useState } fr
 import { createPortal } from 'react-dom';
 import { type Bounds, dependencyOrder, shapeOf } from '../core/layout';
 import { clip } from '../core/text';
-import { answering, type AppUpdate, type CanvasInfo, type BlockedClone, type ClonePool, demoStage, finished, finishedArchivable, finishingUp, handedOver, type Item, needsYou, openQuestions, pausable, type PendingRestart, halted, type PoolHost, type ProjectHistory, type PullRequest, type SourceUpdate, stoppedArchivable, titleFrom } from '../core/types';
+import { agentFailed, answering, type AppUpdate, type CanvasInfo, type BlockedClone, type ClonePool, demoStage, finished, finishedArchivable, finishingUp, handedOver, type Item, needsYou, openQuestions, pausable, type PendingRestart, halted, type PoolHost, type ProjectHistory, type PullRequest, type SourceUpdate, stoppedArchivable, titleFrom } from '../core/types';
 import { ProjectTalk } from './koordinator';
 import { api } from './api';
 import type { Cam, Sides } from './camera';
@@ -26,10 +26,10 @@ const firstLine = (md: string) =>
 /** What of a workstream planned again has landed: its pull request, else its commit. */
 /** The state whose colour an open card wears: a demo whose worker takes in the owner's answer is at work. */
 /** The colour a card's state gives its unfolded sheet: a snoozed card's is pencil grey, as on the canvas. */
-export const shownState = (i: Item) => (i.snoozed ? 'muted' : i.kind === 'question' ? 'question' : answering(i) ? 'working' : asksYou(i) ? 'asking' : i.state);
+export const shownState = (i: Item) => (i.snoozed ? 'muted' : i.kind === 'question' ? 'question' : answering(i) ? 'working' : agentFailed(i) ? 'error' : asksYou(i) ? 'asking' : i.state);
 
 /** Whether the card's state reads "Question for you": its agent asks and waits for the answer. */
-export const asksYou = (i: Item) => i.state === 'waiting' && i.need === 'question' && !i.answering && !i.answered && !i.paused && !i.pausing && !i.snoozed;
+export const asksYou = (i: Item) => i.state === 'waiting' && i.need === 'question' && !agentFailed(i) && !i.answering && !i.answered && !i.paused && !i.pausing && !i.snoozed;
 
 /** The mark before a state that is a question for the owner. */
 export const QuestionMark = () => (
@@ -161,6 +161,7 @@ export const cardClass = (item: Item, underway?: string) =>
     item.kind === 'question' && 'q-card',
     (item.idea?.thinking || item.proposal?.revising || item.thread?.thinking) && 'thinking',
     item.idea && needsYou(item) && 'your-turn',
+    agentFailed(item) && 'failed',
     underway && 'underway',
     answering(item) && 'answering',
     asksYou(item) && 'asking',
@@ -240,7 +241,7 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
           {since && <span className="since"> · {since}</span>}
         </span>
       </div>
-      {needsYou(item) && !underway && <div className="badge pulse">{item.state === 'proposal' ? '✦' : asksYou(item) ? '?' : '!'}</div>}
+      {needsYou(item) && !underway && <div className={agentFailed(item) ? 'badge pulse failed' : 'badge pulse'}>{item.state === 'proposal' ? '✦' : agentFailed(item) ? '!!' : asksYou(item) ? '?' : '!'}</div>}
     </>
   );
 }
@@ -1427,7 +1428,7 @@ export function Minimap({
             width={b.w * k}
             height={b.h * k}
             rx={item.kind === 'project' ? 1.5 : 0.5}
-            style={{ fill: item.kind === 'project' ? 'var(--container-line)' : `var(--${item.snoozed ? 'muted' : asksYou(item) ? 'asking' : item.state})` }}
+            style={{ fill: item.kind === 'project' ? 'var(--container-line)' : `var(--${item.snoozed ? 'muted' : agentFailed(item) ? 'error' : asksYou(item) ? 'asking' : item.state})` }}
             opacity={item.kind === 'project' || needsYou(item) ? 1 : 0.55}
           />
         ))}
