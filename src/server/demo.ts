@@ -4,7 +4,7 @@
 import { closeSync, existsSync, fstatSync, openSync, readdirSync, readFileSync, readSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
-import { pagePolicy, withHeightReport, withMarkReport } from '../core/frame';
+import { pagePolicy, withHeightReport, withImageViewer, withMarkReport } from '../core/frame';
 import { chapterAt, type DemoKind } from '../core/types';
 import { filesKey, ownOrigin } from './access';
 import { demoFile, esc } from './demo-page';
@@ -257,7 +257,11 @@ function sandboxed(file: FileAt, name: string, req: Request, page: boolean, down
   // without an address to name, the page gets no files beside it rather than a policy that names something else
   const headers = { 'content-type': type, ...sealedHeaders(servedFrom(req)), 'cache-control': 'no-cache', 'access-control-allow-origin': 'null' };
   if (download) return new Response(body, { headers: { ...headers, 'content-disposition': attachment(name) } });
-  if (page) return new Response(withMarkReport(withHeightReport('path' in file ? readFileSync(file.path, 'utf8') : new TextDecoder().decode(file.data))), { headers });
+  if (/\.html?$/i.test(name)) {
+    let html = 'path' in file ? readFileSync(file.path, 'utf8') : new TextDecoder().decode(file.data);
+    if (page) html = withMarkReport(withHeightReport(html));
+    return new Response(withImageViewer(html), { headers });
+  }
   return new Response(body, { headers });
 }
 

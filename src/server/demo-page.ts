@@ -6,7 +6,7 @@
 
 import { type Dirent, existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
-import { pagePolicy, sealed, withHeightReport } from '../core/frame';
+import { pagePolicy, sealed, withHeightReport, withImageViewer } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 
 /** The languages a page speaks: those a demo is narrated in. */
@@ -295,7 +295,7 @@ export function artifactPageHtml(p: ArtifactPageParts): string {
   const frame =
     'src' in p.artifact
       ? `<iframe ${p.disk ? '' : `src="${esc(p.artifact.src)}" `}sandbox="allow-scripts" title="${esc(p.title)}"></iframe>`
-      : `<iframe srcdoc="${esc(sealed(withHeightReport(p.artifact.html)))}" sandbox="allow-scripts" title="${esc(p.title)}"></iframe>`;
+      : `<iframe srcdoc="${esc(sealed(withImageViewer(withHeightReport(p.artifact.html))))}" sandbox="allow-scripts" title="${esc(p.title)}"></iframe>`;
   const links = [
     'src' in p.artifact ? `<a href="?alone" target="_blank" rel="noopener">${w.ownWindow}</a>` : '',
     changeLink(p, w),
@@ -314,14 +314,37 @@ ${credit(language)}</main>
   const alone = new URLSearchParams(location.search).has('alone');
   if (alone) document.body.classList.add('alone');
   let steps = alone ? 30 : 0;
+  ${IMAGE_FRAME_SCRIPT}
   addEventListener('message', (e) => {
+    if (e.source === f.contentWindow && e.data && typeof e.data.obeyaImage === 'boolean') { imageFrame(f, e.data.obeyaImage); return; }
     const h = e.source === f.contentWindow && e.data && e.data.obeyaHeight;
-    if (typeof h === 'number' && h > 0 && steps++ < 30) f.style.height = Math.min(Math.ceil(h), 30000) + 'px';
+    if (typeof h === 'number' && h > 0 && f.dataset.obeyaPreviousStyle === undefined && steps++ < 30) f.style.height = Math.min(Math.ceil(h), 30000) + 'px';
   });
 </script>
 </body></html>
 `;
 }
+
+const IMAGE_FRAME_SCRIPT = `let imageClose, activeImageFrame, imagePlaceholder;
+const closeImage = () => {
+  const f = activeImageFrame;
+  if (!f) return;
+  f.setAttribute('style', f.dataset.obeyaPreviousStyle); delete f.dataset.obeyaPreviousStyle;
+  imagePlaceholder.remove(); imagePlaceholder = null;
+  imageClose.remove(); imageClose = null; activeImageFrame = null;
+  f.contentWindow.postMessage({ obeyaCloseImage: true }, '*');
+};
+const imageFrame = (f, open) => {
+  if (open && !activeImageFrame) {
+    activeImageFrame = f;
+    imagePlaceholder = document.createElement('div'); imagePlaceholder.style.cssText = 'height:' + f.offsetHeight + 'px;width:' + f.offsetWidth + 'px'; f.before(imagePlaceholder);
+    f.dataset.obeyaPreviousStyle = f.getAttribute('style') || ''; f.style.cssText += ';position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483646;border:0';
+    imageClose = document.createElement('button'); imageClose.textContent = '×'; imageClose.setAttribute('aria-label', document.documentElement.lang === 'de' ? 'Schließen' : 'Close');
+    imageClose.style.cssText = 'position:fixed;right:16px;top:12px;z-index:2147483647;color:white;background:#222;border:0;font:36px sans-serif;cursor:pointer'; imageClose.onclick = closeImage; document.body.append(imageClose); imageClose.focus();
+  } else if (!open && f === activeImageFrame) closeImage();
+};
+addEventListener('keydown', (e) => { if (!imageClose) return; if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); closeImage(); } else if (e.key === 'Tab') { e.preventDefault(); imageClose.focus(); } }, true);
+addEventListener('message', (e) => { if (activeImageFrame && e.source === activeImageFrame.contentWindow && e.data && e.data.obeyaImageFocus) imageClose.focus(); });`;
 
 /** What an unlisted page's head says: no index, no referrer (the meta tags hold where a host sends no headers of the site's own, GitHub Pages). */
 const UNLISTED_META = '<meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer">';
@@ -460,10 +483,12 @@ ${credit(language)}</main>
   const shown = alone === null ? null : document.getElementById('v' + (alone || '1'));
   if (shown && shown.querySelector('.artifact')) { document.body.classList.add('alone'); shown.classList.add('alone'); }
   const steps = new Map([...document.querySelectorAll('.artifact iframe')].map((f) => [f, shown && shown.contains(f) ? 30 : 0]));
+  ${IMAGE_FRAME_SCRIPT}
   addEventListener('message', (e) => {
     const f = [...steps.keys()].find((f) => f.contentWindow === e.source);
+    if (f && e.data && typeof e.data.obeyaImage === 'boolean') { imageFrame(f, e.data.obeyaImage); return; }
     const h = f && e.data && e.data.obeyaHeight;
-    if (typeof h === 'number' && h > 0 && steps.get(f) < 30) { steps.set(f, steps.get(f) + 1); f.style.height = Math.min(Math.ceil(h), 30000) + 'px'; }
+    if (typeof h === 'number' && h > 0 && f.dataset.obeyaPreviousStyle === undefined && steps.get(f) < 30) { steps.set(f, steps.get(f) + 1); f.style.height = Math.min(Math.ceil(h), 30000) + 'px'; }
   });
 </script>
 </body></html>

@@ -93,6 +93,7 @@ describe('serveDemoFile for an HTML artifact', () => {
   const html = join(dir, 'logos');
   mkdirSync(join(html, 'img'), { recursive: true });
   writeFileSync(join(html, 'index.html'), '<img src="img/a.svg">');
+  writeFileSync(join(html, 'second.html'), '<img src="img/a.svg">');
   writeFileSync(join(html, 'img', 'a.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
   const base = 'http://127.0.0.1:4417/api/c/c1/cards/12/demo/';
   const ask = (url: string, headers: Record<string, string> = {}) =>
@@ -115,6 +116,9 @@ describe('serveDemoFile for an HTML artifact', () => {
     // an address no policy can name gives no files beside the page
     expect(get('index.html', { 'x-forwarded-proto': 'https; default-src *' }).headers.get('content-security-policy')).toBe(`sandbox allow-scripts; ${pagePolicy()}`);
     expect(await page.text()).toMatch(/^<img src="img\/a.svg"><script>[\s\S]*obeyaHeight[\s\S]*obeyaMarked/);
+    const second = await get('second.html', { 'sec-fetch-dest': 'iframe' }).text();
+    expect(second).toContain('obeyaCloseImage');
+    expect(second).not.toContain('obeyaHeight');
     expect(await get('img/a.svg').text()).toContain('<svg');
     expect(get('../demo.mp4').status).toBe(404);
     expect(get('img').status).toBe(404);
@@ -150,7 +154,7 @@ describe('serveDemoFile for an HTML artifact', () => {
     expect(get('up/secret.txt').status).toBe(404);
     // a link within the directory is one of its files
     expect(await get('logo.svg').text()).toContain('<svg');
-    expect(artifactFiles(html)).toEqual(['img/a.svg', 'index.html', 'logo.svg']);
+    expect(artifactFiles(html)).toEqual(['img/a.svg', 'index.html', 'logo.svg', 'second.html']);
     const video = join(dir, 'linked');
     mkdirSync(video);
     symlinkSync(outside, join(video, 'demo.mp4'));
