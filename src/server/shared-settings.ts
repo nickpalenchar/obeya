@@ -8,6 +8,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseShared, REPO_SETTINGS_FILE } from '../adapters';
+import { ALLOW_FILE, CODEX_RULES_FILE, codexRulesAgain, withAllowed } from './always-allow';
 import { layerSettings, SHARED_FIELDS, type SettingsShared, type SharedSettings } from '../core/types';
 import { BadRequest } from './board';
 import type { Forge } from './forge';
@@ -52,14 +53,16 @@ export async function sharedText(repoPath: string, commit: string, mine: SharedS
   return { text, ...(read.settings ? { before: read.settings } : {}), after: parseShared(text).settings ?? {} };
 }
 
-/** A commit with `text` as `.obeya/settings.json` on top of `parent`, made beside the checkout (its index and files stay as they are). */
-async function commitBeside(repoPath: string, parent: string, text: string, message: string): Promise<string> {
+/** A commit with `text` as `.obeya/settings.json` (or the files `text` names by path) on top of `parent`, made beside the checkout (its index and files stay as they are). */
+async function commitBeside(repoPath: string, parent: string, text: string | Record<string, string>, message: string): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), 'obeya-settings-'));
   try {
     const env = { GIT_INDEX_FILE: join(dir, 'index') };
-    const blob = await must(repoPath, ['hash-object', '-w', '--stdin'], { stdin: text });
     await must(repoPath, ['read-tree', parent], { env });
-    await must(repoPath, ['update-index', '--add', '--cacheinfo', `100644,${blob},${REPO_SETTINGS_FILE}`], { env });
+    for (const [path, content] of Object.entries(typeof text === 'string' ? { [REPO_SETTINGS_FILE]: text } : text)) {
+      const blob = await must(repoPath, ['hash-object', '-w', '--stdin'], { stdin: content });
+      await must(repoPath, ['update-index', '--add', '--cacheinfo', `100644,${blob},${path}`], { env });
+    }
     const tree = await must(repoPath, ['write-tree'], { env });
     const commit = await gitRun(repoPath, ['commit-tree', tree, '-p', parent, '-m', message]);
     if (commit.code !== 0) {
@@ -135,4 +138,33 @@ export async function proposeShared(repoPath: string, mine: SharedSettings, forg
   } catch (e) {
     throw new BadRequest('settingsShare', messageOf(e));
   }
+}
+
+/**
+ * „Immer erlauben“: commits `rules` into the allow list of the repository's `.claude/settings.json`
+ * on its main branch (the local one, where work lands), with `.codex/rules/obeya.rules` made again
+ * where the repository has it made from the list: beside the checkout, which, where it is on that
+ * branch, then has the files as committed. Refused where the checkout has changes of its own in
+ * them. None committed where every rule is in the list already.
+ */
+export async function commitAllowed(repoPath: string, rules: string[]): Promise<{ committed: string; branch: string } | null> {
+  const branch = defaultBranch(repoPath);
+  const parent = (await gitRun(repoPath, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}^{commit}`])).out;
+  if (!parent) throw new BadRequest('settingsShare', `the repository has no local branch ${branch}`);
+  const blob = async (path: string) => {
+    const r = await gitRun(repoPath, ['cat-file', 'blob', `${parent}:${path}`]);
+    return r.code === 0 ? `${r.out}\n` : undefined;
+  };
+  const text = withAllowed(await blob(ALLOW_FILE), rules);
+  if (text === null) return null;
+  const files: Record<string, string> = { [ALLOW_FILE]: text };
+  const codex = codexRulesAgain(await blob(CODEX_RULES_FILE), text);
+  if (codex !== null) files[CODEX_RULES_FILE] = codex;
+  const onIt = (await gitRun(repoPath, ['symbolic-ref', '--quiet', '--short', 'HEAD'])).out === branch;
+  if (onIt && (await gitRun(repoPath, ['status', '--porcelain', '--', ...Object.keys(files)])).out)
+    throw new BadRequest('settingsDirty', `${Object.keys(files).join(', ')} has changes of its own in ${repoPath}; commit or discard them first`);
+  const commit = await commitBeside(repoPath, parent, files, `Allow for agents: ${rules.join(', ')}`);
+  await must(repoPath, ['update-ref', '-m', 'obeya: always allow', `refs/heads/${branch}`, commit, parent]);
+  if (onIt) await must(repoPath, ['checkout', commit, '--', ...Object.keys(files)]);
+  return { committed: commit, branch };
 }

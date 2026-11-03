@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { allowed, bashRules, plainCommand, plainCommands } from './allow-rules';
+import { allowed, bashRules, codexRules, plainCommand, plainCommands } from './allow-rules';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -170,4 +170,13 @@ test('sourcing a file the agent cannot change and nvm use need no rule in front 
     rmSync(dir, { recursive: true, force: true });
     rmSync(temp, { recursive: true, force: true });
   }
+});
+
+test("Claude Code's older `prefix:*` rule covers the prefix alone or with more words, not a longer word", () => {
+  const zsh = (c: string) => ['/bin/zsh', '-lc', c];
+  expect(allowed(['bun run:*'], zsh('bun run'))).toBe(true);
+  expect(allowed(['bun run:*'], zsh('bun run build --watch'))).toBe(true);
+  expect(allowed(['bun run:*'], zsh('bun runner'))).toBe(false);
+  expect(allowed(['bun run:*'], zsh('bun run x; rm -rf y'))).toBe(false);
+  expect(codexRules(JSON.stringify({ permissions: { allow: ['Bash(bun run:*)'] } }), 'test').file).toContain('prefix_rule(pattern=["bun","run"], decision="allow")');
 });

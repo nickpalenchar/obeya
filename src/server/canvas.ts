@@ -2,8 +2,10 @@
 // workers, project agents and PR watcher), the board, the Koordinator and the voice commands.
 
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
-import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs';
-import { join, resolve, sep } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve, sep } from 'node:path';
+import { ALLOW_FILE, CODEX_RULES_FILE, codexRulesAgain, withAllowed } from './always-allow';
+import { commitAllowed } from './shared-settings';
 import { defaultsFor, hasAdapterModule, readingAdapterModule, readingShared, readShared, readSharedFiles, repoValues, type SharedRead, withSettings } from '../adapters';
 import { Ahead } from './ahead';
 import { Answers, answersDir, answerTag } from './answers';
@@ -646,6 +648,44 @@ export class CanvasRuntime {
     return file ? bashRules(file.text) : [];
   };
 
+  /**
+   * „Immer erlauben“: `rules` go into the allow list of the repository `cwd` lies in, committed on
+   * its main branch (`commitAllowed`; in a folder without git, into its files), and count as the
+   * owner's: its Claude Code configuration, and the Codex rules made from the list, trusted before,
+   * stay trusted with them, and Codex workers go by them at once (`allowRules`).
+   */
+  private allowAlways = async (cwd: string, rules: string[]): Promise<{ on?: string } | null> => {
+    const repo = this.repoAt(cwd);
+    if (!repo) throw new Error('the workspace lies in no repository of the canvas');
+    const path = repo.info.path;
+    const folder = !!repo.info.folder;
+    const read = () => commandsOf(folder ? readSharedFiles(path) : readShared(path));
+    const trusted = this.deps.store.trustedCommands(path);
+    const held = heldGroups(read(), trusted);
+    let done: { on?: string };
+    if (folder) {
+      const text = (rel: string) => (existsSync(join(path, rel)) ? readFileSync(join(path, rel), 'utf8') : undefined);
+      const settings = withAllowed(text(ALLOW_FILE), rules);
+      if (settings === null) return null;
+      const codex = codexRulesAgain(text(CODEX_RULES_FILE), settings);
+      mkdirSync(dirname(join(path, ALLOW_FILE)), { recursive: true });
+      writeFileSync(join(path, ALLOW_FILE), settings);
+      if (codex !== null) writeFileSync(join(path, CODEX_RULES_FILE), codex);
+      done = {};
+    } else {
+      const committed = await commitAllowed(path, rules);
+      if (!committed) return null;
+      done = { on: committed.branch };
+    }
+    const now = read();
+    const next = { ...trusted };
+    for (const g of ['claude', 'codex'] as const) if (!held.includes(g) && now[g] !== undefined) next[g] = now[g] as never;
+    this.deps.store.trustCommands(path, next);
+    console.log(`Obeya: the owner allowed ${rules.join(', ')} for the agents of ${path}`);
+    void this.settingsChanged();
+    return done;
+  };
+
   /** The Codex configuration of the repository `cwd` lies in as the owner last trusted it (`withCodexTrust`); none where nothing was. */
   private codexTrusted = (cwd: string) => {
     const repo = this.repoAt(cwd);
@@ -835,6 +875,7 @@ export class CanvasRuntime {
       adapter,
       machineSettings: this.settingsOf(rc),
       allowRules: this.allowRules,
+      allowAlways: this.allowAlways,
       harnesses: () => ['Claude Code', ...(codexConnected() ? ['Codex'] : [])],
       shares: () => !!repo.ref.share,
       repo: ref.id,

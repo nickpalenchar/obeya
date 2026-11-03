@@ -376,8 +376,9 @@ repository).
 
 Obeya runs from a checkout that work lands on, so `live` must mean running (the compiled binary has
 no checkout and never restarts for new code). Without `--dev` the `obeya` process supervises the
-server: when the checkout moves to commits that change code (not only `docs/`, `.md` files, `site/`
-or `.github/`), it restarts the server, running `bun install --frozen-lockfile` first when
+server: when the checkout moves to commits that change code (not only `docs/`, `.md` files, `site/`,
+`.github/`, or the agents' own configuration under `.claude/` and `.codex/`, which an allow rule the
+owner adds with „Immer erlauben“ changes), it restarts the server, running `bun install --frozen-lockfile` first when
 `package.json` or `bun.lock` changed (a failure is logged and the restart goes ahead). Workers resume,
 and an open page reloads when it reconnects to a new server process. What counts as new is measured from
 the commit the server started from, and a restart waits until HEAD has held still for a round (a

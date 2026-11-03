@@ -1306,6 +1306,45 @@ describe('tool calls the settings refuse or want confirmed', () => {
     expect(board.decisionsOn(c.id)).toEqual([]);
   });
 
+  test('„Immer erlauben“ allows the call and adds its rules to the allow list where work lands on main; not offered where it goes through pull requests', async () => {
+    const added: [string, string[]][] = [];
+    let fails = false;
+    const allowAlways = async (cwd: string, rules: string[]) => {
+      if (fails) throw new Error('.claude/settings.json has changes of its own');
+      added.push([cwd, rules]);
+      return { on: 'main' };
+    };
+    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, allowAlways }));
+    const c = manual();
+    await workers.start(c.id);
+    const answer = runtime.last.spec.askOwner!({ name: 'Bash', input: { command: 'bun run lint' }, always: ['Bash(bun run:*)'] }, new AbortController().signal);
+    await flush();
+    const q = board.item(c.id)!.question!;
+    expect(q.options).toEqual(['Erlauben', 'Immer erlauben: bun run *', 'Ablehnen']);
+    expect(q.text).toContain('„Immer erlauben“ nimmt die Regel in die Erlaubnisliste des Repositorys auf');
+    workers.answer(c.id, 'Immer erlauben: bun run *');
+    expect(await answer).toEqual({ allow: true, always: true });
+    await flush();
+    expect(added).toEqual([[board.row(c.id).workspace!, ['Bash(bun run:*)']]]);
+    expect(board.events(c.id).at(-1)!.text).toBe('In die Erlaubnisliste aufgenommen und auf main committet: bun run *');
+    // the list cannot take it: allowed once, and the card says why
+    fails = true;
+    const again = runtime.last.spec.askOwner!({ name: 'Bash', input: { command: 'bun run x' }, always: ['Bash(bun run:*)'] }, new AbortController().signal);
+    await flush();
+    workers.answer(c.id, 'Always allow: bun run *');
+    expect(await again).toEqual({ allow: true, always: true });
+    await flush();
+    expect(board.events(c.id).at(-1)!.text).toBe('Einmal erlaubt; in die Erlaubnisliste ließ sich bun run * nicht aufnehmen: .claude/settings.json has changes of its own');
+    await workers.stop(c.id);
+
+    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'pr', workspaces: 'clones' }, allowAlways }));
+    const pr = manual();
+    await workers.start(pr.id);
+    void runtime.last.spec.askOwner!({ name: 'Bash', input: { command: 'bun run lint' }, always: ['Bash(bun run:*)'] }, new AbortController().signal);
+    await flush();
+    expect(board.item(pr.id)!.question!.options).toEqual(['Erlauben', 'Ablehnen']);
+  });
+
   test("refused, the call's result carries the owner's words; allowed with words, the next message does", async () => {
     const c = manual();
     await workers.start(c.id);

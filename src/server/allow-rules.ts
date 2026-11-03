@@ -22,7 +22,7 @@ export function bashRules(settingsText: string): string[] {
 
 /** The rule's words as a Codex prefix, or null where a `*` stands for part of a word. */
 export function prefixOf(rule: string): string[] | null {
-  const words = rule.trim().split(/\s+/);
+  const words = rule.trim().replace(/:\*$/, ' *').split(/\s+/);
   if (words.at(-1) === '*') words.pop();
   return words.length && !words.some((w) => w.includes('*')) ? words : null;
 }
@@ -207,9 +207,16 @@ export function plainCommand(command: unknown): string | null {
   return all?.length === 1 ? all[0]! : null;
 }
 
-/** Whether `rule` (a `Bash(...)` pattern, `*` for any text, a space before it making the word end there) covers `command`. */
+/**
+ * Whether `rule` (a `Bash(...)` pattern, `*` for any text, a space before it making the word end
+ * there; Claude Code's older `prefix:*`, the prefix alone or followed by more words) covers `command`.
+ */
 function covers(rule: string, command: string): boolean {
   const pattern = atHome(rule.trim());
+  if (pattern.endsWith(':*') && !pattern.slice(0, -2).includes('*')) {
+    const prefix = pattern.slice(0, -2);
+    return command === prefix || command.startsWith(`${prefix} `);
+  }
   const parts = pattern.split('*');
   const star = parts.length > 1;
   if (!star) return pattern === command;

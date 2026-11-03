@@ -314,7 +314,9 @@ checkout is on are as they were (a few `stat`s; the cards' branches do not count
 follows a card's means no reuse); otherwise git reads it again, once more if the refs moved
 meanwhile, and the agent starts once it has, without the server waiting.
 What this machine sets needs no trust: its values standing in for a whole group, and values it took
-over into the file (but not a trusted `keep` that went beside them).
+over into the file (but not a trusted `keep` that went beside them). Nor does an allow rule the owner added with „Immer erlauben“
+(see Refused and confirmed tool calls): Obeya commits it, and a `claude` or `codex` group trusted
+before is trusted as it is afterwards.
 
 Held groups are the problem `untrusted` in „Konfiguration“: what each group does, a diff of the
 lines as last trusted against the main branch's now, and „Diesen Befehlen vertrauen“, which trusts

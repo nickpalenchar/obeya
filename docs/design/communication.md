@@ -225,7 +225,27 @@ a hook, the foreground-wait refusal) stands in the card's conversation as a line
 
 A tool call the settings want confirmed (an `ask` rule, say for database writes) becomes, through the
 SDK's `canUseTool`, the question the card waits on: the whole command, Claude Code's reason, options
-„Erlauben“ and „Ablehnen“. The call waits within the worker's turn; meanwhile the worker counts as
+„Erlauben“ and „Ablehnen“. Where a rule of the allow list could let the call through from now on, a third
+option between them names it („Immer erlauben: bun run *“) and the question says where it goes: it
+allows the call and adds the rule to the repository's allow list, the `permissions.allow` of its
+`.claude/settings.json`, which Claude Code and Obeya's Codex workers both go by (see Native Codex
+workers). For Claude the rule is what Claude Code suggests for its own „don't ask again“, and the
+asking session takes it at once; for Codex it is Codex's proposed command prefix, else the
+program and its subcommand followed by anything (`bun run *`), else the command as it is, per
+program of a plain command (the shell's setup in front needs none), and none where the command is
+not plain or asks for more than network. Obeya commits the rule on the main branch itself, beside
+the checkout as „Für alle ins Repository übernehmen“ does (refused where the checkout has changes
+of its own in the file; the call then runs once and the conversation says why the rule did not go
+in), with `.codex/rules/obeya.rules` made again where the repository has it made from the list;
+in a folder without git it goes into the folder's files. The owner's click is their trust: a
+configuration trusted before stays trusted with the rule (see Trusting a repository's commands),
+so Codex workers go by it at once, and other Claude workers once their branch has the commit. A
+line in the conversation says what was added. Where work lands through pull requests, nothing
+goes onto main by itself, so the option is not offered there. Decided 2026-11-03 (owner): one list
+for everyone, committed at once; rejected: the card's branch (the rule would wait for the landing
+and be lost with a discarded card) and `.claude/settings.local.json` on this machine (Codex has no
+per-project file of its own outside the repository, and the cards' workspaces would not have it,
+so Obeya would have to apply it to both harnesses itself). The call waits within the worker's turn; meanwhile the worker counts as
 waiting for the owner, so a restart need not wait for it. „Erlauben“ runs it (words with it reach the
 worker next); „Ablehnen“, words alone or a note refuse it with the owner's words in the result.
 Concurrent calls are asked one after another. A card that moves on without the answer (its PR merged,

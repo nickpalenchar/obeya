@@ -37,6 +37,7 @@ import { defaultBranchCommit } from './read-tree';
 import type { CardRow } from './db';
 import { type Forge, parsePrUrl, sameRepo } from './forge';
 import { clip, messageOf } from '../core/text';
+import { shownRule } from './always-allow';
 import { holdsNotes } from '../core/queue';
 
 export interface WorkerOptions {
@@ -114,6 +115,12 @@ export interface WorkerOptions {
   demoLanguage?: () => Language;
   /** The `Bash` rules of the allow list the owner confirmed for the repository `cwd` lies in: what a Codex worker's `obeya_run` runs without asking. None when left out. */
   allowRules?: (cwd: string) => string[];
+  /**
+   * „Immer erlauben“: adds `rules` to the allow list of the repository `cwd` lies in, for everyone,
+   * as trusted; settles with the branch it was committed on (`on`; none in a folder without git),
+   * or null where the list had them already. Without it, permission questions offer no such option.
+   */
+  allowAlways?: (cwd: string, rules: string[]) => Promise<{ on?: string } | null>;
   /** The agent harnesses that can work on this machine (Claude Code; Codex where it is signed in), for the allow list a setup card drafts; Claude Code alone when left out. */
   harnesses?: () => string[];
   /** The directory demos go into on this machine (the demo settings'); `~/demos` when left out. */
@@ -403,6 +410,8 @@ interface Live {
 interface AskedPermission {
   name: string;
   input: Record<string, unknown>;
+  /** The rules „Immer erlauben“ adds to the repository's allow list; none where the question has no such option. */
+  always?: string[];
 }
 
 /** A restart that waits for workers to finish their turns: why, and when it goes ahead at the latest. */
@@ -1219,15 +1228,17 @@ export class Workers {
   private answerPermission(card: Item, asked: AskedPermission, text: string, images: string[], spoken: boolean, replyTo?: number) {
     const [first = '', ...rest] = text.split('\n\n');
     const is = (option: (t: Messages) => string) => LANGUAGES.some((l) => option(MESSAGES[l]).toLowerCase() === first.trim().toLowerCase());
-    const allowed = is((t) => t.worker.allow);
+    const always = !!asked.always?.length && is((t) => t.worker.allowAlways(asked.always!.map(shownRule)));
+    const allowed = always || is((t) => t.worker.allow);
     const words = (allowed || is((t) => t.worker.deny) ? rest.join('\n\n') : text).trim();
     this.backToWork(card.id);
     this.o.board.log(card.id, 'answer', 'owner', text, { images, replyTo });
+    if (always) this.allowForGood(card.id, asked.always!);
     if (words) this.o.onOwnerInput?.(card, 'answer', words, { question: card.question?.text ?? '' });
     const said = words ? `${spoken ? ` (${SPOKEN})` : ''}:\n\n${this.words(card.id, words, images, replyTo)}` : images.length ? `, with screenshots:${imageNote(images)}` : '.';
     const live = this.live.get(card.id);
     if (live?.permission) {
-      live.permission(allowed ? { allow: true } : { allow: false, message: `Not run: the owner did not allow it${said}` });
+      live.permission(allowed ? { allow: true, ...(always ? { always: true as const } : {}) } : { allow: false, message: `Not run: the owner did not allow it${said}` });
       // the call's result can carry no words, the next message can
       if (allowed && (words || images.length)) live.session.send(`The owner allowed it${said}`, images);
       else if (images.length) live.session.send('The screenshots of the owner’s answer.', images);
@@ -1244,6 +1255,23 @@ export class Workers {
       images,
       true,
     );
+  }
+
+  /**
+   * „Immer erlauben“: the rules go into the allow list of the card's repository (`allowAlways`),
+   * and the card's conversation says where they went, or why they did not.
+   */
+  private allowForGood(cardId: string, rules: string[]) {
+    const workspace = this.o.board.row(cardId).workspace;
+    const t = this.o.board.t;
+    const shown = rules.map(shownRule);
+    if (!workspace || !this.o.allowAlways) return;
+    void Promise.resolve()
+      .then(() => this.o.allowAlways!(workspace, rules))
+      .then(
+        (done) => this.o.board.log(cardId, 'activity', 'obeya', done ? t.worker.allowedAlways(shown, done.on) : t.worker.alreadyAllowed(shown)),
+        (e: unknown) => this.o.board.log(cardId, 'activity', 'obeya', t.worker.allowAlwaysFailed(shown, messageOf(e))),
+      );
   }
 
   /**
@@ -4735,11 +4763,16 @@ export class Workers {
   }
 
   private askNow(cardId: string, live: Live, request: PermissionRequest, signal: AbortSignal): Promise<PermissionAnswer> {
-    const asked: AskedPermission = { name: request.name, input: request.input };
+    // where work lands through pull requests, nothing goes onto main by itself
+    const always = this.o.allowAlways && (this.folder || this.o.adapter.land === 'main') && request.always?.length ? request.always : undefined;
+    const asked: AskedPermission = { name: request.name, input: request.input, ...(always ? { always } : {}) };
     if (this.granted.get(cardId)?.delete(permissionKey(asked))) return Promise.resolve({ allow: true });
     if (this.live.get(cardId) !== live || signal.aborted) return Promise.resolve({ allow: false, message: 'This session has ended. Stop working and end your turn.' });
     const t = this.o.board.t;
-    const q: Question = { text: t.worker.permission(permissionWhat(request.name, request.input, t), request.reason && clip(request.reason, 600)), options: [t.worker.allow, t.worker.deny] };
+    const q: Question = {
+      text: t.worker.permission(permissionWhat(request.name, request.input, t), request.reason && clip(request.reason, 600), always && t.worker.allowAlwaysWhere),
+      options: [t.worker.allow, ...(always ? [t.worker.allowAlways(always.map(shownRule))] : []), t.worker.deny],
+    };
     this.o.board.log(cardId, 'question', 'worker', formatQuestion(q, this.o.board.language()));
     this.wokenForOwner(cardId);
     this.o.board.work(cardId, { state: 'waiting', need: 'question', detail: JSON.stringify({ question: q, permission: asked }) });

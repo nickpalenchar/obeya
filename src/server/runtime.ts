@@ -5,6 +5,7 @@ import {
   type HookInput,
   type HookJSONOutput,
   type PermissionMode,
+  type PermissionUpdate,
   query,
   type SDKRateLimitInfo,
   type SDKResultMessage,
@@ -17,7 +18,8 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { endCodexHere } from './codex-rpc';
 import { agentIdentity } from './agent-identity';
-import { allowed } from './allow-rules';
+import { allowed, plainCommands } from './allow-rules';
+import { claudeAlwaysRules, codexAlwaysRules, ruleValue } from './always-allow';
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { LOST, remote, sessionFiles, type SshHost } from './hosts';
@@ -87,9 +89,12 @@ export interface PermissionRequest {
   input: Record<string, unknown>;
   /** Why it is asked, when Claude Code says. */
   reason?: string;
+  /** The rules of the allow list that would let the call through from now on, which the owner may add with it („Immer erlauben“); none where no rule could. */
+  always?: string[];
 }
 
-export type PermissionAnswer = { allow: true } | { allow: false; message: string };
+/** The owner's answer; `always`: they added the request's rules to the allow list too, which the session takes from now on. */
+export type PermissionAnswer = { allow: true; always?: true } | { allow: false; message: string };
 
 export interface AgentSpec {
   /** Where the agent works; a workspace on another machine (`ssh://<host>/…`) runs it there (`hosts.ts`). */
@@ -232,13 +237,16 @@ export function withTrustedAllow(runtime: AgentRuntime, rules: (cwd: string) => 
   return {
     start(spec, firstMessage, images) {
       const ask = spec.askOwner;
-      if (!ask || spec.untrusted || spec.claudeHeld || spec.setting?.harness !== 'codex') return runtime.start(spec, firstMessage, images);
+      if (!ask || spec.untrusted || spec.setting?.harness !== 'codex') return runtime.start(spec, firstMessage, images);
       return runtime.start({
         ...spec,
         askOwner: (request, signal) => {
           const { command, kind, grantRoot } = request.input;
-          if (request.name === 'Bash' && (kind == null || kind === 'command') && grantRoot == null && networkOnly(request.input) && allowed(rules(spec.cwd), command, undefined, [spec.cwd, ...(spec.dirs ?? [])])) return Promise.resolve({ allow: true });
-          return ask(request, signal);
+          const plain = request.name === 'Bash' && (kind == null || kind === 'command') && grantRoot == null && networkOnly(request.input);
+          if (plain && !spec.claudeHeld && allowed(rules(spec.cwd), command, undefined, [spec.cwd, ...(spec.dirs ?? [])])) return Promise.resolve({ allow: true });
+          // what a rule could let through from now on, for the owner to allow for good
+          const always = plain ? codexAlwaysRules(plainCommands(command), request.input.proposedExecpolicyAmendment) : [];
+          return ask(always.length ? { ...request, always } : request, signal);
         },
       }, firstMessage, images);
     },
@@ -480,7 +488,7 @@ export const sdkRuntime: AgentRuntime = {
         ...(spec.model ? { model: spec.model } : {}),
         // on another machine only what the session itself needs: that machine has its own PATH and home
         env: there ? { ...spec.env } : { ...cleanEnv(), ...spec.env },
-        ...(spec.askOwner ? { canUseTool: (name: string, input: Record<string, unknown>, o: { signal: AbortSignal; decisionReason?: string }) => askOwner(spec.askOwner!, name, input, o) } : {}),
+        ...(spec.askOwner ? { canUseTool: (name: string, input: Record<string, unknown>, o: { signal: AbortSignal; decisionReason?: string; suggestions?: unknown }) => askOwner(spec.askOwner!, name, input, o) } : {}),
         hooks: {
           PreToolUse: [
             { matcher: 'mcp__obeya__.*', hooks: [async () => ownToolAllowed] },
@@ -720,18 +728,24 @@ export function deniedBy(type: string | undefined): DeniedBy {
 }
 
 /**
- * Passes a tool call that needs a person's permission to the owner. Claude Code's own question tool
- * has nobody to answer it in Obeya; the agent's tools of Obeya do.
+ * Passes a tool call that needs a person's permission to the owner, with the rules of Claude Code's
+ * suggestions to allow it for good; allowed so, the session takes them at once (Obeya writes them
+ * into the repository's list itself, see `commitAllowed`). Claude Code's own question tool has
+ * nobody to answer it in Obeya; the agent's tools of Obeya do.
  */
 export async function askOwner(
   ask: NonNullable<AgentSpec['askOwner']>,
   name: string,
   input: Record<string, unknown>,
-  o: { signal: AbortSignal; decisionReason?: string },
-): Promise<{ behavior: 'allow'; updatedInput: Record<string, unknown> } | { behavior: 'deny'; message: string }> {
+  o: { signal: AbortSignal; decisionReason?: string; suggestions?: unknown },
+): Promise<{ behavior: 'allow'; updatedInput: Record<string, unknown>; updatedPermissions?: PermissionUpdate[] } | { behavior: 'deny'; message: string }> {
   if (name === 'AskUserQuestion') return { behavior: 'deny', message: 'Nobody answers this tool here. Ask the owner with the ask tool of Obeya (mcp__obeya__ask) instead.' };
-  const answer = await ask({ name, input, ...(o.decisionReason?.trim() ? { reason: o.decisionReason.trim() } : {}) }, o.signal);
-  return answer.allow ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: answer.message };
+  const always = claudeAlwaysRules(o.suggestions);
+  const answer = await ask({ name, input, ...(o.decisionReason?.trim() ? { reason: o.decisionReason.trim() } : {}), ...(always.length ? { always } : {}) }, o.signal);
+  if (!answer.allow) return { behavior: 'deny', message: answer.message };
+  return answer.always && always.length
+    ? { behavior: 'allow', updatedInput: input, updatedPermissions: [{ type: 'addRules', rules: always.map(ruleValue), behavior: 'allow', destination: 'session' }] }
+    : { behavior: 'allow', updatedInput: input };
 }
 
 /** A session's failure in the owner's words. */
