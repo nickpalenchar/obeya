@@ -299,7 +299,9 @@ button.pill:hover { box-shadow: var(--lift); }
 .nav-row { position: relative; }
 .nav-row a { display: flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: 2px; text-decoration: none; font-size: 13px; color: var(--muted); }
 .nav-row a svg { flex: none; }
-.nav-row a .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* a long name and its repositories shorten rather than wrap, the repositories first */
+.nav-row a b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-row a .hint { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-row a:hover { background: var(--chip); }
 .nav-canvas.on > .nav-row a { color: var(--ink); }
 .nav-row:has(.canvas-agents) a { padding-right: 46px; }

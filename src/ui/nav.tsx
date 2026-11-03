@@ -128,7 +128,7 @@ function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, 
               <div className="nav-row">
                 <a href={canvasPath(c.id)}>
                   <CanvasIcon />
-                  <b>{c.name}</b>
+                  <b title={c.name}>{c.name}</b>
                   <span className="hint">{c.repos.map((r) => r.name).join(', ')}</span>
                 </a>
                 <CanvasAgents canvas={c} />
