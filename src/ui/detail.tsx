@@ -17,7 +17,7 @@ import { Branch } from './diff';
 import { ResultFiles } from './files';
 import { DiscardChanges, FolderBox, FolderLine, useFolderDiff } from './folder';
 import { landedRef, PauseMark, PlayMark, shownTitle } from './parts';
-import { holdsNotes } from '../core/queue';
+import { asksAhead, holdsNotes } from '../core/queue';
 import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitedOn } from './queue';
 import { dimensions, shownTags } from '../core/page-tags';
 import { Inline, plain } from './markdown';
@@ -1316,7 +1316,7 @@ function Conversation({
   );
   if (!events || !turns) return null;
   if (hideEmpty && !turns.shown.length && !turns.pending.length) return null;
-  const by = idea ? 'explorer' : question ? 'koordinator' : 'worker';
+  const by = idea ? 'explorer' : question || asksAhead(item) ? 'koordinator' : 'worker';
   const agent = t.author[by];
   // no agent's message ever closes a proposal's rounds: its rework shows only what came after the owner's latest words
   const since = proposal && turns.shown.length ? events.indexOf(turns.shown.at(-1)!.e) : -1;
@@ -1442,7 +1442,7 @@ function Conversation({
           held.includes(e.id) ? (
             line({ e, steps: [] })
           ) : (
-            <Message key={e.id} turn={{ e, steps: [] }} unread={t.talk.unread(idea || question || proposal ? 'reply' : holdsNotes(item) ? 'start' : 'step')} onDelete={() => takeBack(item.id, e)} />
+            <Message key={e.id} turn={{ e, steps: [] }} unread={t.talk.unread(idea || question || proposal || asksAhead(item) ? 'reply' : holdsNotes(item) ? 'start' : 'step')} onDelete={() => takeBack(item.id, e)} />
           ),
         )}
         {!working && !past && koordinatorReads(events) && <Reading />}
@@ -2814,7 +2814,7 @@ function TaskTalk({
         field
           ? {
               key: `${item.state}:${item.need ?? ''}:${field}:${key}`,
-              placeholder: { note: item.snoozed && !item.snoozed.waiting && !item.snoozed.start ? t.snooze.compose : item.paused || item.pausing ? t.pause.compose : askable(item) || item.followUp ? t.compose.followUp : agentWorks(item) ? t.compose.working : holdsNotes(item) ? t.compose.queued : t.compose.idle, answer: t.compose.question, feedback: t.compose.review, demo: t.compose.demo, discuss: '', revise: t.compose.revise }[field],
+              placeholder: { note: item.snoozed && !item.snoozed.waiting && !item.snoozed.start ? t.snooze.compose : item.paused || item.pausing ? t.pause.compose : askable(item) || item.followUp ? t.compose.followUp : asksAhead(item) ? t.compose.ahead : agentWorks(item) ? t.compose.working : holdsNotes(item) ? t.compose.queued : t.compose.idle, answer: t.compose.question, feedback: t.compose.review, demo: t.compose.demo, discuss: '', revise: t.compose.revise }[field],
               listener,
               onWords: tell(field),
               onPicked: (text, [picks = []], images, replyTo) => act({ action: 'answer', text, picks, images, ...(replyTo ? { replyTo } : {}) }, { close: false }),

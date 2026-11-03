@@ -5,6 +5,7 @@ import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { defaultsFor, hasAdapterModule, readingAdapterModule, readingShared, readShared, readSharedFiles, repoValues, type SharedRead, withSettings } from '../adapters';
+import { Ahead } from './ahead';
 import { Answers, answersDir, answerTag } from './answers';
 import { demoDirectory, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { demoFile } from './demo-page';
@@ -15,7 +16,7 @@ import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
 import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, type AgentSetting, buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, untouched, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, SNOOZE_LIMIT, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup } from '../core/types';
 import { startAgentSetting } from './settings';
-import { holdsNotes } from '../core/queue';
+import { asksAhead, holdsNotes } from '../core/queue';
 import { BadRequest, Board, pathOfRef, replyNote, type StoredContribution } from './board';
 import type { ChangeRoute } from '../core/types';
 import { type Command, Commander } from './commands';
@@ -212,6 +213,7 @@ export class CanvasRuntime {
   readonly workRetro: WorkRetro;
   readonly commander: Commander;
   readonly explorers: Explorers;
+  private ahead!: Ahead;
   /** Screenshots the owner attaches to what they write. */
   readonly images: Images;
   /** The other files the owner dropped into what they write, whose paths the agents get. */
@@ -350,6 +352,19 @@ export class CanvasRuntime {
       ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
     });
     this.explorers.resumeAll();
+    this.ahead = new Ahead({
+      board,
+      runtime: deps.runtime,
+      preferences: this.preferences,
+      pathFor: (card) => this.repoOf(card).read.path,
+      startBrief: (card) => this.repoOf(card).workers.startBrief(card),
+      imageFiles: this.imageFiles,
+      onOwnerInput: (card, text) => koordinator.learn(card, 'note', text),
+      toObeya: this.toObeya,
+      ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
+    });
+    board.showTurns(() => this.ahead.turnsShown());
+    this.ahead.resumeAll();
     this.answers = new Answers({
       board,
       runtime: deps.runtime,
@@ -772,6 +787,7 @@ export class CanvasRuntime {
       repo: ref.id,
       otherBoards: () => (deps.canvases?.() ?? []).filter((c) => c !== this).map((c) => c.board),
       preferences: this.preferences,
+      takeAsked: (cardId) => this.ahead.takeAsked(cardId),
       onOwnerInput: (card, kind, text, context) => this.koordinator.learn(card, kind, text, context),
       onPrOpened: (cardId) => {
         // a card whose own branch has its work go out as a pull request, where the repository's does not yet
@@ -1141,7 +1157,7 @@ export class CanvasRuntime {
   /** Whichever agent works on the card: a Question card's, an idea's, or its worker. */
   private agentOf(cardId: string) {
     const card = this.board.item(cardId);
-    return card?.kind === 'question' ? this.answers : card?.state === 'idea' ? this.explorers : this.repoOf(cardId).workers;
+    return card?.kind === 'question' ? this.answers : card?.state === 'idea' ? this.explorers : card && asksAhead(card) ? this.ahead : this.repoOf(cardId).workers;
   }
 
   /** The canvas's pause as it is stored and as the switchers show it. */
@@ -1431,7 +1447,10 @@ export class CanvasRuntime {
     if (p.state === 'idea' && state !== 'idea') {
       this.written(cardId);
       void this.koordinator.name(cardId);
-      this.explorers.open(cardId, undefined, this.repoOf(cardId).workers.takeNotes(cardId));
+      // what the owner talked over with the answering agent before goes along with the notes
+      const asked = this.ahead.takeAsked(cardId);
+      const notes = this.repoOf(cardId).workers.takeNotes(cardId);
+      this.explorers.open(cardId, undefined, { text: [asked, notes.text].filter(Boolean).join('\n\n'), images: notes.images });
     }
   }
 
@@ -1661,6 +1680,9 @@ export class CanvasRuntime {
       case 'message':
         // a note to a Question card is a question to its agent
         if (this.board.item(cardId)?.kind === 'question') return this.answers.ask(cardId, text.trim(), images, !!a.spoken, replyTo);
+        // words on a card nobody has started are asked of an agent that answers at once
+        const asking = this.board.item(cardId);
+        if (asking && asksAhead(asking)) return this.ahead.ask(cardId, text.trim(), images, !!a.spoken, replyTo);
         return this.repoOf(cardId).workers.message(cardId, text.trim(), images, !!a.spoken, replyTo, this.spot(a.spot), this.decisions(a.findings));
       case 'release':
         return this.repoOf(cardId).workers.released(cardId, !!a.now);
@@ -1670,6 +1692,7 @@ export class CanvasRuntime {
         if (card?.kind === 'question') return this.answers.unsay(cardId, a.id);
         if (card?.state === 'idea') return this.explorers.unsay(cardId, a.id);
         if (card?.state === 'proposal') return this.revisions.unsay(cardId, a.id);
+        if (card && asksAhead(card)) return this.ahead.unsay(cardId, a.id);
         return this.repoOf(cardId).workers.unsay(cardId, a.id);
       }
       case 'answer':

@@ -55,6 +55,8 @@ export interface WorkerOptions {
   permissionMode?: PermissionMode;
   /** The owner's preferences, added to every worker's instructions. */
   preferences?: () => string;
+  /** The card starts: what the owner talked over with Obeya's answering agent before it (`Ahead.history`), which goes with the task; its agent ends. */
+  takeAsked?: (cardId: string) => string | undefined;
   /** Called with everything the owner tells a worker, so lasting preferences can be learned. */
   onOwnerInput?: (card: Item, kind: 'answer' | 'note' | 'feedback', text: string, context?: InputContext) => void;
   /** On a canvas with several repositories: the one these workers work in. */
@@ -701,7 +703,8 @@ export class Workers {
     const t = this.o.board.t.worker;
     this.o.board.log(card.id, 'state', 'obeya', this.folder ? t.startedInFolder : contribution ? t.reviewStarted(contribution.number, contribution.author) : t.started(branch));
     if (selected) this.o.board.log(card.id, 'state', 'obeya', t.startedWith(selected.harness === 'codex' && selected.codex ? `Codex · ${selected.codex.model} · ${selected.codex.effort}` : `Claude Code · ${selected.model} · ${selected.effort}`));
-    const launch = (headProblem?: string | null) => this.launch(card.id, this.briefing(card, branch, !!row.branch, headProblem), undefined, this.taskImages(card));
+    const asked = this.o.takeAsked?.(card.id);
+    const launch = (headProblem?: string | null) => this.launch(card.id, [this.briefing(card, branch, !!row.branch, headProblem), asked].filter(Boolean).join('\n\n'), undefined, this.taskImages(card));
     return this.whenReady(
       card.id,
       ready,

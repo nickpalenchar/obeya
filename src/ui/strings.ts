@@ -314,6 +314,8 @@ const de = {
     followUp: 'Nachfrage an den Agenten – er antwortet hier',
     /** On a card waiting to start: the note waits for the agent that takes it on. */
     queued: 'Hinweis an den Agenten – er bekommt ihn, sobald er startet',
+    /** On a planned card nobody has worked on: Obeya answers now, and the agent that starts later gets the conversation. */
+    ahead: 'Frage oder Hinweis – Obeya antwortet gleich, der Agent bekommt das Gespräch beim Start',
     question: 'Eigene Antwort',
     review: 'Feedback – der Agent arbeitet daran weiter',
     demo: 'Antwort oder Feedback an den Agenten',
@@ -2309,6 +2311,7 @@ const en: Strings = {
     idle: 'A note to the agent – it gets to work on it',
     followUp: 'A follow-up question to the agent – it answers here',
     queued: 'A note to the agent – it gets it once it starts',
+    ahead: 'A question or note – Obeya answers now, the agent you start later gets the conversation',
     question: 'Your own answer',
     review: 'Feedback – the agent goes on working on it',
     demo: 'Answer or feedback to the agent',

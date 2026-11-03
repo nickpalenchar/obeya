@@ -182,13 +182,24 @@ for its first start (planned, snoozed to start later, or in the queue) is a spli
 right. Only a card the owner has just created stays its text alone until it closes or starts, so the
 task goes into the text, not into a note.
 
-On every planned card, a stopped one too, the field takes notes for the agent that takes the card on
+A planned card nobody has worked on answers at once: what the owner types in its field
+(„Frage oder Hinweis – Obeya antwortet gleich …“) goes to an agent, Obeya's answering agent (the one
+that looks up the Koordinator's questions, with a worker's tools to read and check), which replies in
+the card's conversation while the card stays planned: the owner asks what the task would involve, what
+the code says, or tells it what to keep in mind. It resumes for each message, a new one starting from
+the conversation so far when its session is gone; words that come during its turn wait for the next,
+unread until then, with a bin; it shows at work and can be paused like any agent; its answers pass on
+what asks Obeya for something (`to_obeya`, „starte das“, say). What was talked over is part of the
+task: the worker that starts the card gets the conversation with it, and so does the exploration agent
+of the card made an idea. Spoken words still go to the Koordinator.
+
+A planned card a worker already began on (a stopped one), one waiting for a new repository, a review
+card and a prototype have no such agent: the field takes notes for the worker that takes the card on
 („Hinweis an den Agenten – er bekommt ihn, sobald er startet“). Typed notes stand unread („Noch nicht
 gelesen · sobald der Agent startet“, with a bin to take them back) and go to the worker with the task
 when it starts, by the owner's click, at the time it was snoozed to, or out of the queue; a stopped
 card's worker gets them with the message it resumes with. Planned as a project, the card's worker
 gets them with its task; discussed as an idea, its exploration agent opens the discussion with them.
-Spoken words go to the Koordinator, which passes a note on the same way.
 
 The field is the same on every card and in Obeya's sheet: one frame, the text growing up to 30 % of
 the window (no scrollbar below that), the screenshot button, the microphone (see Voice in) and Send
@@ -372,6 +383,12 @@ image.
   with `reply`. Rejected: their last words before the owner's next message (often "Ich committe
   jetzt") and a small model summarizing each turn (cost on every turn). A note withdraws an open
   question rather than answering it, which would log a remark as a decision.
+- **A planned card nobody worked on is asked, not just noted** (2026-11-03): the notes of the decision
+  below waited unanswered until the start, so the owner could not talk a task over before deciding to
+  start it. Typed words now get an answering agent's reply at once and the card stays planned.
+  Rejected: turning the card into an idea on the first message (it changes what the card is and its
+  buttons, for what is a question); a worker started to answer (it needs a workspace, and starting is
+  the owner's decision).
 - **A planned card takes notes for its agent** (2026-10-30, GitHub issue #24): a scheduled task
   offered only to start it or to snooze it, so what the owner thought of meanwhile (what to watch
   out for) had to go into the task's text or wait for the agent. Rejected: notes only on queued

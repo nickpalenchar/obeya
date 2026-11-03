@@ -37,6 +37,14 @@ const behind = (card: Item, items: Item[]) => [...new Set([...(card.queue && 'be
  */
 export const holdsNotes = (i: Pick<Item, 'state' | 'archivedAt'>) => i.state === 'planned' && !i.archivedAt;
 
+/**
+ * A planned card nobody has worked on yet: what the owner types on it is asked of an agent that
+ * answers at once (`Ahead`) while the card stays planned. A stopped card (it has its branch), one
+ * waiting for a new repository, a review card and a prototype keep the notes for their worker.
+ */
+export const asksAhead = (i: Pick<Item, 'kind' | 'state' | 'archivedAt' | 'branch' | 'prototypeOf' | 'contribution' | 'newRepo' | 'landedPart'>) =>
+  i.kind === 'task' && holdsNotes(i) && !i.branch && !i.prototypeOf && !i.contribution && !i.newRepo && !i.landedPart;
+
 /** A card that has not been started: planned and not in the queue (a stopped one too). */
 export const notStarted = (i: Pick<Item, 'state' | 'queue'>) => i.state === 'planned' && !i.queue;
 

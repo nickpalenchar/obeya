@@ -211,29 +211,20 @@ describe('a canvas with several repositories', () => {
     expect(runtime.sessions.find((s) => s.spec.role === 'worker')!.spec.setting).toEqual(agent);
   });
 
-  test('a note typed while Obeya checks the card waits for its worker and goes with the task', async () => {
+  test('words typed while Obeya checks the card are asked of the answering agent', () => {
     const b = canvas.board.create({ title: 'B', x: 0, y: 0 });
     const p = canvas.board.propose(b.id, { title: 'Folgefehler', task: 'S', reason: 'R' });
     canvas.act(p.id, { action: 'accept' });
     expect(item(p.id).queue).toMatchObject({ checking: true });
-    canvas.tell(p.id, 'Auch die alten Karten nachtragen.', [], false);
-    expect(canvas.board.events(p.id).at(-1)).toMatchObject({ kind: 'hint', author: 'owner', text: 'Auch die alten Karten nachtragen.', unread: true });
-    await settle();
-    expect(item(p.id).state).toBe('working');
-    const worker = runtime.sessions.find((s) => s.spec.role === 'worker')!;
-    expect(worker.inbox[0]).toContain('A note the owner left on the card while no agent worked on it:\n\nAuch die alten Karten nachtragen.');
-    expect(canvas.board.events(p.id).find((e) => e.text === 'Auch die alten Karten nachtragen.')!.unread).toBeUndefined();
+    canvas.tell(p.id, 'Auch die alten Karten nachtragen?', [], false);
+    expect(canvas.board.events(p.id).at(-1)).toMatchObject({ kind: 'talk', author: 'owner', text: 'Auch die alten Karten nachtragen?' });
+    expect(runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'answer_owner'))!.inbox[0]).toContain('Auch die alten Karten nachtragen?');
   });
 
-  test('notes left on a planned card before anyone starts it go with the task to its worker', async () => {
+  test('words an answer is still awaited for when the card starts go to its worker as a note', async () => {
     const card = canvas.board.create({ title: 'Export', x: 0, y: 0, body: 'CSV-Export für Rechnungen.' });
     canvas.tell(card.id, 'Achte auf Umlaute in den Spaltennamen.', [], false);
-    canvas.tell(card.id, 'Und auf das Datumsformat.', [], true);
     expect(item(card.id).state).toBe('planned');
-    expect(canvas.board.events(card.id).filter((e) => e.author === 'owner').map((e) => [e.text, e.unread])).toEqual([
-      ['Achte auf Umlaute in den Spaltennamen.', true],
-      ['Und auf das Datumsformat.', true],
-    ]);
     expect(runtime.sessions.filter((s) => s.spec.role === 'worker')).toHaveLength(0);
     canvas.act(card.id, { action: 'start' });
     await settle();
@@ -242,8 +233,7 @@ describe('a canvas with several repositories', () => {
     expect(worker.inbox).toHaveLength(1);
     expect(worker.inbox[0]).toContain('CSV-Export für Rechnungen.');
     expect(worker.inbox[0]).toContain('A note the owner left on the card while no agent worked on it:\n\nAchte auf Umlaute in den Spaltennamen.');
-    expect(worker.inbox[0]).toMatch(/A note the owner left on the card while no agent worked on it \(.*\):\n\nUnd auf das Datumsformat\./);
-    expect(canvas.board.events(card.id).filter((e) => e.author === 'owner' && e.unread)).toHaveLength(0);
+    expect(runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'answer_owner'))!.closed).toBe(true);
   });
 
   test('notes left on a planned card that becomes an idea open its discussion', () => {

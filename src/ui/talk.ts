@@ -2,7 +2,7 @@
 
 import { LANGUAGES } from '../core/locale';
 import { MESSAGES } from '../core/messages';
-import { holdsNotes } from '../core/queue';
+import { asksAhead, holdsNotes } from '../core/queue';
 import { answering, askable, type CardEvent, type Demo, finishingUp, type Item, needsYou, openQuestions, ownWords, pausableNow, type Question, resumable, started, type Talk as Exchange } from '../core/types';
 import { readAnswer } from './answer';
 import type { Field } from './api';
@@ -246,7 +246,7 @@ export function talkTurns(all: CardEvent[], opts: { open?: Question[]; over?: bo
  */
 export function cardTalk(item: Item, events: CardEvent[], past = false): Talk {
   const { working, paused, open } = talkState(item, past);
-  return talkTurns(events, { open, over: !working && !paused, paused, working, answers: item.kind === 'question' });
+  return talkTurns(events, { open, over: !working && !paused, paused, working, answers: item.kind === 'question' || asksAhead(item) });
 }
 
 /**

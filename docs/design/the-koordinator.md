@@ -45,7 +45,7 @@ sees them in their order in the queue, keeps that order unless a dependency or a
 asks for another, and says which start now and which wait for which, so the first in the queue
 does not start blind to one after it that it should build on or would collide with; a card alone
 starts at once where nothing runs. „Trotzdem starten“ starts it at the owner's own risk. While it waits
-it keeps its full card and takes notes for its worker (see Card layout); spoken words there go to
+it keeps its full card and its conversation, where Obeya answers what the owner asks (see Card layout); spoken words there go to
 the Koordinator.
 
 A workstream started on its own also waits for the workstreams of its project it builds on (code, an
