@@ -39,7 +39,8 @@ describe('artifactCopy', () => {
   test('gives its other pages the same policy, which it may open in its frame', async () => {
     const { copy } = await copyOf({ 'index.html': '<a href="more/second.html">more</a>', 'more/second.html': '<script>fetch("https://elsewhere.example/")</script>' });
     expect(copy.get('more/second.html')).toStartWith(`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self' https://demos.example.com data: blob:;`);
-    expect(copy.get('more/second.html')).toEndWith('<script>fetch("https://elsewhere.example/")</script>');
+    expect(copy.get('more/second.html')).toContain('<script>fetch("https://elsewhere.example/")</script>');
+    expect(copy.get('more/second.html')).toContain('obeyaCloseImage');
     expect(copy.get('more/second.html')).not.toContain('obeyaHeight');
   });
 
@@ -162,7 +163,7 @@ describe('artifactCopy', () => {
     // a link navigates the frame, which carries the login's cookie
     expect(index).toContain('<a href="bg.png">full size</a>');
     // another page names its files from where it sits
-    expect(copy.get('more/second.html')).toEndWith(`<img src="${png}"><img src="data:image/png;base64,bW9yZQ==">`);
+    expect(copy.get('more/second.html')).toContain(`<img src="${png}"><img src="data:image/png;base64,bW9yZQ==">`);
     expect(copy.has('css/site.css')).toBe(false);
   });
 
@@ -189,7 +190,7 @@ describe('artifactCopy', () => {
       'away.html': '<base href="https://elsewhere.example/"><img src="logo.png">',
     });
     expect(copy.get('index.html')).toContain(`<img src="data:image/png;base64,${Buffer.from('assets').toString('base64')}">`);
-    expect(copy.get('away.html')).toEndWith('<img src="logo.png">');
+    expect(copy.get('away.html')).toContain('<img src="logo.png">');
   });
 
   test('stylesheets that import each other many times over stop growing the page', async () => {

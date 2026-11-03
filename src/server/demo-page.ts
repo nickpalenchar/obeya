@@ -6,7 +6,7 @@
 
 import { type Dirent, existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
-import { pagePolicy, sealed, withHeightReport } from '../core/frame';
+import { pagePolicy, sealed, withHeightReport, withImageViewer } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 
 /** The languages a page speaks: those a demo is narrated in. */
@@ -295,7 +295,7 @@ export function artifactPageHtml(p: ArtifactPageParts): string {
   const frame =
     'src' in p.artifact
       ? `<iframe ${p.disk ? '' : `src="${esc(p.artifact.src)}" `}sandbox="allow-scripts" title="${esc(p.title)}"></iframe>`
-      : `<iframe srcdoc="${esc(sealed(withHeightReport(p.artifact.html)))}" sandbox="allow-scripts" title="${esc(p.title)}"></iframe>`;
+      : `<iframe srcdoc="${esc(sealed(withImageViewer(withHeightReport(p.artifact.html))))}" sandbox="allow-scripts" title="${esc(p.title)}"></iframe>`;
   const links = [
     'src' in p.artifact ? `<a href="?alone" target="_blank" rel="noopener">${w.ownWindow}</a>` : '',
     changeLink(p, w),
@@ -325,18 +325,26 @@ ${credit(language)}</main>
 `;
 }
 
-const IMAGE_FRAME_SCRIPT = `let imageClose;
+const IMAGE_FRAME_SCRIPT = `let imageClose, activeImageFrame, imagePlaceholder;
+const closeImage = () => {
+  const f = activeImageFrame;
+  if (!f) return;
+  f.setAttribute('style', f.dataset.obeyaPreviousStyle); delete f.dataset.obeyaPreviousStyle;
+  imagePlaceholder.remove(); imagePlaceholder = null;
+  imageClose.remove(); imageClose = null; activeImageFrame = null;
+  f.contentWindow.postMessage({ obeyaCloseImage: true }, '*');
+};
 const imageFrame = (f, open) => {
-  const close = () => {
-    if (f.dataset.obeyaPreviousStyle !== undefined) { f.setAttribute('style', f.dataset.obeyaPreviousStyle); delete f.dataset.obeyaPreviousStyle; f.contentWindow.postMessage({ obeyaCloseImage: true }, '*'); }
-    if (imageClose) imageClose.remove(); imageClose = null;
-  };
-  if (open && !imageClose) {
+  if (open && !activeImageFrame) {
+    activeImageFrame = f;
+    imagePlaceholder = document.createElement('div'); imagePlaceholder.style.cssText = 'height:' + f.offsetHeight + 'px;width:' + f.offsetWidth + 'px'; f.before(imagePlaceholder);
     f.dataset.obeyaPreviousStyle = f.getAttribute('style') || ''; f.style.cssText += ';position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483646;border:0';
     imageClose = document.createElement('button'); imageClose.textContent = '×'; imageClose.setAttribute('aria-label', document.documentElement.lang === 'de' ? 'Schließen' : 'Close');
-    imageClose.style.cssText = 'position:fixed;right:16px;top:12px;z-index:2147483647;color:white;background:#222;border:0;font:36px sans-serif;cursor:pointer'; imageClose.onclick = close; document.body.append(imageClose);
-  } else if (!open) close();
-};`;
+    imageClose.style.cssText = 'position:fixed;right:16px;top:12px;z-index:2147483647;color:white;background:#222;border:0;font:36px sans-serif;cursor:pointer'; imageClose.onclick = closeImage; document.body.append(imageClose); imageClose.focus();
+  } else if (!open && f === activeImageFrame) closeImage();
+};
+addEventListener('keydown', (e) => { if (!imageClose) return; if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); closeImage(); } else if (e.key === 'Tab') { e.preventDefault(); imageClose.focus(); } }, true);
+addEventListener('message', (e) => { if (activeImageFrame && e.source === activeImageFrame.contentWindow && e.data && e.data.obeyaImageFocus) imageClose.focus(); });`;
 
 /** What an unlisted page's head says: no index, no referrer (the meta tags hold where a host sends no headers of the site's own, GitHub Pages). */
 const UNLISTED_META = '<meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer">';

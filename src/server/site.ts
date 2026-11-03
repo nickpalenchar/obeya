@@ -55,7 +55,7 @@ import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, credit, day, demoFile, demoPageHtml, esc, OBEYA_URL, ON_DISK, PAGE_STYLE, type PageCommit, paragraphs, PAGE_WORDS, type PageLanguage, type StackedDemo, stackedPageHtml, themeStyle } from './demo-page';
 import type { Theme } from './theme';
 import { artifactCopy } from './artifact-copy';
-import { pagePolicy, sealed, withHeightReport } from '../core/frame';
+import { pagePolicy, sealed, withHeightReport, withImageViewer } from '../core/frame';
 import { DEMO_FILES, OWN_CONNECTIONS } from './demo';
 import { BUN_ENV } from './resources';
 import { spawnOutput } from './spawn';
@@ -750,7 +750,7 @@ export function pagesHash(): { video: string; html: string; stacked: string } {
   const commit = { url: 'https://github.com/o/r/commit/b' };
   const commits = { url: 'https://github.com/o/r/compare/a...b', several: true as const };
   const video = hash(languages.flatMap((language) => [pageHtml(site, { ...sample, language }, () => true), pageHtml(site, { ...sample, language, pr: null, commit }, () => true)]));
-  const html = hash(languages.map((language) => pageHtml(site, { ...sample, kind: 'html', chapters: [], language }, () => false) + sealed(withHeightReport('<body></body>'), new URL(site.url).origin)));
+  const html = hash(languages.map((language) => pageHtml(site, { ...sample, kind: 'html', chapters: [], language }, () => false) + sealed(withImageViewer(withHeightReport('<body></body>')), new URL(site.url).origin)));
   // a page with several versions: a video, then an artifact and a video as addenda
   const more: MoreMeta[] = [
     { kind: 'html', title: 'Second', text: 'A detail.', chapters: [], dir: '2', handed: at, at, source: '' },

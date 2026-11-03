@@ -20,7 +20,7 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { parse } from '@babel/parser';
-import { sealed, withHeightReport } from '../core/frame';
+import { sealed, withHeightReport, withImageViewer } from '../core/frame';
 import { demoFile } from './demo-page';
 
 /** What a page names in its markup or its styles, which the copy inlines there, so it stays out of the table of files to fetch. */
@@ -42,14 +42,14 @@ export async function artifactCopy(dir: string, files: string[], own: string): P
   const copy = new Map<string, string>();
   for (const f of files) if (f !== 'index.html' && /\.html?$/i.test(f)) {
     const page = read(dir, f);
-    if (page) copy.set(f, sealed(withData(page.toString('utf8'), dir, dirname(f)), own));
+    if (page) copy.set(f, sealed(withImageViewer(withData(page.toString('utf8'), dir, dirname(f))), own));
   }
   const embedded = files.filter((f) => f !== 'index.html' && !LOADED.test(f));
   const index = read(dir, 'index.html');
   if (!index) throw new Error(`${join(dir, 'index.html')} is no file of the artifact`);
   let html = withData(await withModules(index.toString('utf8'), dir), dir, '.');
   if (embedded.length) html = withFiles(html, dir, embedded);
-  copy.set('index.html', sealed(withHeightReport(html), own));
+  copy.set('index.html', sealed(withImageViewer(withHeightReport(html)), own));
   return copy;
 }
 

@@ -436,7 +436,7 @@ as it is). An idea's mock has no response of its own to carry these headers, so 
 loads an empty page Obeya serves with them and writes the mock into it; the same CSP leads the mock
 as a meta tag, ahead of its own HTML, so nothing in the mock can push it out of the head.
 
-Images in an artifact can be enlarged by clicking or using the keyboard; Escape or the close button returns to the page. Images that are links or buttons keep their own action. The same viewer works on shared artifact pages.
+Images on every page of an artifact can be enlarged by clicking or using the keyboard; Escape or the close button returns to the same reading position and image. Images that are links or buttons keep their own action. The same viewer works on shared artifact pages, where one artifact cannot close another artifact’s viewer.
 
 The artifact's `index.html` reports its height as a shared artifact's page does (see A shared
 artifact), so the frame grows to the page (up to 30,000 px) without a scrollbar of its own and only the
