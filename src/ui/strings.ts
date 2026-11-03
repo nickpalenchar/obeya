@@ -26,6 +26,7 @@ function cloneGroups(leaving: LeavingClone[]): { host?: string; numbers?: number
 }
 
 const de = {
+  extensionActions: 'Weitere Aktionen',
   kind: { task: 'Aufgabe', question: 'Frage', project: 'Projekt', workstream: 'Workstream', idea: 'Idee', prototype: 'Prototyp', becomesProject: 'Idee → Projekt', taskBecomesProject: 'Aufgabe → Projekt' },
   state: {
     idea: 'Idee',
@@ -2090,6 +2091,7 @@ const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDat
 type Strings = typeof de;
 
 const en: Strings = {
+  extensionActions: 'More actions',
   kind: { task: 'Task', question: 'Question', project: 'Project', workstream: 'Workstream', idea: 'Idea', prototype: 'Prototype', becomesProject: 'Idea → Project', taskBecomesProject: 'Task → Project' },
   state: {
     idea: 'Idea',
@@ -4021,12 +4023,17 @@ const en: Strings = {
   empty: { none: 'No tasks yet.', speak: 'Hold Space and say what Obeya should build.', where: 'The card appears where the pointer is when you let go.', click: 'Or double-click on the canvas to create one yourself.' },
 };
 
-const tables: Record<Language, Strings> = {
-  de: Object.assign(de, ...extensions.map((e) => e.strings?.de ?? {})),
-  en: Object.assign(en, ...extensions.map((e) => e.strings?.en ?? {})),
-};
+function withExtensionStrings(core: Strings, language: Language): Strings {
+  const extra: Record<string, unknown> = {};
+  for (const extension of extensions) for (const [key, value] of Object.entries(extension.strings?.[language] ?? {})) {
+    if (key in core || key in extra) throw new Error(`duplicate ${language} string: ${key}`);
+    extra[key] = value;
+  }
+  return Object.keys(extra).length ? Object.assign({}, core, extra) : core;
+}
+const tables: Record<Language, Strings> = { de: withExtensionStrings(de, 'de'), en: withExtensionStrings(en, 'en') };
 /** The strings in effect. */
-export let t: Strings = de;
+export let t: Strings = tables.de;
 /** The locale dates and numbers are written in. */
 let locale = 'de-DE';
 

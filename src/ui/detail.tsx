@@ -460,8 +460,8 @@ export function Detail(p: Props) {
         {archivedOn(item)}
       </div>
       {where}
-      {extensions.map((e, i) => e.slots?.detail && <Fragment key={i}>{e.slots.detail(item)}</Fragment>)}
-      {extensions.some((e) => e.slots?.cardActions) && <div className="actions">{extensions.map((e, i) => e.slots?.cardActions && <Fragment key={i}>{e.slots.cardActions(item)}</Fragment>)}</div>}
+      {extensions.map((e, i) => { const Slot = e.slots?.detail; return Slot ? <Slot key={i} item={item} /> : null; })}
+      {extensions.some((e) => e.slots?.cardActions) && <details className="extension-actions"><summary className="btn">{t.extensionActions}</summary><div className="actions">{extensions.map((e, i) => { const Slot = e.slots?.cardActions; return Slot ? <Slot key={i} item={item} /> : null; })}</div></details>}
 
       <SupersededBox item={item} all={all} act={act} onDelete={p.onDelete} />
       <RepoDownBox item={item} />

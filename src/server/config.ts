@@ -1,3 +1,4 @@
+import { extensions } from '../extensions';
 // Obeya's configuration: the canvases it serves, saved in `canvases.json` under its home. The owner
 // reads and edits it in its sheet, the Koordinator on their word. A saved change applies while
 // Obeya runs (`Canvases.apply`, see Live configuration in
@@ -72,7 +73,9 @@ function tidySettings(s: z.infer<typeof settingsShape> | undefined): RepoSetting
   const site = tidySite(s.demo?.site);
   const demo = { ...(site ? { site } : {}), ...(s.demo?.language ? { language: s.demo.language } : {}) };
   const app = tidyApp(s.app);
+  const extra = Object.fromEntries(extensions.flatMap((e) => Object.keys(e.settings ?? {})).filter((k) => Object.hasOwn(s, k)).map((k) => [k, (s as Record<string, unknown>)[k]]));
   const out: RepoSettings = {
+    ...extra,
     ...(s.branch?.trim() ? { branch: s.branch.trim() } : {}),
     ...(s.land ? { land: s.land } : {}),
     ...(s.direct !== undefined ? { direct: s.direct } : {}),
@@ -361,6 +364,11 @@ export class Config {
           for (const f of NESTED_SETTINGS[k]) if (mine?.[f] !== undefined && same(mine[f], theirs?.[f]) && !same(was?.[f], theirs?.[f])) delete mine[f];
         } else if (s[k] !== undefined && same(s[k], after[k]) && !same(before?.[k], after[k])) delete s[k];
       }
+      const mine = s as Record<string, unknown>;
+      const theirs = after as Record<string, unknown>;
+      const was = before as Record<string, unknown> | undefined;
+      for (const key of extensions.flatMap((e) => Object.keys(e.settings ?? {})))
+        if (mine[key] !== undefined && same(mine[key], theirs[key]) && !same(was?.[key], theirs[key])) delete mine[key];
     });
     if (changed) console.log(`Obeya: settings of ${path} now come from its ${REPO_SETTINGS_FILE}; removed from this machine's`);
   }

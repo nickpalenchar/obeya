@@ -1,4 +1,3 @@
-import { Fragment } from 'react';
 import { extensions } from '../extensions';
 // The canvas: camera, drag, unfold-in-place and the plan sheet.
 
@@ -1849,7 +1848,7 @@ function Canvas({
         {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} side={side} onOpen={open} />}
         {/* in the app on a Mac the bar is the window's title bar: it moves the window (app/src/main.rs); beside the pinned navigation, the traffic lights sit in that */}
         <header id="bar" ref={barRef} {...(window.obeyaApp?.platform === 'macos' ? { className: side.left ? 'titlebar beside-nav' : 'titlebar', 'data-tauri-drag-region': '' } : {})}>
-          {extensions.map((e, i) => e.slots?.topBar && <Fragment key={i}>{e.slots.topBar()}</Fragment>)}
+          {extensions.map((e, i) => { const Slot = e.slots?.topBar; return Slot ? <Slot key={i} /> : null; })}
           <Wordmark height={22} />
           <span className="bar-sign">
             <Sign size={24} />

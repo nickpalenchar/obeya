@@ -36,7 +36,7 @@ const demo = z.object({ site: site.optional(), language: z.enum(LANGUAGES).optio
 const app = z.object({ run: z.string().optional(), stop: z.string().optional(), keep: z.string().optional() }).strict();
 
 /** What a repository's settings for this machine may hold (`RepoSettings`): how it works, and its main branch. */
-export const settingsShape = z
+const coreShape = z
   .object({
     branch: z.string().optional(),
     land: z.enum(['main', 'pr']).optional(),
@@ -54,12 +54,20 @@ export const settingsShape = z
   })
   .strict();
 
+/** Extensions own distinct top-level fields; they cannot replace core validation. */
+const extensionFields: Record<string, z.ZodType> = {};
+for (const extension of extensions) for (const [name, field] of Object.entries(extension.settings ?? {})) {
+  if (name in coreShape.shape || name in extensionFields) throw new Error(`duplicate repository setting: ${name}`);
+  extensionFields[name] = field;
+}
+// Preserve the inferred core type while validating and retaining extension fields at runtime.
+export const settingsShape = coreShape.extend(extensionFields).strict() as typeof coreShape;
+
 /**
  * What a repository's `.obeya/settings.json` may hold (`SharedSettings`): the settings for this
  * machine but the main branch, which says where the file is read from.
  */
 export const sharedShape = settingsShape.omit({ branch: true });
-const extensionShape = () => sharedShape.extend(Object.assign({}, ...extensions.map((e) => e.settings ?? {}))).strict();
 
 // the fields each object knows, for a guess at what a misspelt one meant
 const KNOWN: Record<string, string[]> = {
@@ -76,8 +84,7 @@ const KNOWN: Record<string, string[]> = {
  */
 export function checkShared(made: Record<string, unknown>): { settings: SharedSettings; problems: string[] } {
   const { settings: current, gone } = withoutGone(made);
-  const shape = extensionShape();
-  const { kept, problems } = checkFields(shape, current, { ...KNOWN, '': Object.keys(shape.shape) });
+  const { kept, problems } = checkFields(sharedShape, current, KNOWN);
   // the main branch says where the file is read from, so it is set on each machine
   return { settings: kept as SharedSettings, problems: [...gone, ...problems.map((p) => (p.startsWith('branch: ') ? 'branch: the main branch is set on each machine (or detected), not in the repository' : p))] };
 }

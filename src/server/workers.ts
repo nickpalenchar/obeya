@@ -3217,8 +3217,10 @@ export class Workers {
 
   private extensionEvent(type: 'landed' | 'workerStarted', card: string) {
     for (const extension of extensions) {
-      try { extension.event?.({ type, canvas: this.o.board.canvas.id, card }); }
-      catch (error) { console.error('Extension event failed:', error); }
+      try {
+        const result = extension.event?.({ type, canvas: this.o.board.canvas.id, card });
+        if (result) void result.catch((error) => console.error('Extension event failed:', error));
+      } catch (error) { console.error('Extension event failed:', error); }
     }
   }
 
