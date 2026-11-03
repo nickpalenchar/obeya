@@ -76,7 +76,7 @@ import { useLib } from '../../plugin/skills/demo/lib/here.ts';
 import { DEMO_SETTINGS_FILE, expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { DemoSpace } from './demo-space';
 import { qwen3Serve } from '../../plugin/skills/demo/lib/voices.ts';
-import { agentSetting, conversationLanguage, ownerLanguage, usageMeterView } from './settings';
+import { agentSetting, conversationLanguage, feedbackPromptView, ownerLanguage, usageMeterView } from './settings';
 import { loginLink } from './owner';
 import { Stalls } from './stalls';
 import { hideConsoleWindows } from './spawn';
@@ -309,6 +309,7 @@ canvases = new Canvases(
     ...(process.env.OBEYA_PR_POLL ? { prPollMs: Number(process.env.OBEYA_PR_POLL) * 1000 } : {}),
     language: () => ownerLanguage(home),
     conversation: () => conversationLanguage(home),
+    asksFeedback: () => feedbackPromptView(home).on,
     agents: (role) => agentSetting(home, role),
     settings: (path) => config.repoSettings(path),
   },

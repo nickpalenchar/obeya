@@ -35,7 +35,7 @@ import icon512 from '../ui/logo/icon-512.png' with { type: 'file' };
 import { servePdfjs } from './pdfjs';
 import { Tailscale } from './tailscale';
 import { codexModels } from './codex-runtime';
-import { agentsView, languageView, ownerLanguage, saveAgents, saveLanguage, saveTheme, saveUsageMeter, themeView, usageMeterView } from './settings';
+import { agentsView, feedbackPromptView, languageView, ownerLanguage, saveAgents, saveFeedbackPrompt, saveLanguage, saveTheme, saveUsageMeter, themeView, usageMeterView } from './settings';
 import { proposeTags, TagProposals } from './tag-proposal';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
@@ -536,6 +536,15 @@ export function serve(
         PUT: needs(config, async (c, req) => {
           const view = saveUsageMeter(c.home, await req.json());
           usage?.setOn(view.on);
+          return view;
+        }),
+      },
+      // whether approving work asks for feedback on it: every canvas's cards follow at once; the responses given stay
+      '/api/feedback-prompt': {
+        GET: needs(config, (c) => feedbackPromptView(c.home)),
+        PUT: needs(config, async (c, req) => {
+          const view = saveFeedbackPrompt(c.home, await req.json());
+          canvases.all().forEach((x) => x.board.changed());
           return view;
         }),
       },

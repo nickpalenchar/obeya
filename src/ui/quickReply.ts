@@ -25,6 +25,8 @@ export interface QuickReply {
   pending?: string;
   primary?: true;
   title?: string;
+  /** An approval of an agent's work: once it went through, the owner is asked for feedback on it. */
+  rates?: true;
 }
 
 /** Options that fit as buttons on an entry; a longer choice is made on the card. */
@@ -54,10 +56,10 @@ function approval(i: Item, repo: RepoRef | undefined): QuickReply[] {
     const label = c.held ? (c.clash ? t.review.pushMergeAnyway(c.number) : t.review.pushMerge(c.number)) : c.clash ? t.review.mergeAnyway(c.number) : t.review.merge(c.number);
     return [{ label, send: act({ action: 'approve' }), ack: t.review.merged(c.number), held: true, pending: c.held ? t.review.pushingHeld : t.review.merging, primary: true }];
   }
-  if (i.noChange) return [{ label: t.approveNoChange, send: act({ action: 'approve' }), ack: t.approvedNoChange, held: true, primary: true }];
-  if (repo?.folder) return [{ label: t.approve, send: act({ action: 'approve' }), ack: t.folder.approved, held: true, primary: true }];
+  if (i.noChange) return [{ label: t.approveNoChange, send: act({ action: 'approve' }), ack: t.approvedNoChange, held: true, primary: true, rates: true }];
+  if (repo?.folder) return [{ label: t.approve, send: act({ action: 'approve' }), ack: t.folder.approved, held: true, primary: true, rates: true }];
   const pr = (i.lands?.land ?? (repo?.pullRequests ? 'pr' : 'main')) === 'pr';
-  return [{ label: pr ? t.approvePr : t.approve, send: act({ action: 'approve' }), ack: t.approved, held: true, pending: t.approving, primary: true }];
+  return [{ label: pr ? t.approvePr : t.approve, send: act({ action: 'approve' }), ack: t.approved, held: true, pending: t.approving, primary: true, rates: true }];
 }
 
 /** The replies an entry offers, its card in the repository `repo` of its canvas. */
@@ -96,6 +98,8 @@ export interface ReplyUi {
   mark: (id: string, what: string | null) => void;
   showAck: (text: string, undo?: () => unknown, undoMs?: number) => void;
   showWait: (text: string) => void;
+  /** Asks for feedback on the card's approved work (`feedback.tsx`). */
+  rate?: (id: string) => void;
 }
 
 /**
@@ -114,6 +118,7 @@ export function sendReply(canvas: string, i: Item, r: QuickReply, ui: ReplyUi) {
   const go = (keepalive: boolean) => {
     if (r.pending) ui.showWait(`${r.pending.charAt(0).toUpperCase()}${r.pending.slice(1)}`);
     return r.send(i.id, keepalive).then(() => {
+      if (r.rates) ui.rate?.(i.id);
       if (r.pending || !r.held) ui.showAck(r.ack, r.undo && (() => r.undo!(i.id)));
     }, refused);
   };

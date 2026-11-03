@@ -55,6 +55,8 @@ const EMPTY: Draft = { text: '', images: [], uploading: 0, error: '', dictation:
 
 /** The draft of a card's field. */
 export const cardDraft = (id: string) => `card:${id}`;
+/** The draft of the comment on a card's approved work, for its feedback (`feedback.tsx`). */
+export const rateDraft = (id: string) => `rate:${id}`;
 /** The draft of the field in Obeya's sidebar. */
 export const OBEYA_DRAFT = 'obeya';
 /** The draft of the field under Obeya's conversation of a canvas, in the phone view, which shows every canvas. */
@@ -83,8 +85,8 @@ const subscribe = (fn: () => void) => {
 };
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
-/** The drafts that last beyond their field: the cards', the sidebar's (the phone view's per canvas) and the microphone's, not those of a field of its own. */
-const lasting = (key: string) => key.startsWith('card:') || key === OBEYA_DRAFT || key.startsWith(`${OBEYA_DRAFT}:`) || key === MIC_DRAFT || key === WISH_DRAFT;
+/** The drafts that last beyond their field: the cards' (their feedback's comment too), the sidebar's (the phone view's per canvas) and the microphone's, not those of a field of its own. */
+const lasting = (key: string) => key.startsWith('card:') || key.startsWith('rate:') || key === OBEYA_DRAFT || key.startsWith(`${OBEYA_DRAFT}:`) || key === MIC_DRAFT || key === WISH_DRAFT;
 const storeKey = (canvas: string) => `obeya-drafts-${canvas}`;
 const markupsKey = (canvas: string) => `obeya-markups-${canvas}`;
 let kept: { store: Store; canvas: string } | null = null;

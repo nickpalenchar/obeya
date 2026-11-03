@@ -6,7 +6,7 @@ import { languageOf } from '../core/locale';
 import { AGENT_DEFAULTS, type AgentSetting } from '../core/types';
 import { withAgentSetting } from './runtime';
 import { OWNER_SETTINGS_FILE as SETTINGS_FILE, systemLanguage } from '../../plugin/skills/demo/lib/language.ts';
-import { agentSetting, agentsView, conversationLanguage, languageView, ownerLanguage, saveAgents, saveLanguage, saveTheme, saveUsageMeter, themeView, usageMeterView } from './settings';
+import { agentSetting, agentsView, conversationLanguage, languageView, ownerLanguage, saveAgents, saveLanguage, saveTheme, saveUsageMeter, themeView, usageMeterView, feedbackPromptView, saveFeedbackPrompt } from './settings';
 import { FakeRuntime } from './testing';
 
 const homes: string[] = [];
@@ -156,4 +156,15 @@ test('the usage limits in the bar: shown until turned off, which alone stands in
   // anything else in the file shows them
   writeFileSync(join(home, SETTINGS_FILE), JSON.stringify({ usageMeter: 'off' }));
   expect(usageMeterView(home).on).toBe(true);
+});
+
+test('feedback after approval: asked for until turned off, which alone stands in the file', () => {
+  const home = scratchHome();
+  expect(feedbackPromptView(home).on).toBe(true);
+  saveUsageMeter(home, { on: false });
+  expect(saveFeedbackPrompt(home, { on: false }).on).toBe(false);
+  expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8'))).toEqual({ usageMeter: false, feedbackPrompt: false });
+  expect(saveFeedbackPrompt(home, { on: true }).on).toBe(true);
+  expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8'))).toEqual({ usageMeter: false });
+  for (const bad of [{ on: 'no' }, {}, null]) expect(() => saveFeedbackPrompt(home, bad)).toThrow();
 });

@@ -147,6 +147,25 @@ a spinner stands above the microphone, which the answer turns into the confirmat
 landing is refused, into the reason, with the card waiting for review again; a restart that cut the
 landing off gives the card back the same way.
 
+#### Feedback after approval
+
+Once an approval of an agent's work has gone through (the card's button, the one-click approval in
+„Braucht dich“ on the canvas and the phone, work that changed nothing included), a prompt stands
+above the microphone: „Wie gut hat der Agent „…“ erledigt?“ with five stars (Schlecht, Mäßig, In
+Ordnung, Gut, Hervorragend) and „Überspringen“. A star saves the rating at once; then a comment
+field opens, optional, and „Überspringen“ becomes „Fertig“. The prompt stays until answered or
+skipped; another approval asks about its own card instead. Skipping records nothing: the card keeps
+asking. Every approved card (`approved`, `in PR`, `live`, `done`, archived too) whose latest
+handover has no response shows the same stars and comment under its conversation, and once answered
+shows the answer there to change; an unsent comment is a draft of the card's like any other. Saving
+goes its own way: approval and landing never wait for it, and a refused save shows its reason in the
+prompt, the approval standing. A response is about the latest handover (see Models and effort in
+Agents and workspaces); approved again for the same handover (a retried landing), nothing new is
+asked once answered; work handed over anew asks afresh. Review cards of contributors' pull requests
+and prototypes are not asked about. „Feedback nach der Freigabe“ in Konfiguration → Allgemein turns
+the asking off and on for every open page at once; turned off, no card asks or shows a rating, and
+the responses given stay.
+
 ### Live and done
 
 Merged (or landed on `main`) → `live`. The demo stays on the card. The worker hears that its work is
@@ -195,6 +214,12 @@ Every project's sheet holds its conversation with its project agent (see Asking 
 sheet), lists its decisions and links the idea or task its plan doc came from (see Deciding).
 
 ### Decisions
+
+- **Feedback is five stars and an optional comment, asked after the approval and never in its way**
+  (owner, 2026-11-03): five steps give comparisons between models enough range, the comment says
+  why. The rating is kept off the approve button so approving never waits for an opinion. Rejected:
+  thumbs up or down (too coarse to compare), a required rating, a prompt that ends with the
+  confirmation's few seconds (the card keeps asking instead).
 
 - **A proposal is written for the next worker, with its reason and questions apart.** Rejected: one
   first-person text with the questions buried in it, which went to the next worker as if the owner

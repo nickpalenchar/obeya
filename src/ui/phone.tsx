@@ -5,6 +5,7 @@
 // demo, approve buttons), its conversation in the same panel, and Back returns to the list. The microphone is held by touch; Enter breaks the line, only Send sends;
 // what was typed but not sent survives a reload. It holds one WebSocket per canvas.
 
+import { useRatePrompt } from './feedback';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type CanvasInfo, type CanvasSnapshot, type CardPatch, finishedArchivable, type Item, needsYou, openQuestions, unreadAnswers, type Usage, waitingOn } from '../core/types';
 import { api, beforeReload, cardsOn, onNotice, phoneInUse, setCanvas, useCanvas, type Where } from './api';
@@ -377,6 +378,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
 
   // ---------------------------------------------------------------- voice and confirmations
   const { showAck, showWait, fail, line: ackLine } = useAck(true);
+  const ratePrompt = useRatePrompt(useMemo(() => all.map((x) => x.item), [all]));
   // the reply stands in Obeya's conversation, open in front of the owner: no line above the microphone
   const told = useTold(() => {}, (h) => talkRef.current && (h.inCard ? openRef.current === h.inCard : !!snapsRef.current[obeyaRef.current]?.talk.some((x) => x.id === h.talk)));
   const { tellAbout, tellTyped } = tellers(byId, told, fail, () => undefined);
@@ -437,12 +439,18 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   function onDone(d: ActDone, p?: Pending) {
     if (!d.close) return;
     back();
-    if (!p || !d.pending) return showAck(d.ack, d.undo);
+    if (!p || !d.pending) {
+      if (d.rate) ratePrompt.ask(d.rate);
+      return showAck(d.ack, d.undo);
+    }
     const card = p.card;
     setUnderway((u) => [...u, card]);
     showWait(`${d.pending.charAt(0).toUpperCase()}${d.pending.slice(1)}`);
     p.answered.then(
-      () => showAck(d.ack, d.undo),
+      () => {
+        if (d.rate) ratePrompt.ask(d.rate);
+        showAck(d.ack, d.undo);
+      },
       (e) => {
         setUnderway((u) => u.filter((id) => id !== card));
         showAck(t.cardError(p.title, failText(e)));
@@ -485,6 +493,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     <>
       <div id="acks">
         <ToldList told={told.told} open={open ?? undefined} onUndo={told.undo} aside onGone={told.drop} />
+        {ratePrompt.prompt}
         {ackLine}
       </div>
       <PushToTalk
@@ -649,6 +658,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
                 mark: (id, what) => setUnderway((u) => (what === null ? u.filter((x) => x !== id) : [...u.filter((x) => x !== id), id])),
                 showAck,
                 showWait,
+                rate: ratePrompt.ask,
               })
             }
           />

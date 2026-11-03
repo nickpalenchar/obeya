@@ -164,7 +164,7 @@ choice it started with, from the time it is first heard. Heard again (a resume),
 had and only learns the model it resolved to, if that was unknown. What is not known stays unknown (`null`), never taken from
 today's defaults: a model a Claude session never named, the effort of a legacy session resumed on
 defaults. The owner's response on a card's work (`/api/c/<canvas>/cards/<id>/feedback`; when Obeya
-asks for one is the plan doc „Feedback on agent performance“'s) is taken only on approved work, is
+asks for one: see Feedback after approval in Card lifecycle) is taken only on approved work, is
 about one handover and credits
 the configurations of the sessions that ran on the card up to that handover, as they were then: one
 configuration (`single`, credited even with unknown fields), several (`mixed`: none is credited on

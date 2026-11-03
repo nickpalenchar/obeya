@@ -360,7 +360,7 @@ always where nothing hovers (touch). An unsaved draft survives per tab, also a r
 restart. Its sections, listed on the left and shown one at a time (the last one chosen per tab):
 Leinwände, a heading with each canvas indented under it as a section of its own and „+ Leinwand“
 last (see Leinwände), Modelle und Effort, Spracheingabe, Demos, Von anderen Geräten (see Other devices) and Allgemein
-(languages, light or dark, the usage limits in the bar, the server); below them „Einrichtung prüfen“ and „Wunsch oder Fehler
+(languages, light or dark, the usage limits in the bar, feedback after approval, the server); below them „Einrichtung prüfen“ and „Wunsch oder Fehler
 melden“ (see Wishes for Obeya's makers). Each canvas in the list marks its unsaved changes and
 counts its problems in red; the heading counts the problems of no one canvas (none at all, say). Each section names the file it is saved in; settings are rows of label and control, no boxes in
 boxes. What to know about a field sits behind an info icon at its label, shown only while the pointer
@@ -450,7 +450,8 @@ and opens Obeya's conversation (Space for voice does not reach Obeya while the d
 The other sections save on their own, restarting nothing: the demo settings into `demo.json` (see
 The demo settings and voices), the personal demo site below them into `personal-site.json` (see The
 personal site in Sharing demos), languages, theme, models and whether the bar shows the usage limits
-(`usageMeter: false` when not) into `settings.json` in Obeya's home.
+(`usageMeter: false` when not) and whether approving asks for feedback (`feedbackPrompt: false` when
+not) into `settings.json` in Obeya's home.
 
 ### Live configuration
 

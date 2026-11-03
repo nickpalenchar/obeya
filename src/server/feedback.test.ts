@@ -1,11 +1,11 @@
 import { expect, test } from 'bun:test';
 import { generic } from '../adapters/generic';
 import { AGENT_DEFAULTS, type AgentSetting, type WorkConfig } from '../core/types';
-import { BadRequest } from './board';
+import { BadRequest, Board } from './board';
 import { attribute, checkedFeedback, workConfig } from './feedback';
 import { artifact } from './testing';
 import { Workers } from './workers';
-import { board, eachTest, flush, manual, runtime, setWorkers, spaces, store, workers } from './workers-fixture';
+import { board, docs, eachTest, flush, manual, runtime, setWorkers, spaces, store, workers } from './workers-fixture';
 
 eachTest();
 const opus: AgentSetting = { model: 'opus', effort: 'high' };
@@ -155,4 +155,51 @@ test('a session’s configuration: the resolved model over the alias, a Codex mo
   expect(workConfig({ ...codex, codex: { model: 'gpt-x', effort: 'max' } }, undefined)).toEqual({ harness: 'codex', model: 'gpt-x', effort: 'max', requested: 'gpt-x' });
   expect(workConfig(opus, 'claude-sonnet-5-5', true)).toEqual({ harness: 'claude', model: 'claude-sonnet-5-5', effort: null });
   expect(checkedFeedback({ answer: { rating: 0 }, facets: {} })).toEqual({ answer: { rating: 0 } });
+});
+
+test('approved work asks for feedback until answered, and the answer stands on the card through a restart', () => {
+  const card = manual();
+  board.log(card.id, 'review', 'worker', 'Done.');
+  const handover = store.handover(card.id)!.id;
+  // waiting for approval, nothing is asked yet
+  expect(board.item(card.id)!.rate).toBeUndefined();
+  board.work(card.id, { state: 'approved', approved_at: new Date().toISOString() });
+  expect(board.item(card.id)!.rate).toEqual({ handover });
+  // approved again (a retried landing), it is the same prompt; once answered, the card shows the answer
+  board.work(card.id, { state: 'approved', approved_at: new Date().toISOString() });
+  board.giveFeedback(card.id, { answer: { rating: 4, comment: 'Clean.' }, handover });
+  expect(board.item(card.id)!.rate).toEqual({ handover, answer: { rating: 4, comment: 'Clean.' } });
+  // read afresh, as after a restart
+  const again = new Board(store, board.canvas, () => ({ docs, dirs: [] }));
+  expect(again.item(card.id)!.rate).toEqual({ handover, answer: { rating: 4, comment: 'Clean.' } });
+  // work handed over again after more work asks about its new handover
+  board.work(card.id, { state: 'waiting' });
+  board.log(card.id, 'review', 'worker', 'Done again.');
+  board.work(card.id, { state: 'approved' });
+  expect(board.item(card.id)!.rate).toEqual({ handover: store.handover(card.id)!.id });
+});
+
+test('work that changed nothing asks too once done; a prompt left unanswered stays', () => {
+  const card = manual();
+  board.log(card.id, 'review', 'worker', 'Nothing to change.');
+  board.work(card.id, { state: 'done', approved_at: new Date().toISOString() });
+  expect(board.item(card.id)!.rate).toEqual({ handover: store.handover(card.id)!.id });
+  // a card nobody handed work over on asks nothing
+  const bare = manual();
+  board.work(bare.id, { state: 'done' });
+  expect(board.item(bare.id)!.rate).toBeUndefined();
+});
+
+test('turned off, no card asks for feedback and the responses given stay', () => {
+  const card = manual();
+  board.log(card.id, 'review', 'worker', 'Done.');
+  board.work(card.id, { state: 'approved', approved_at: new Date().toISOString() });
+  board.giveFeedback(card.id, { answer: { rating: 5 } });
+  let asks = false;
+  const off = new Board(store, board.canvas, () => ({ docs, dirs: [] }), undefined, undefined, () => 'de', undefined, () => asks);
+  expect(off.item(card.id)!.rate).toBeUndefined();
+  expect(off.feedback(card.id)).toHaveLength(1);
+  asks = true;
+  off.changed();
+  expect(off.item(card.id)!.rate).toMatchObject({ answer: { rating: 5 } });
 });

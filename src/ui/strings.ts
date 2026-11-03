@@ -1870,6 +1870,25 @@ const de = {
     failed: (error: string) => `„git pull“ ging nicht: ${error}`,
   },
   /** The plan's usage limits in the bar (src/ui/usage.tsx), and the setting that shows or hides them. */
+  feedback: {
+    ask: (title: string) => `Wie gut hat der Agent „${title}“ erledigt?`,
+    askCard: 'Wie gut hat der Agent das erledigt?',
+    stars: ['Schlecht', 'Mäßig', 'In Ordnung', 'Gut', 'Hervorragend'],
+    star: (n: number, of: string) => `${n} von 5 Sternen: ${of}`,
+    comment: 'Was ist dir aufgefallen? (optional)',
+    send: 'Kommentar senden',
+    skip: 'Überspringen',
+    skipHint: 'Bewerten kannst du die Arbeit später noch auf der Karte.',
+    done: 'Fertig',
+    change: 'Ändern',
+    quoted: (text: string) => `„${text}“`,
+    thanks: 'Danke, gespeichert.',
+    setting: {
+      title: 'Feedback nach der Freigabe',
+      label: 'Nach jeder Freigabe fragen',
+      hint: 'Nach der Freigabe fragt Obeya, wie gut der Agent gearbeitet hat: 1 bis 5 Sterne und auf Wunsch ein Kommentar, gespeichert mit Harness, Modell und Effort, die die Arbeit gemacht haben. Überspringen hält nichts auf. Ausgeschaltet fragt Obeya nicht mehr; gegebene Antworten bleiben erhalten. Gilt sofort.',
+    },
+  },
   usage: {
     /** The bar's short names of the two groups of limits. */
     groups: { session: 'Sitzung', weekly: 'Woche' } as Record<string, string>,
@@ -3842,6 +3861,25 @@ const en: Strings = {
     local: (checkout: string, files: string) =>
       `\`${checkout}\` has uncommitted changes to files the new commits change: ${files}. Commit them or put them aside with \`git stash\`; then "git pull" here brings in the commits.`,
     failed: (error: string) => `"git pull" failed: ${error}`,
+  },
+  feedback: {
+    ask: (title: string) => `How well did the agent do “${title}”?`,
+    askCard: 'How well did the agent do this?',
+    stars: ['Poor', 'Fair', 'Okay', 'Good', 'Excellent'],
+    star: (n: number, of: string) => `${n} of 5 stars: ${of}`,
+    comment: 'What stood out? (optional)',
+    send: 'Send comment',
+    skip: 'Skip',
+    skipHint: 'You can still rate the work on the card later.',
+    done: 'Done',
+    change: 'Change',
+    quoted: (text: string) => `“${text}”`,
+    thanks: 'Thanks, saved.',
+    setting: {
+      title: 'Feedback after approval',
+      label: 'Ask after each approval',
+      hint: 'After you approve a card, Obeya asks how well the agent did: 1 to 5 stars and an optional comment, saved with the harness, model and effort that did the work. Skipping holds nothing up. Turned off, Obeya asks no more; responses already given are kept. Applies at once.',
+    },
   },
   usage: {
     groups: { session: 'Session', weekly: 'Week' },

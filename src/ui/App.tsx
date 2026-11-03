@@ -1,6 +1,7 @@
 import { clientExtensions as extensions } from '../extensions/client';
 // The canvas: camera, drag, unfold-in-place and the plan sheet.
 
+import { useRatePrompt } from './feedback';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, centre, onCanvas, type Place, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
@@ -526,13 +527,19 @@ function Canvas({
   function onDone(d: ActDone, p?: Pending) {
     if (!d.close) return;
     closeCard({ keepUntitled: true });
-    if (!p || !d.pending) return showAck(d.ack, d.undo);
+    if (!p || !d.pending) {
+      if (d.rate) ratePrompt.ask(d.rate);
+      return showAck(d.ack, d.undo);
+    }
     // the card says it is under way until the snapshot moves it on; a refusal puts it back as it was
     const what = d.pending;
     setUnderway((u) => ({ ...u, [p.card]: what }));
     showWait(`${what.charAt(0).toUpperCase()}${what.slice(1)}`);
     p.answered.then(
-      () => showAck(d.ack, d.undo),
+      () => {
+        if (d.rate) ratePrompt.ask(d.rate);
+        showAck(d.ack, d.undo);
+      },
       (e) => {
         if (!(e instanceof ApiError)) console.error(e);
         setUnderway(({ [p.card]: _, ...rest }) => rest);
@@ -817,6 +824,7 @@ function Canvas({
 
   // ---------------------------------------------------------------- acknowledgement with undo
   const { showAck, showWait, fail, line: ackLine } = useAck();
+  const ratePrompt = useRatePrompt(items);
 
   /** The play button on a card: starts it, or one queued behind others despite the likely conflict. */
   const startCard = useCallback(async (i: Item) => {
@@ -1559,6 +1567,7 @@ function Canvas({
         mark: (id, what) => setUnderway(({ [id]: _, ...rest }) => (what === null ? rest : { ...rest, [id]: what })),
         showAck,
         showWait,
+        rate: ratePrompt.ask,
       }),
   };
   const proposalCount = snapshot.preferences.filter((p) => p.state === 'proposed').length + (snapshot.settingProposals?.length ?? 0);
@@ -2030,6 +2039,7 @@ function Canvas({
         {/* commands on their way and confirmations, stacked above the microphone */}
         <div id="acks">
           <ToldList told={told.told} open={focus?.type === 'card' ? focus.id : undefined} onUndo={told.undo} />
+          {ratePrompt.prompt}
           {ackLine}
         </div>
       </div>

@@ -483,6 +483,11 @@ export interface Item {
   /** Waiting for approval, its branch holds no change (checked at the handover): approving makes the card `done`. */
   noChange?: boolean;
   /**
+   * Approved work its agent did, while Obeya asks for feedback: the handover the owner's response
+   * would be about, and the answer given on it so far (none: not answered yet).
+   */
+  rate?: { handover: number; answer?: FeedbackAnswer };
+  /**
    * Waiting for approval, its branch changes how work lands (`.obeya/settings.json`, checked at the
    * handover): approving lands it as the branch says, not as the repository does until then.
    */
@@ -2485,6 +2490,13 @@ export interface Usage {
 
 /** Whether the bar shows the plan's usage limits (`src/server/settings.ts`); on until the owner turns it off. */
 export interface UsageMeterView {
+  /** The file it is saved in, under Obeya's home. */
+  file: string;
+  on: boolean;
+}
+
+/** Whether approving a card's work asks the owner for feedback on it (`src/server/settings.ts`); on until the owner turns it off. */
+export interface FeedbackPromptView {
   /** The file it is saved in, under Obeya's home. */
   file: string;
   on: boolean;

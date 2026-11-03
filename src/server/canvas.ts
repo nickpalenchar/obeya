@@ -100,6 +100,8 @@ export interface CanvasDeps {
   language?: () => Language;
   /** The owner's conversation language now (`conversationLanguage`): the agents', until the owner's words say otherwise; the interface's when left out. */
   conversation?: () => Language;
+  /** Whether approving work asks the owner for feedback on it now; on when left out (the tests). */
+  asksFeedback?: () => boolean;
   /** How long after the usage limit lifts the agents that wait for it go on; ten seconds when left out. */
   limitMargin?: number;
   /** The model and effort of a group of agents (`agentSetting`), asked whenever one starts; the defaults when left out. */
@@ -287,6 +289,7 @@ export class CanvasRuntime {
       (repo, commit) => !!this.repos.find((r) => r.ref.id === repo)?.read.holds(commit),
       deps.language,
       deps.conversation,
+      deps.asksFeedback,
     );
     const board = this.board;
     if (!stored) deps.store.setSetting(id, 'home_repo', repos[0]!.ref.id);

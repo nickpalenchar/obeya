@@ -1523,6 +1523,19 @@ export class Store {
     return this.feedback({ id: row.id })[0]!;
   }
 
+  /** For each of these cards that handed over work, its latest handover and the owner's answer on it, if one was given. */
+  rated(cardIds: string[]): Map<string, { handover: number; answer?: FeedbackAnswer }> {
+    if (!cardIds.length) return new Map();
+    const rows = this.db
+      .query(
+        `SELECT h.card_id, h.handover, f.answer FROM
+           (SELECT card_id, MAX(id) AS handover FROM events WHERE kind = 'review' AND card_id IN (SELECT value FROM json_each($ids)) GROUP BY card_id) h
+         LEFT JOIN feedback f ON f.card_id = h.card_id AND f.handover = h.handover`,
+      )
+      .all({ ids: JSON.stringify(cardIds) }) as { card_id: string; handover: number; answer: string | null }[];
+    return new Map(rows.map((r) => [r.card_id, { handover: r.handover, ...(r.answer ? { answer: JSON.parse(r.answer) as FeedbackAnswer } : {}) }]));
+  }
+
   /** The owner's responses, the earliest first: all of them, a card's, or one. */
   feedback(of: { cardId?: string; id?: number } = {}): Feedback[] {
     const rows = this.db

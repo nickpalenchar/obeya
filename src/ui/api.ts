@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CardDiff } from '../core/diff';
 import { type Place, placeParam } from '../core/layout';
-import type { AccessView, Pairing, RemoteSetting, CodexModel, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, TagProposalJob, PageTags, NarrationLanguage, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView, Waiting } from '../core/types';
+import type { AccessView, Pairing, RemoteSetting, CodexModel, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, TagProposalJob, PageTags, NarrationLanguage, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView, Waiting, Feedback, FeedbackAnswer, FeedbackPromptView } from '../core/types';
 import type { Wish } from '../core/wish';
 import { noteMessage, watchPageStalls } from './stalls';
 
@@ -170,6 +170,8 @@ export const api = {
   /** Whether the bar shows the plan's usage limits. */
   usageMeter: () => call<UsageMeterView>('GET', '/api/usage-meter'),
   saveUsageMeter: (on: boolean) => call<UsageMeterView>('PUT', '/api/usage-meter', { on }),
+  feedbackPrompt: () => call<FeedbackPromptView>('GET', '/api/feedback-prompt'),
+  saveFeedbackPrompt: (on: boolean) => call<FeedbackPromptView>('PUT', '/api/feedback-prompt', { on }),
   /** The model and effort of each group of agents. */
   agents: () => call<AgentsView>('GET', '/api/agents'),
   codexModels: () => call<CodexModel[]>('GET', '/api/agents/codex-models'),
@@ -294,6 +296,8 @@ export const api = {
     return new File([blob], path.split(/[\\/]/).at(-1)!, { type: blob.type });
   },
   events: (id: string) => call<CardEvent[]>('GET', cardAt(id, '/events')),
+  /** The owner's response on the card's approved work at `handover`; given again, it replaces the answer. */
+  giveFeedback: (id: string, handover: number, answer: FeedbackAnswer) => call<Feedback>('POST', cardAt(id, '/feedback'), { handover, answer }),
   /** The skills the owner can ask the card's agent for by `/name`. */
   skills: (id: string) => call<Skill[]>('GET', cardAt(id, '/skills')),
   /** Whether the app in the card's workspace answers now. */

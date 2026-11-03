@@ -457,6 +457,8 @@ export class Board {
      * in until the owner's words say otherwise; the interface's when left out.
      */
     conversation?: () => Language,
+    /** Whether approving work asks the owner for feedback on it now (`feedbackPromptView`); the tests leave it on. */
+    readonly asksFeedback: () => boolean = () => true,
   ) {
     this.conversation = conversation ?? language;
     store.ensureCanvas(canvas.id, canvas.name);
@@ -748,7 +750,7 @@ export class Board {
     // a workstream's title and its project's come from the plan doc
     const parent = row.parent_id ? this.store.card(row.parent_id) : null;
     const project = parent?.kind === 'project' ? { id: parent.id, title: this.item(parent.id)?.title ?? parent.title ?? parent.plan_ref ?? '', ...(parent.plan_ref ? { file: parent.plan_ref } : {}) } : undefined;
-    return this.store.putFeedback({
+    const saved = this.store.putFeedback({
       cardId,
       canvasId: row.canvas_id,
       handover: handover.id,
@@ -760,6 +762,9 @@ export class Board {
       answer: given.answer,
       ...(given.facets ? { facets: given.facets } : {}),
     });
+    // the card shows the answer on every open page
+    this.changedRows();
+    return saved;
   }
 
   /** The directory and kind of the card's latest demo, or of the `n`th of its earlier ones; it stays with the card after approval. */
@@ -1535,7 +1540,7 @@ export class Board {
     const projects = rows.filter((r) => r.plan_ref);
     const docs = projects.map((r) => JSON.parse(r.plan!) as PlanDoc);
     const kids = this.store.children(projects.map((r) => r.id));
-    const items = this.withPrototypes(toItems([...rows, ...kids], docs, this.home, this.worked, this.themeNow));
+    const items = this.withRate(this.withPrototypes(toItems([...rows, ...kids], docs, this.home, this.worked, this.themeNow)));
     const byId = new Map(items.map((i) => [i.id, i]));
     const kidsOf = Map.groupBy(items.filter((i) => i.parent), (i) => i.parent!);
     return rows.flatMap((r) => {
@@ -1732,6 +1737,7 @@ export class Board {
     });
     items = this.withoutStaleSnoozes(items, rows);
     items = this.withWaitingSince(items);
+    items = this.withRate(items);
     // a card whose repository does not run on the canvas waits for it
     const running = new Set(this.canvas.repos.map((r) => r.id));
     if (items.some((i) => !running.has(i.repo))) items = items.map((i) => (running.has(i.repo) || i.kind === 'question' ? i : { ...i, repoDown: true }));
@@ -1739,6 +1745,22 @@ export class Board {
     if (this.atWork.size) items = items.map((i) => ({ ...i, ...this.agentAt('agentAtWork', `card:${i.id}`) }));
     this.itemsCache = items;
     return items;
+  }
+
+  /**
+   * Approved work an agent did takes the owner's feedback while Obeya asks for it: each such card
+   * names its latest handover and the answer on it so far. A contributor's pull request and a
+   * prototype are not an agent's work to judge here.
+   */
+  private withRate(items: Item[]): Item[] {
+    if (!this.asksFeedback()) return items;
+    const rateable = (i: Item) => i.kind === 'task' && APPROVED.includes(i.state) && !i.contribution && !i.prototypeOf;
+    const rated = this.store.rated(items.filter(rateable).map((i) => i.id));
+    if (!rated.size) return items;
+    return items.map((i) => {
+      const rate = rateable(i) && rated.get(i.id);
+      return rate ? { ...i, rate } : i;
+    });
   }
 
   /** Until when the usage limit holds back what goes by this key (`card:<id>`, `talk:<id>`). */

@@ -1,6 +1,7 @@
 import { clientExtensions as extensions } from '../extensions/client';
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
+import { Rate } from './feedback';
 import { createContext, type CSSProperties, Fragment, type ReactNode, type RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { agentListens, answering, askable, type BackgroundTask, buildableOn, type CardAction, type ChangeRoute, type Contribution, type HeldChanges, chapterAt, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
@@ -49,7 +50,8 @@ import type { AgentSetting } from '../core/types';
  * What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open.
  * With `pending`, the card folds at once, before the server has answered, and says so until it has.
  */
-export type ActDone = { close: true; ack: string; undo?: () => unknown; pending?: string } | { close: false };
+/** `rate`: the card whose approved work the owner is asked for feedback on, once the action went through. */
+export type ActDone = { close: true; ack: string; undo?: () => unknown; pending?: string; rate?: string } | { close: false };
 
 /** An action the server is still at, after its card has folded: the answer confirms it or tells why not. */
 export type Pending = { card: string; title: string; answered: Promise<void> };
@@ -313,18 +315,18 @@ export function Detail(p: Props) {
     <ApproveReview c={item.contribution} act={act} />
   ) : inFolder ? (
     <>
-      <button className="btn primary" title={item.noChange ? undefined : t.folder.approveHint} onClick={() => act({ action: 'approve' }, item.noChange ? { close: true, ack: t.approvedNoChange } : { close: true, ack: t.folder.approved })}>
+      <button className="btn primary" title={item.noChange ? undefined : t.folder.approveHint} onClick={() => act({ action: 'approve' }, item.noChange ? { close: true, ack: t.approvedNoChange, rate: item.id } : { close: true, ack: t.folder.approved, rate: item.id })}>
         {item.noChange ? t.approveNoChange : t.approve}
       </button>
       <DiscardChanges diff={changes.diff} act={act} onDone={changes.reload} />
     </>
   ) : (
     <>
-      <button className="btn primary" onClick={() => act({ action: 'approve' }, item.noChange ? { close: true, ack: t.approvedNoChange } : { close: true, ack: t.approved, pending: t.approving })}>
+      <button className="btn primary" onClick={() => act({ action: 'approve' }, item.noChange ? { close: true, ack: t.approvedNoChange, rate: item.id } : { close: true, ack: t.approved, pending: t.approving, rate: item.id })}>
         {item.noChange ? t.approveNoChange : pr ? t.approvePr : t.approve}
       </button>
       {direct && (
-        <button className="btn" title={t.directHint} onClick={() => act({ action: 'approve', direct: true }, { close: true, ack: t.approvedDirect, pending: t.approvingDirect })}>
+        <button className="btn" title={t.directHint} onClick={() => act({ action: 'approve', direct: true }, { close: true, ack: t.approvedDirect, pending: t.approvingDirect, rate: item.id })}>
           {t.approveDirect}
         </button>
       )}
@@ -653,6 +655,9 @@ export function Detail(p: Props) {
       )}
 
       {error && <p className="p-error">{error}</p>}
+
+      {/* approved work asks how the agent did until answered, and keeps the answer to change */}
+      {item.rate && <Rate item={item} />}
 
       {/* the decisions of a card nobody worked on yet, below what it shows, as on every card */}
       {item.state === 'planned' && !worked && !item.queue && (

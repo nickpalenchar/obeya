@@ -2297,3 +2297,22 @@ button.link:hover { text-decoration: underline; }
 .ph-card .state.doing-now { position: relative; left: 0; padding-bottom: 6px; }
 .ph-card .state .doing { white-space: pre; }
 .ph-card .state.doing-now::after { margin-left: 0; bottom: 0; }
+
+/* feedback on approved work (feedback.tsx): on the card, and above the microphone right after the approval */
+.rate { margin: 18px 0 0; padding: 12px 16px; border-radius: 3px; border: 1px solid var(--line); max-width: 80ch; font-size: 14px; }
+.rate-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
+.rate-q { font-weight: 600; }
+.stars { display: inline-flex; }
+.star { background: none; border: none; padding: 0 3px; font-size: 22px; line-height: 1; cursor: pointer; color: var(--muted); }
+.star.on { color: #e0a400; }
+.star:disabled { cursor: default; }
+.rate-name { color: var(--muted); }
+.rate.prompt .rate-q { flex-basis: 100%; }
+.rate-skip { margin-left: auto; }
+.rate-comment { display: flex; align-items: flex-end; gap: 10px; margin-top: 10px; }
+.rate-comment textarea { flex: 1; min-height: 3.2em; resize: vertical; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 3px; background: var(--card); color: var(--ink); }
+.rate-given { margin: 0; color: var(--muted); font-style: italic; }
+.rate .hint, .rate .p-error { margin: 8px 0 0; }
+.rate-pop { pointer-events: auto; animation: ack-in .25s; }
+.rate.prompt { margin: 0; width: min(560px, calc(100vw - var(--left, 0px) - var(--side, 0px) - 32px)); background: var(--card); box-shadow: var(--lift); border-color: transparent; }
+@media (pointer: coarse) { .star { font-size: 28px; padding: 0 5px; } }

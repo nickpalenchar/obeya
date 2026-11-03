@@ -1,6 +1,6 @@
 // Obeya's own settings, in `settings.json` under its home beside `canvases.json` and `demo.json`:
 // the language of Obeya's interface and the one its agents talk to the owner in, light or dark, the model and effort of each group of
-// agents, how other devices reach Obeya (remote.ts), and whether the bar shows the plan's usage limits (usage.ts). The owner chooses them in the settings sheet;
+// agents, how other devices reach Obeya (remote.ts), whether the bar shows the plan's usage limits (usage.ts), and whether approving work asks for feedback on it. The owner chooses them in the settings sheet;
 // until then the system's language and look apply, the agents run as `AGENT_DEFAULTS` says, and
 // no other device reaches Obeya. Saving restarts nothing: the page loads again in the new
 // language, takes the new look at once, and the server reads the file whenever it needs the
@@ -11,7 +11,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chosenConversationLanguage, chosenLanguage, conversationLanguageIn, OWNER_SETTINGS_FILE as SETTINGS_FILE, ownerLanguageIn, ownerSettingsWritten, systemLanguage } from '../../plugin/skills/demo/lib/language.ts';
 import { type Language, LANGUAGES } from '../core/locale';
-import { AGENT_DEFAULTS, AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentRole, type AgentSetting, type AgentsView, type LanguageView, type RemoteSetting, type Theme, THEMES, type ThemeView, type UsageMeterView } from '../core/types';
+import { AGENT_DEFAULTS, AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentRole, type AgentSetting, type AgentsView, type LanguageView, type RemoteSetting, type Theme, THEMES, type ThemeView, type UsageMeterView, type FeedbackPromptView } from '../core/types';
 import { BadRequest } from './board';
 
 interface Settings {
@@ -27,6 +27,8 @@ interface Settings {
   remote?: RemoteSetting;
   /** `false`: the bar does not show the plan's usage limits; absent, it does. */
   usageMeter?: false;
+  /** `false`: approving a card's work asks for no feedback on it; absent, it does. */
+  feedbackPrompt?: false;
 }
 
 function read(home: string): Settings {
@@ -35,7 +37,7 @@ function read(home: string): Settings {
     const language = LANGUAGES.find((l) => l === o.language);
     const conversationLanguage = LANGUAGES.find((l) => l === o.conversationLanguage);
     const theme = THEMES.find((x) => x === o.theme);
-    return { ...o, language, conversationLanguage, theme, agents: agentsOf(o.agents), remote: remoteOf(o.remote) ?? undefined, usageMeter: o.usageMeter === false ? false : undefined };
+    return { ...o, language, conversationLanguage, theme, agents: agentsOf(o.agents), remote: remoteOf(o.remote) ?? undefined, usageMeter: o.usageMeter === false ? false : undefined, feedbackPrompt: o.feedbackPrompt === false ? false : undefined };
   } catch {
     return {};
   }
@@ -90,8 +92,18 @@ export function saveUsageMeter(home: string, input: unknown): UsageMeterView {
   return usageMeterView(home);
 }
 
+export const feedbackPromptView = (home: string): FeedbackPromptView => ({ file: join(home, SETTINGS_FILE), on: read(home).feedbackPrompt !== false });
+
+/** Saves whether approving work asks for feedback on it (`{ on }`); the responses given stay either way. Other settings in the file stay. */
+export function saveFeedbackPrompt(home: string, input: unknown): FeedbackPromptView {
+  const on = (input as { on?: unknown } | null)?.on;
+  if (typeof on !== 'boolean') throw new BadRequest('invalid', 'on must be true or false');
+  save(home, 'feedbackPrompt', on ? null : false, `feedback ${on ? 'asked for' : 'not asked for'} after approvals,`);
+  return feedbackPromptView(home);
+}
+
 /** Saves one of the owner's choices, or with `null` takes it out; the other settings in the file stay. */
-function save<K extends 'language' | 'conversationLanguage' | 'theme' | 'remote' | 'usageMeter'>(home: string, key: K, value: Settings[K] | null, what: string) {
+function save<K extends 'language' | 'conversationLanguage' | 'theme' | 'remote' | 'usageMeter' | 'feedbackPrompt'>(home: string, key: K, value: Settings[K] | null, what: string) {
   write(home, { ...read(home), [key]: value ?? undefined });
   console.log(`Obeya: ${what} saved to ${join(home, SETTINGS_FILE)}`);
 }
