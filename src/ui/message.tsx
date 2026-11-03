@@ -214,8 +214,13 @@ export function useReportedHeight(frame: RefObject<HTMLIFrameElement | null>, ca
     const on = (e: MessageEvent) => {
       const h = e.source === frame.current?.contentWindow && (e.data as { obeyaHeight?: unknown } | null)?.obeyaHeight;
       const f = frame.current;
+      if (f && e.source === f.contentWindow && typeof e.data?.obeyaImage === 'boolean') {
+        if (e.data.obeyaImage) { f.dataset.obeyaPreviousStyle = f.getAttribute('style') || ''; f.style.cssText += ';position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;border:0'; }
+        else if (f.dataset.obeyaPreviousStyle !== undefined) { f.setAttribute('style', f.dataset.obeyaPreviousStyle); delete f.dataset.obeyaPreviousStyle; }
+        return;
+      }
       // the border is inside the frame's height (border-box): without it the page is a few pixels too high and scrolls
-      if (typeof h === 'number' && h > 0 && f && steps++ < 30) setHeight(Math.min(Math.ceil(h) + f.offsetHeight - f.clientHeight, cap));
+      if (typeof h === 'number' && h > 0 && f && f.dataset.obeyaPreviousStyle === undefined && steps++ < 30) setHeight(Math.min(Math.ceil(h) + f.offsetHeight - f.clientHeight, cap));
     };
     addEventListener('message', on);
     return () => removeEventListener('message', on);
