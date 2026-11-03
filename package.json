@@ -7,6 +7,7 @@
   "scripts": {
     "start": "bun scripts/start.ts",
     "dev": "bun scripts/start.ts --hot",
+    "start:dev:throwaway": "bun scripts/throwaway.ts",
     "build": "bun scripts/build.ts",
     "build:app": "bun scripts/build-app.ts",
     "app": "bun scripts/app.ts",
