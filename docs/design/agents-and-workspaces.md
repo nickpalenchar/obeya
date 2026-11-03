@@ -58,8 +58,9 @@ the allow-list shortcut below (no command runs unasked on that list until the ow
 configuration). Decided 2026-11-02; rejected: refusing it, as before, which stopped Codex workers in
 every repository with a change to `.claude/` not trusted yet, for no protection. A review card, whose
 workspace holds a stranger's code, stays refused for Codex.
-Other roles, setup and the usage meter remain Claude-based; Codex transcript-based work retrospectives
-are not available. An unsupported capability fails visibly, never by substituting Claude.
+Other roles, setup and the usage meter remain Claude-based. A Codex worker's runs feed the
+Arbeitsrückschau like a Claude worker's (its rollout is read, see `the-koordinator.md`). An
+unsupported capability fails visibly, never by substituting Claude.
 
 Codex keeps its native workspace-write sandbox (its workspace and the temporary directories, plus the
 demos directory where it makes the demos it hands over; `OBEYA_CODEX_SANDBOX=danger-full-access` in

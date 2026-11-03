@@ -1,5 +1,5 @@
 // The Arbeitsrückschau: Obeya looks back at how the workers worked, to make future runs cheaper.
-// When a card's work ends, an excerpt of its runs (transcript.ts, no model) goes to a short session
+// When a card's work ends, an excerpt of its runs (Claude's or Codex's, transcript.ts, no model) goes to a short session
 // that notes the friction in it; after WORK_RETRO_RAMP finished cards of a new repository (1, 2 more,
 // 4 more), then every WORK_RETRO_EVERY, or when the
 // owner asks, a session in that repository's checkout reads the notes since the last one and
@@ -23,7 +23,7 @@ export interface WorkRetroOptions {
   runtime: AgentRuntime;
   /** The checkout of a repository of the canvas, by its id. */
   pathFor: (repo: string) => string;
-  /** The transcript file of a session, or null; under the SDK's projects directory by default. */
+  /** The transcript file of a session, or null; under the SDK's projects directory, or among Codex's rollouts, by default. */
   transcript?: (sessionId: string, cwd: string | null) => string | null;
   /** After how many finished cards of a repository the retrospective runs; WORK_RETRO_EVERY by default. */
   every?: number;
@@ -63,8 +63,7 @@ export class WorkRetro {
       return;
     }
     const sessions = [...new Set([...earlierRuns(b.events(cardId)), ...(row.session_id ? [row.session_id] : [])])];
-    // Codex rollouts are not Claude transcript files; do not count an unreadable run as evidence.
-    if (!sessions.length || sessions.some((id) => id.startsWith('codex:'))) return;
+    if (!sessions.length) return;
     const card: Ended = { id: cardId, title: row.title ?? '', repo: row.repo ?? b.home, sessions, workspace: workspace ?? row.workspace };
     const due = this.count(card.repo);
     this.serial(() => this.notes(card));
@@ -121,7 +120,8 @@ export class WorkRetro {
       // a host no longer in the configuration: its runs are not read
       return;
     }
-    const files = await Promise.all(card.sessions.map((s) => (there ? there.host.transcript(s, there.path) : find(s, card.workspace))));
+    // Codex runs on this machine only
+    const files = await Promise.all(card.sessions.map((s) => (there && !s.startsWith('codex:') ? there.host.transcript(s, there.path) : find(s, card.workspace))));
     const runs = files.map(excerptOf).filter((e): e is Excerpt => !!e);
     const text = excerptText(runs);
     if (!text) return;

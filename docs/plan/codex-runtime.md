@@ -58,7 +58,10 @@ Harden the local Codex worker preview and complete its remaining acceptance and 
   lands during a running foreground command, which then continues as a background terminal. Now in
   `docs/design/agents-and-workspaces.md` (Native Codex workers). Still open, and W8's: if Obeya ever
   manages Codex hooks, that is a write into the user's configuration.
-- [ ] **W10:** Transcripts and retrospectives. Portable transcripts and work retrospectives, or continue showing them as unavailable.
+- [x] **W10:** Transcripts and retrospectives. Done (2026-11-03): decided to build it. A Codex worker's run is read from its
+  rollout like a Claude transcript, so its cards feed the work retrospective. Now in
+  `docs/design/the-koordinator.md` (Friction notes). Verified against rollouts of Codex CLI 0.162.0
+  on macOS; the format is Codex's own and may change, in which case a run simply gives no excerpt.
 - [ ] **W11:** Feature parity. SSH, non-Git folder undo, contributor reviews and record/replay, each with its own parity tests
   before removing the current refusal. User/repository skill discovery is separate from bundled
   file-based skills already supplied to Codex.

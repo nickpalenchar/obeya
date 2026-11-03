@@ -1,7 +1,10 @@
 // The excerpt of a worker's run for the Arbeitsrückschau, drawn without a model from the Agent
-// SDK's transcript (`<projects>/<workspace path>/<session id>.jsonl`): where the worker went wrong
-// and corrected itself. The format is the SDK's own and may change: whatever cannot be read is
-// left out, and a transcript that cannot be read at all gives no excerpt rather than an error.
+// SDK's transcript (`<projects>/<workspace path>/<session id>.jsonl`) or Codex's rollout
+// (`<codex home>/sessions/<year>/<month>/<day>/rollout-<time>-<thread id>.jsonl`): where the worker
+// went wrong and corrected itself. Both formats are their harness's own and may change: whatever
+// cannot be read is left out, and a file that cannot be read at all gives no excerpt rather than
+// an error. Codex's calls are read as the Claude tools they match (a command is a Bash call, a
+// file added a Write, a patch an Edit), so one analysis serves both.
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -44,11 +47,50 @@ export function transcriptsDir(): string {
   return join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'projects');
 }
 
+/** The directories holding Codex's rollouts, current and archived. */
+export function rolloutsDirs(): string[] {
+  const home = process.env.CODEX_HOME ?? join(homedir(), '.codex');
+  return [join(home, 'sessions'), join(home, 'archived_sessions')];
+}
+
 /**
- * The transcript file of a session, or null. It is looked for under the working directory it ran
- * in first (`cwd`, as the SDK names its directory), then in every directory, as the naming may change.
+ * The rollout file of a Codex thread, or null: `rollout-<time>-<thread id>.jsonl` under a directory
+ * per day, newest first, as the thread is usually a recent one.
  */
-export function findTranscript(sessionId: string, cwd?: string | null, dir = transcriptsDir()): string | null {
+function findRollout(thread: string, dirs: string[]): string | null {
+  if (!/^[\w-]+$/.test(thread)) return null;
+  const suffix = `-${thread}.jsonl`;
+  const newestFirst = (d: string) => {
+    try {
+      return readdirSync(d).sort().reverse();
+    } catch {
+      return [];
+    }
+  };
+  for (const root of dirs) {
+    for (const y of newestFirst(root)) {
+      for (const m of newestFirst(join(root, y))) {
+        for (const day of newestFirst(join(root, y, m))) {
+          const found = newestFirst(join(root, y, m, day)).find((f) => f.startsWith('rollout-') && f.endsWith(suffix));
+          if (found) return join(root, y, m, day, found);
+        }
+      }
+    }
+    // an archive that is not sorted by day
+    const flat = newestFirst(root).find((f) => f.startsWith('rollout-') && f.endsWith(suffix));
+    if (flat) return join(root, flat);
+  }
+  return null;
+}
+
+/**
+ * The transcript file of a session, or null. A Codex session (`codex:<thread id>`) is looked for among
+ * Codex's rollouts. A Claude session is looked for under the working directory it ran in first (`cwd`,
+ * as the SDK names its directory), then in every directory, as the naming may change.
+ */
+export function findTranscript(sessionId: string, cwd?: string | null, dir?: string): string | null {
+  if (sessionId.startsWith('codex:')) return findRollout(sessionId.slice('codex:'.length), dir ? [dir] : rolloutsDirs());
+  dir ??= transcriptsDir();
   if (!/^[\w-]+$/.test(sessionId)) return null;
   const name = `${sessionId}.jsonl`;
   if (cwd) {
@@ -78,40 +120,91 @@ export function excerptOf(file: string | null): Excerpt | null {
 }
 
 type Entry = { kind: 'text'; text: string } | { kind: 'call'; id: string; tool: string; input: Record<string, unknown> };
+type Result = { failed: boolean; output: string };
+/** A run as read from a file: the agent's words and calls in order, and what came of each call. */
+interface Run {
+  entries: Entry[];
+  results: Map<string, Result>;
+  recognised: boolean;
+}
 
-/**
- * The excerpt of a transcript's text (JSON lines); null when no line reads as the run of an agent.
- * Subagents' lines are left out: their own transcript is not the worker's.
- */
-export function excerpt(jsonl: string): Excerpt | null {
-  const entries: Entry[] = [];
-  const results = new Map<string, { failed: boolean; output: string }>();
-  let recognised = false;
-  for (const line of jsonl.split('\n')) {
-    if (!line.trim()) continue;
-    let d: unknown;
-    try {
-      d = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (!isObject(d) || d.isSidechain === true || !isObject(d.message)) continue;
+/** The Agent SDK's transcript: messages with `tool_use` blocks, answered by `tool_result` blocks. Subagents' lines are left out. */
+function claudeRun(records: Record<string, unknown>[]): Run {
+  const run: Run = { entries: [], results: new Map(), recognised: false };
+  for (const d of records) {
+    if (d.isSidechain === true || !isObject(d.message)) continue;
     const content = d.message.content;
     if (!Array.isArray(content)) continue;
     for (const block of content) {
       if (!isObject(block)) continue;
       if (d.type === 'assistant' && block.type === 'text' && typeof block.text === 'string' && block.text.trim()) {
-        recognised = true;
-        entries.push({ kind: 'text', text: block.text.trim() });
+        run.recognised = true;
+        run.entries.push({ kind: 'text', text: block.text.trim() });
       } else if (d.type === 'assistant' && block.type === 'tool_use' && typeof block.id === 'string' && typeof block.name === 'string') {
-        recognised = true;
-        entries.push({ kind: 'call', id: block.id, tool: block.name, input: isObject(block.input) ? block.input : {} });
+        run.recognised = true;
+        run.entries.push({ kind: 'call', id: block.id, tool: block.name, input: isObject(block.input) ? block.input : {} });
       } else if (d.type === 'user' && block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
-        results.set(block.tool_use_id, { failed: block.is_error === true, output: resultText(block.content) });
+        run.results.set(block.tool_use_id, { failed: block.is_error === true, output: resultText(block.content) });
       }
     }
   }
-  if (!recognised) return null;
+  return run;
+}
+
+/**
+ * Codex's rollout: the `item_completed` events of its app-server, each holding a finished item with
+ * its outcome. The thread's own rollout holds no subagent's items.
+ */
+function codexRun(records: Record<string, unknown>[]): Run {
+  const run: Run = { entries: [], results: new Map(), recognised: false };
+  const call = (id: string, tool: string, input: Record<string, unknown>, result: Result) => {
+    run.recognised = true;
+    run.entries.push({ kind: 'call', id, tool, input });
+    run.results.set(id, result);
+  };
+  for (const d of records) {
+    const item = d.type === 'event_msg' && isObject(d.payload) && d.payload.type === 'item_completed' ? d.payload.item : undefined;
+    if (!isObject(item) || typeof item.id !== 'string') continue;
+    if (item.type === 'AgentMessage') {
+      const text = Array.isArray(item.content) ? item.content.map((c) => (isObject(c) && typeof c.text === 'string' ? c.text : '')).join('') : '';
+      if (text.trim()) {
+        run.recognised = true;
+        run.entries.push({ kind: 'text', text: text.trim() });
+      }
+    } else if (item.type === 'CommandExecution' && Array.isArray(item.command)) {
+      // `[shell, -lc, script]`: the script is what the agent wrote
+      const words = item.command.filter((w): w is string => typeof w === 'string');
+      const output = str(item.aggregated_output);
+      const code = typeof item.exit_code === 'number' ? item.exit_code : 0;
+      call(item.id, 'Bash', { command: words.length === 3 && /^-\w*c$/.test(words[1]!) ? words[2]! : words.join(' ') }, { failed: item.status === 'failed' || code !== 0, output: `Exit code ${code}\n${output}` });
+    } else if (item.type === 'FileChange' && isObject(item.changes)) {
+      Object.entries(item.changes).forEach(([file, change], n) => {
+        const added = isObject(change) && change.type === 'add';
+        call(`${item.id}:${n}`, added ? 'Write' : 'Edit', { file_path: file }, { failed: item.status === 'failed', output: '' });
+      });
+    } else if (item.type === 'DynamicToolCall' && typeof item.tool === 'string') {
+      const content = Array.isArray(item.content_items) ? item.content_items.map((c) => (isObject(c) && typeof c.text === 'string' ? c.text : '')).join('\n') : '';
+      call(item.id, item.tool, isObject(item.arguments) ? item.arguments : {}, { failed: item.success === false, output: content });
+    }
+  }
+  return run;
+}
+
+/**
+ * The excerpt of a transcript's text (JSON lines); null when no line reads as the run of an agent.
+ */
+export function excerpt(jsonl: string): Excerpt | null {
+  const records: Record<string, unknown>[] = [];
+  for (const line of jsonl.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const d: unknown = JSON.parse(line);
+      if (isObject(d)) records.push(d);
+    } catch {}
+  }
+  const run = [claudeRun, codexRun].map((read) => read(records)).find((r) => r.recognised);
+  if (!run) return null;
+  const { entries, results } = run;
 
   const calls: (Call & { key: string; input: Record<string, unknown> })[] = [];
   let lastText: string | undefined;
@@ -243,8 +336,8 @@ function shorten(s: string): string {
 const isObject = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
 const str = (x: unknown) => (typeof x === 'string' ? x : '');
 
-/** Results that end a call without the agent having done anything wrong. */
-const CUT_OFF = [/^(Error: )?Exit code 137\b/, /^\[Request interrupted/, /doesn't want to proceed/];
+/** Results that end a call without the agent having done anything wrong (a command killed, or stopped with Ctrl-C). */
+const CUT_OFF = [/^(Error: )?Exit code (137|143|130)\b/, /^\[Request interrupted/, /doesn't want to proceed/];
 /** The tools that change files. */
 const CHANGES = ['Edit', 'MultiEdit', 'Write', 'NotebookEdit'];
 /** How alike two commands' words must be to count as the same attempt, and how often a command repeated counts without a failure. */

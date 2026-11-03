@@ -11,6 +11,7 @@ import { Workers } from './workers';
 import { Workspaces } from './workspaces';
 
 const SAMPLE = join(import.meta.dir, 'fixtures', 'transcript.jsonl');
+const CODEX = join(import.meta.dir, 'fixtures', 'codex-rollout.jsonl');
 
 let dir: string;
 let main: string;
@@ -75,12 +76,14 @@ describe('Arbeitsrückschau', () => {
     expect(board.events(a.id).at(-1)).toMatchObject({ author: 'koordinator', text: 'Arbeitsrückschau, Reibung notiert:\n– bun run dev has no --port flag Kosten: a few steps Verhindert hätte es: a script\n– the demo script failed and was rewritten Kosten: a few steps Verhindert hätte es: a script' });
   });
 
-  test('Codex runs are not interpreted as Claude transcripts or counted toward Claude retrospectives', async () => {
-    files = { 'codex:thread': SAMPLE };
-    ran('Codex card', 'codex:thread');
+  test('a Codex run is read from its rollout and counts toward the repository’s retrospective like a Claude run', async () => {
+    files = { 'codex:thread': CODEX };
+    const c = ran('Codex card', 'codex:thread');
     await settle();
-    expect(noteSessions()).toHaveLength(0);
-    expect(board.setting('work_retro_cards:home')).toBeNull();
+    expect(noteSessions()[0]!.inbox[0]).toContain("unknown option '--port=4500'");
+    await note({ what: 'bun run dev has no --port flag' });
+    expect(board.friction('home', null)).toMatchObject([{ cardId: c.id, what: 'bun run dev has no --port flag' }]);
+    expect(board.setting('work_retro_cards:home')).toBe('1');
   });
 
   test('a run without a transcript, or without anything gone wrong, gets no session; a card that never ran does not count', async () => {

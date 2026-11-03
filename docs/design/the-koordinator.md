@@ -212,13 +212,18 @@ When a card's work ends (landed, closed without a change, a prototype discarded 
 unfinished), Obeya draws an excerpt from its runs' transcripts without a model. The Agent SDK keeps
 them at `<CLAUDE_CONFIG_DIR or ~/.claude>/projects/<cwd, non-alphanumerics as „-“>/<session
 id>.jsonl`, also after the workspace is gone; Obeya looks there first, then in every directory, as
-the naming may change. Earlier runs are found through the log, where a start from scratch notes the
+the naming may change. A Codex worker's run is its rollout, `<CODEX_HOME or
+~/.codex>/sessions/<year>/<month>/<day>/rollout-<time>-<thread id>.jsonl` (or the archive beside
+it), found by the thread id of the session (`codex:<thread id>`); it is read through the finished
+items of its events (commands with their exit code, files added or patched, the agent's words and
+other tool calls), as the same kinds of call, so the excerpt and everything after it is the same for
+both harnesses. Codex runs only on this machine, so its rollouts are never fetched from a host. Earlier runs are found through the log, where a start from scratch notes the
 session before („Der frühere Lauf (Sitzung …) bleibt für die Arbeitsrückschau erhalten.“).
 
 The excerpt holds failed tool calls with their error, runs of similar calls (a failure and its
 correction, a command three times or more), files written whole more than once, the worker's words
 around each, and how many calls the run took before it first changed a file. Calls cut off by a
-restart or stopped by the owner, and subagents, are left out; an unreadable transcript gives no
+restart or stopped by the owner (a command killed or ended with Ctrl-C), and subagents, are left out; an unreadable transcript gives no
 excerpt and no error. A short read-only small job (see Models and effort) makes 0–3 friction notes
 of it (what went wrong, what it cost, what would have prevented it). It is told the settings a
 retrospective may propose as they apply now, so a worker working out what one would have said

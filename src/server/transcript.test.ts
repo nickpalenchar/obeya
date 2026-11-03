@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { excerpt, excerptOf, excerptText, findTranscript } from './transcript';
 
 const SAMPLE = join(import.meta.dir, 'fixtures', 'transcript.jsonl');
+const CODEX = join(import.meta.dir, 'fixtures', 'codex-rollout.jsonl');
 const sample = () => readFileSync(SAMPLE, 'utf8');
 
 let dir: string | undefined;
@@ -95,5 +96,44 @@ describe('transcript excerpt', () => {
     expect(findTranscript('22222222-0000-0000-0000-000000000000', null, dir)).toBeNull();
     expect(findTranscript('../../etc/passwd', null, dir)).toBeNull();
     expect(findTranscript(id, null, join(dir, 'missing'))).toBeNull();
+  });
+
+  test('reads a Codex rollout: commands as Bash calls, files added as writes, a command stopped with Ctrl-C as no mistake', () => {
+    const e = excerpt(readFileSync(CODEX, 'utf8'))!;
+    expect(e.steps).toBe(15);
+    expect(e.firstChange).toBe(3);
+    const [flags, script, typecheck, polling, rewrite] = e.findings;
+    expect(flags).toMatchObject({
+      kind: 'retry',
+      calls: [
+        { step: 1, tool: 'Bash', what: '`bun run dev --port=4500`', failed: true, before: 'I start the dev server.' },
+        { step: 2, what: '`bun run dev -p 4500`', failed: false },
+      ],
+    });
+    expect(flags?.kind === 'retry' && flags.calls[0]!.error).toContain("unknown option '--port=4500'");
+    expect(script).toMatchObject({ kind: 'failure', call: { step: 5, what: '`bun scripts/demo.ts`', after: 'The script fails; I write it again.' } });
+    // `bun test` stopped with Ctrl-C is no mistake
+    expect(typecheck).toMatchObject({ kind: 'failure', call: { step: 10, what: '`bun run typecheck`', after: 'A typo; I fix it.' } });
+    expect(polling).toMatchObject({ kind: 'retry', calls: [{ step: 13 }, { step: 14 }, { step: 15 }] });
+    expect(rewrite).toEqual({ kind: 'rewrite', file: '/ws/card/scripts/demo.ts', times: 2, before: 'The script fails; I write it again.' });
+    expect(e.findings).toHaveLength(5);
+    expect(excerptText([e])).toContain('Error: Exit code 1\n   error: unknown option');
+    expect(excerptOf(CODEX)!.findings).toHaveLength(5);
+  });
+
+  test('finds a Codex session’s rollout by its thread id, in a day directory or the archive', () => {
+    dir = mkdtempSync(join(tmpdir(), 'obeya-tr-'));
+    const thread = '01a1aaaa-0000-7000-8000-000000000001';
+    const day = join(dir, 'sessions', '2026', '11', '01');
+    mkdirSync(day, { recursive: true });
+    mkdirSync(join(dir, 'archived_sessions'));
+    writeFileSync(join(day, `rollout-2026-11-01T10-00-00-${thread}.jsonl`), readFileSync(CODEX));
+    writeFileSync(join(day, 'rollout-2026-11-01T10-00-00-01a1aaaa-0000-7000-8000-000000000002.jsonl'), '');
+    writeFileSync(join(dir, 'archived_sessions', 'rollout-2026-10-01T10-00-00-01a1aaaa-0000-7000-8000-000000000003.jsonl'), readFileSync(CODEX));
+    expect(findTranscript(`codex:${thread}`, null, join(dir, 'sessions'))).toBe(join(day, `rollout-2026-11-01T10-00-00-${thread}.jsonl`));
+    expect(findTranscript('codex:01a1aaaa-0000-7000-8000-000000000003', null, join(dir, 'archived_sessions'))).toBe(join(dir, 'archived_sessions', 'rollout-2026-10-01T10-00-00-01a1aaaa-0000-7000-8000-000000000003.jsonl'));
+    expect(findTranscript('codex:01a1aaaa-0000-7000-8000-0000000000ff', null, join(dir, 'sessions'))).toBeNull();
+    expect(findTranscript('codex:../../etc/passwd', null, join(dir, 'sessions'))).toBeNull();
+    expect(findTranscript(`codex:${thread}`, null, join(dir, 'missing'))).toBeNull();
   });
 });
