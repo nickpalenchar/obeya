@@ -314,14 +314,21 @@ ${credit(language)}</main>
   const alone = new URLSearchParams(location.search).has('alone');
   if (alone) document.body.classList.add('alone');
   let steps = alone ? 30 : 0;
+  ${IMAGE_FRAME_SCRIPT}
   addEventListener('message', (e) => {
+    if (e.source === f.contentWindow && e.data && typeof e.data.obeyaImage === 'boolean') { imageFrame(f, e.data.obeyaImage); return; }
     const h = e.source === f.contentWindow && e.data && e.data.obeyaHeight;
-    if (typeof h === 'number' && h > 0 && steps++ < 30) f.style.height = Math.min(Math.ceil(h), 30000) + 'px';
+    if (typeof h === 'number' && h > 0 && f.dataset.obeyaPreviousStyle === undefined && steps++ < 30) f.style.height = Math.min(Math.ceil(h), 30000) + 'px';
   });
 </script>
 </body></html>
 `;
 }
+
+const IMAGE_FRAME_SCRIPT = `const imageFrame = (f, open) => {
+  if (open) { f.dataset.obeyaPreviousStyle = f.getAttribute('style') || ''; f.style.cssText += ';position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;border:0'; }
+  else if (f.dataset.obeyaPreviousStyle !== undefined) { f.setAttribute('style', f.dataset.obeyaPreviousStyle); delete f.dataset.obeyaPreviousStyle; }
+};`;
 
 /** What an unlisted page's head says: no index, no referrer (the meta tags hold where a host sends no headers of the site's own, GitHub Pages). */
 const UNLISTED_META = '<meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer">';
@@ -460,10 +467,12 @@ ${credit(language)}</main>
   const shown = alone === null ? null : document.getElementById('v' + (alone || '1'));
   if (shown && shown.querySelector('.artifact')) { document.body.classList.add('alone'); shown.classList.add('alone'); }
   const steps = new Map([...document.querySelectorAll('.artifact iframe')].map((f) => [f, shown && shown.contains(f) ? 30 : 0]));
+  ${IMAGE_FRAME_SCRIPT}
   addEventListener('message', (e) => {
     const f = [...steps.keys()].find((f) => f.contentWindow === e.source);
+    if (f && e.data && typeof e.data.obeyaImage === 'boolean') { imageFrame(f, e.data.obeyaImage); return; }
     const h = f && e.data && e.data.obeyaHeight;
-    if (typeof h === 'number' && h > 0 && steps.get(f) < 30) { steps.set(f, steps.get(f) + 1); f.style.height = Math.min(Math.ceil(h), 30000) + 'px'; }
+    if (typeof h === 'number' && h > 0 && f.dataset.obeyaPreviousStyle === undefined && steps.get(f) < 30) { steps.set(f, steps.get(f) + 1); f.style.height = Math.min(Math.ceil(h), 30000) + 'px'; }
   });
 </script>
 </body></html>
