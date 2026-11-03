@@ -2,6 +2,7 @@
 // effect, set once before the first render (`setLanguage`); choosing another language loads the
 // page again. Dates and numbers follow the language, in the browser's own variant of it.
 
+import { extensions } from '../extensions';
 import { ApiError } from './api';
 import type { DiffFile } from '../core/diff';
 import { type Language, languageOf } from '../core/locale';
@@ -4020,7 +4021,10 @@ const en: Strings = {
   empty: { none: 'No tasks yet.', speak: 'Hold Space and say what Obeya should build.', where: 'The card appears where the pointer is when you let go.', click: 'Or double-click on the canvas to create one yourself.' },
 };
 
-const tables: Record<Language, Strings> = { de, en };
+const tables: Record<Language, Strings> = {
+  de: Object.assign(de, ...extensions.map((e) => e.strings?.de ?? {})),
+  en: Object.assign(en, ...extensions.map((e) => e.strings?.en ?? {})),
+};
 /** The strings in effect. */
 export let t: Strings = de;
 /** The locale dates and numbers are written in. */

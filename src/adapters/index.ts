@@ -1,3 +1,4 @@
+import { extensions } from '../extensions';
 import { defaultBranchCommit } from '../server/read-tree';
 import { onGitHub } from '../server/repo';
 import { type ClaudeFile, isNested, SHARED_FIELDS, type NESTED_SETTINGS, type NestedSetting, type RepoSettings, type RepoValues, type SharedSettings } from '../core/types';
@@ -42,6 +43,9 @@ export function withSettings(a: RepoAdapter, settings: () => RepoSettings | unde
         return s?.[field] ?? a[field];
       },
     });
+  for (const field of extensions.flatMap((e) => Object.keys(e.settings ?? {}))) {
+    Object.defineProperty(b, field, { enumerable: true, get: () => (settings() as Record<string, unknown> | undefined)?.[field] });
+  }
   return b;
 }
 

@@ -1,6 +1,7 @@
 // HTTP and WebSocket for the UI: one API per canvas under /api/c/<canvas>/.
 
 import type { ServerWebSocket } from 'bun';
+import { extensions } from '../extensions';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -431,6 +432,7 @@ export function serve(
     idleTimeout: 120,
     development: development && { hmr: true, console: true },
     routes: guarded({
+      ...Object.assign({}, ...extensions.map((e) => e.routes ?? {})),
       '/': index,
       // a canvas, and a card open on it (`/c/<canvas>/card/<code>`): the page reads the address
       '/c/*': index,

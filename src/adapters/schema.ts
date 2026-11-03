@@ -5,6 +5,7 @@
 // of the settings work.
 
 import { z } from 'zod';
+import { extensions } from '../extensions';
 import { LANGUAGES } from '../core/locale';
 import type { SharedSettings } from '../core/types';
 
@@ -58,6 +59,7 @@ export const settingsShape = z
  * machine but the main branch, which says where the file is read from.
  */
 export const sharedShape = settingsShape.omit({ branch: true });
+const extensionShape = () => sharedShape.extend(Object.assign({}, ...extensions.map((e) => e.settings ?? {}))).strict();
 
 // the fields each object knows, for a guess at what a misspelt one meant
 const KNOWN: Record<string, string[]> = {
@@ -74,7 +76,8 @@ const KNOWN: Record<string, string[]> = {
  */
 export function checkShared(made: Record<string, unknown>): { settings: SharedSettings; problems: string[] } {
   const { settings: current, gone } = withoutGone(made);
-  const { kept, problems } = checkFields(sharedShape, current, KNOWN);
+  const shape = extensionShape();
+  const { kept, problems } = checkFields(shape, current, { ...KNOWN, '': Object.keys(shape.shape) });
   // the main branch says where the file is read from, so it is set on each machine
   return { settings: kept as SharedSettings, problems: [...gone, ...problems.map((p) => (p.startsWith('branch: ') ? 'branch: the main branch is set on each machine (or detected), not in the repository' : p))] };
 }

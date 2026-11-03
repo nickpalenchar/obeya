@@ -1,6 +1,7 @@
 // Workers: one agent session per card, in a leased clone. Obeya is the mailbox between the
 // worker and the owner; every exchange lands in the card's conversation.
 
+import { extensions } from '../extensions';
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
@@ -2028,6 +2029,7 @@ export class Workers {
     if (direct) this.o.onMerged?.(cardId);
     else this.reprobeClashes();
     this.o.onLanded?.(cardId);
+    this.extensionEvent('landed', cardId);
     this.afterLanding(
       cardId,
       [
@@ -2360,6 +2362,7 @@ export class Workers {
       shipped: JSON.stringify(shipped),
     });
     this.o.board.log(cardId, 'state', 'obeya', note);
+    this.extensionEvent('landed', cardId);
     this.o.onMerged?.(cardId);
     const review = !!contributionOf(this.o.board.row(cardId));
     this.afterLanding(
@@ -3212,6 +3215,13 @@ export class Workers {
     return language ? { ...this.o.env, DEMO_LANGUAGE: language } : this.o.env;
   }
 
+  private extensionEvent(type: 'landed' | 'workerStarted', card: string) {
+    for (const extension of extensions) {
+      try { extension.event?.({ type, canvas: this.o.board.canvas.id, card }); }
+      catch (error) { console.error('Extension event failed:', error); }
+    }
+  }
+
   private launch(cardId: string, message: string, resume?: string, images: string[] = []) {
     const row = this.o.board.row(cardId);
     if (!row.workspace) throw new Error(`card ${cardId} has no workspace to work in`);
@@ -3261,6 +3271,7 @@ export class Workers {
       message,
       images,
     );
+    this.extensionEvent('workerStarted', cardId);
     live.session.done.then(() => {
       if (this.live.get(cardId) !== live) return;
       this.live.delete(cardId);
