@@ -110,8 +110,8 @@
 // POST /api/c/<canvas>/cards) unless it names a plan doc's `project` or `workstream` (label; with
 // several plan docs "docs/plan/x.md#W1"), which exist already. Then its fields are written straight
 // into the database:
-// state, need, statusLine, summary, question (with `permission`, `{ name, input, always? }`: the tool call it asks
-// to allow, as a worker's permission question has it), demo (`kind` defaults to video), queue (`behind` by key; `since` defaults to
+// state, need, statusLine, summary, question (with `permission`, `{ name, input, extra? }`: the tool call it asks
+// to allow, as a worker's permission question has it, `extra` the options extensions added), demo (`kind` defaults to video), queue (`behind` by key; `since` defaults to
 // now), snoozed (`{ on, state?, why? }`: its agent snoozed it until the card with key `on` gets to `state`, done by default), scope (files), branch (a working or waiting card without one gets the branch a start would
 // have given it, which every started card has), createdAgo, archivedAgo, events ([{ kind, author, text, ago?, mocks?, spot?, token? }]; an idea's reply with `mocks` needs code that has them, an error's `token` (its session signed in with a token) too;
 // with events of kind `review`, the demos in `row.demos` and then `demo` go with those handovers in order, and a `spot` (a comment's
@@ -190,8 +190,8 @@ interface StageCard {
   statusLine?: string;
   summary?: string;
   question?: { text: string; options?: string[]; multiple?: boolean };
-  /** The tool call `question` asks the owner to allow (`always`: the rules „Immer erlauben“ adds). */
-  permission?: { name: string; input: Record<string, unknown>; always?: string[] };
+  /** The tool call `question` asks the owner to allow (`extra`: the options extensions added, as `AskedPermission` in workers.ts has them). */
+  permission?: { name: string; input: Record<string, unknown>; extra?: { extension: number; label: Record<Language, string>; data?: unknown }[] };
   demo?: Record<string, unknown>;
   queue?: { behind?: string[]; reason?: string; since?: string; checking?: true };
   /** Snoozed by its agent until the card with key `on` gets to `state` (default done). */
