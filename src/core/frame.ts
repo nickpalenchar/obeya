@@ -64,6 +64,7 @@ const HEIGHT_REPORT = `<script>(() => {
     viewer.append(copy, button); viewer.addEventListener('click', close); document.body.append(viewer);
     parent.postMessage({ obeyaImage: true }, '*'); button.focus();
   };
+  addEventListener('message', (e) => { if (e.source === parent && e.data && e.data.obeyaCloseImage) close(); });
   document.addEventListener('click', (e) => { const img = e.target.closest('img'); if (img && !viewer && !img.closest('a,button')) open(img); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && viewer) close(); else if ((e.key === 'Enter' || e.key === ' ') && e.target.tagName === 'IMG' && !viewer) { e.preventDefault(); open(e.target); } });
   const prepare = () => document.querySelectorAll('img:not([data-obeya-image])').forEach((img) => { if (img.closest('a,button')) return; img.dataset.obeyaImage = '1'; if (!img.hasAttribute('tabindex')) img.tabIndex = 0; img.style.cursor = 'zoom-in'; if (!img.title) img.title = 'Click to enlarge'; });

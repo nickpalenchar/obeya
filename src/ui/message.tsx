@@ -211,19 +211,29 @@ export function useReportedHeight(frame: RefObject<HTMLIFrameElement | null>, ca
   const [height, setHeight] = useState<number>();
   useEffect(() => {
     let steps = 0;
+    let closeButton: HTMLButtonElement | undefined;
+    const closeImage = () => {
+      const f = frame.current;
+      if (f?.dataset.obeyaPreviousStyle !== undefined) { f.setAttribute('style', f.dataset.obeyaPreviousStyle); delete f.dataset.obeyaPreviousStyle; f.contentWindow?.postMessage({ obeyaCloseImage: true }, '*'); }
+      closeButton?.remove(); closeButton = undefined;
+    };
     const on = (e: MessageEvent) => {
       const h = e.source === frame.current?.contentWindow && (e.data as { obeyaHeight?: unknown } | null)?.obeyaHeight;
       const f = frame.current;
       if (f && e.source === f.contentWindow && typeof e.data?.obeyaImage === 'boolean') {
-        if (e.data.obeyaImage) { f.dataset.obeyaPreviousStyle = f.getAttribute('style') || ''; f.style.cssText += ';position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;border:0'; }
-        else if (f.dataset.obeyaPreviousStyle !== undefined) { f.setAttribute('style', f.dataset.obeyaPreviousStyle); delete f.dataset.obeyaPreviousStyle; }
+        if (e.data.obeyaImage && !closeButton) {
+          f.dataset.obeyaPreviousStyle = f.getAttribute('style') || ''; f.style.cssText += ';position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483646;border:0';
+          closeButton = document.createElement('button'); closeButton.textContent = '×'; closeButton.setAttribute('aria-label', t.close);
+          closeButton.style.cssText = 'position:fixed;right:16px;top:12px;z-index:2147483647;color:white;background:#222;border:0;font:36px sans-serif;cursor:pointer';
+          closeButton.onclick = closeImage; document.body.append(closeButton);
+        } else if (!e.data.obeyaImage) closeImage();
         return;
       }
       // the border is inside the frame's height (border-box): without it the page is a few pixels too high and scrolls
       if (typeof h === 'number' && h > 0 && f && f.dataset.obeyaPreviousStyle === undefined && steps++ < 30) setHeight(Math.min(Math.ceil(h) + f.offsetHeight - f.clientHeight, cap));
     };
     addEventListener('message', on);
-    return () => removeEventListener('message', on);
+    return () => { removeEventListener('message', on); closeImage(); };
   }, []);
   return height;
 }
