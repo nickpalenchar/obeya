@@ -70,7 +70,7 @@
 //     "clones": 2, "mainBranch": "master",
 //     "poolCheckout": true, "slots": 3,
 //     "hosts": [{ "name": "Workhorse", "ssh": "me@workhorse.local", "clones": 2, "slots": 2 }],
-//     "files": { "src/cli.ts": "…" },
+//     "files": { "src/cli.ts": "…" }, "trusted": true,
 //     "pulls": [{ "number": 5, "title": "…", "author": "…", "files": { "src/x.ts": "…" }, "canModify": true }],
 //     "forgeClone": true,
 //     "plans": { "docs/plan/werkzeug.md": "# Werkzeug\n\n## Workstreams\n\n- [ ] **W1:** Konfiguration.\n" },
@@ -110,7 +110,8 @@
 // POST /api/c/<canvas>/cards) unless it names a plan doc's `project` or `workstream` (label; with
 // several plan docs "docs/plan/x.md#W1"), which exist already. Then its fields are written straight
 // into the database:
-// state, need, statusLine, summary, question, demo (`kind` defaults to video), queue (`behind` by key; `since` defaults to
+// state, need, statusLine, summary, question (with `permission`, `{ name, input, always? }`: the tool call it asks
+// to allow, as a worker's permission question has it), demo (`kind` defaults to video), queue (`behind` by key; `since` defaults to
 // now), snoozed (`{ on, state?, why? }`: its agent snoozed it until the card with key `on` gets to `state`, done by default), scope (files), branch (a working or waiting card without one gets the branch a start would
 // have given it, which every started card has), createdAgo, archivedAgo, events ([{ kind, author, text, ago?, mocks?, spot?, token? }]; an idea's reply with `mocks` needs code that has them, an error's `token` (its session signed in with a token) too;
 // with events of kind `review`, the demos in `row.demos` and then `demo` go with those handovers in order, and a `spot` (a comment's
@@ -161,7 +162,7 @@ import { copyFileSync, cpSync, existsSync, linkSync, mkdirSync, openSync, readdi
 import { basename, dirname, join, resolve } from 'node:path';
 import { demoSettingsHere } from '../plugin/skills/demo/lib/settings.ts';
 import { type Language, LANGUAGES } from '../src/core/locale';
-import type { CanvasSnapshot, Item } from '../src/core/types';
+import type { CanvasSnapshot, ConfigChecked, Item } from '../src/core/types';
 import { loginLink, ownerHeaders } from '../src/server/owner';
 import { findTailscale, type ServeEntry, Tailscale } from '../src/server/tailscale';
 import { mayRecordInto } from '../src/server/replay';
@@ -189,6 +190,8 @@ interface StageCard {
   statusLine?: string;
   summary?: string;
   question?: { text: string; options?: string[]; multiple?: boolean };
+  /** The tool call `question` asks the owner to allow (`always`: the rules „Immer erlauben“ adds). */
+  permission?: { name: string; input: Record<string, unknown>; always?: string[] };
   demo?: Record<string, unknown>;
   queue?: { behind?: string[]; reason?: string; since?: string; checking?: true };
   /** Snoozed by its agent until the card with key `on` gets to `state` (default done). */
@@ -240,6 +243,8 @@ interface Stage {
   /** Other machines over SSH, as in the configuration. */
   hosts?: { name: string; ssh: string; root?: string; clones: number; slots?: number; gone?: boolean }[];
   files?: Record<string, string>;
+  /** The owner trusted the repositories' commands as staged (their Claude Code and Codex configuration, say), so none is held. */
+  trusted?: boolean;
   plans?: Record<string, string>;
   /** `false`: the repository is a folder without git (design: Folders without git). */
   git?: false;
@@ -582,6 +587,18 @@ const api = async (method: string, path: string, body?: unknown, on = canvas) =>
   return text ? JSON.parse(text) : undefined;
 };
 
+// the repositories' commands trusted as staged, as „Diesen Befehlen vertrauen“ does
+if (stage.trusted) {
+  const checked = (await (await fetch(`${base}/api/config/check`, { headers: owner })).json()) as ConfigChecked;
+  for (const [i, c] of checked.canvases.entries())
+    for (const [j, r] of c.repos.entries()) {
+      const trust = checked.resolved[i]?.repos[j]?.trust;
+      if (!trust) continue;
+      const t = await fetch(`${base}/api/config/trust`, { method: 'POST', headers: { ...owner, 'content-type': 'application/json' }, body: JSON.stringify({ path: r.path, seen: trust.now, held: trust.held }) });
+      if (!t.ok) fail(`trusting ${r.path}: ${t.status} ${await t.text()}`);
+    }
+}
+
 // Obeya's proposal to fill in a repository's settings, on every canvas, unless the stage keeps it
 if (!stage.setupProposals)
   for (const c of allCanvases)
@@ -639,7 +656,7 @@ for (const [i, c] of stage.cards.entries()) {
   if (c.need !== undefined) row.need = c.need;
   if (c.statusLine !== undefined) row.status_line = c.statusLine;
   if (c.summary !== undefined) row.detail = { summary: c.summary };
-  if (c.question !== undefined) row.detail = { question: { options: [], ...c.question } };
+  if (c.question !== undefined) row.detail = { question: { options: [], ...c.question }, ...(c.permission ? { permission: c.permission } : {}) };
   // an HTML artifact is shown from a copy in <dir>, which --artifact may rewrite
   const demo = c.demo && (c.demo.kind === 'html' ? { ...c.demo, dir: copyArtifact(String(c.demo.dir), artifactDir(dir, c.key ?? String(i))) } : c.demo);
   if (demo !== undefined) row.demo = { kind: 'video', ...demo };
