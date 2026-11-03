@@ -55,19 +55,17 @@ const HEIGHT_REPORT = `<script>(() => {
   const open = (img) => {
     if (viewer) return;
     viewer = document.createElement('div');
-    viewer.setAttribute('role', 'dialog'); viewer.setAttribute('aria-label', 'Enlarged image');
+    viewer.setAttribute('role', 'dialog'); viewer.setAttribute('aria-label', img.alt || 'Image');
     viewer.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;cursor:zoom-out;padding:48px;box-sizing:border-box';
     const copy = document.createElement('img'); copy.src = img.currentSrc || img.src; copy.alt = img.alt;
     copy.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain';
-    const button = document.createElement('button'); button.textContent = '×'; button.setAttribute('aria-label', 'Close');
-    button.style.cssText = 'position:absolute;right:16px;top:12px;color:white;background:transparent;border:0;font:36px sans-serif;cursor:pointer';
-    viewer.append(copy, button); viewer.addEventListener('click', close); document.body.append(viewer);
-    parent.postMessage({ obeyaImage: true }, '*'); button.focus();
+    viewer.append(copy); viewer.addEventListener('click', close); document.body.append(viewer);
+    parent.postMessage({ obeyaImage: true }, '*');
   };
   addEventListener('message', (e) => { if (e.source === parent && e.data && e.data.obeyaCloseImage) close(); });
   document.addEventListener('click', (e) => { const img = e.target.closest('img'); if (img && !viewer && !img.closest('a,button')) open(img); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && viewer) close(); else if ((e.key === 'Enter' || e.key === ' ') && e.target.tagName === 'IMG' && !viewer) { e.preventDefault(); open(e.target); } });
-  const prepare = () => document.querySelectorAll('img:not([data-obeya-image])').forEach((img) => { if (img.closest('a,button')) return; img.dataset.obeyaImage = '1'; if (!img.hasAttribute('tabindex')) img.tabIndex = 0; img.style.cursor = 'zoom-in'; if (!img.title) img.title = 'Click to enlarge'; });
+  const prepare = () => document.querySelectorAll('img:not([data-obeya-image])').forEach((img) => { if (img.closest('a,button')) return; img.dataset.obeyaImage = '1'; if (!img.hasAttribute('tabindex')) img.tabIndex = 0; img.style.cursor = 'zoom-in'; img.setAttribute('role', 'button'); });
   new MutationObserver(prepare).observe(document.documentElement, {childList:true, subtree:true});
   addEventListener('load', prepare);
   const say = () => {
