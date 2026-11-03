@@ -1,7 +1,7 @@
 # The process-boundary prototypes' tests and probes on native runners, with the real Codex CLI (no
 # login: the probes run no model turn): Job Objects on Windows (scripts/windows-job-prototype.ts),
-# systemd user scopes on Ubuntu (scripts/linux-scope-prototype.ts), the latter first without a user
-# manager, then with one, with its D-Bus daemon stopped and with a read-only cgroupfs. Run by hand,
+# systemd user scopes on Ubuntu (scripts/linux-scope-prototype.ts), the latter without a reachable
+# user manager, with one, with its D-Bus daemon stopped and with a read-only cgroupfs. Run by hand,
 # or by pushing a branch under boundary-probe/; the results are in the run's log as JSON lines.
 # Nothing is built or published.
 name: Process boundary
@@ -64,10 +64,10 @@ jobs:
           systemctl --version | head -1; uname -r; grep cgroup /proc/self/mounts; cat /proc/self/cgroup
           echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-unset} DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unset}"
           loginctl show-user "$(id -u)" 2>&1 | head -5 || true
-      - name: No user manager
+      - name: No user manager (a runtime directory without one)
         continue-on-error: true
-        run: XDG_RUNTIME_DIR=/run/user/$(id -u) bun scripts/linux-scope-probe.ts kill
-      - name: Start a user manager (lingering)
+        run: mkdir -p "$RUNNER_TEMP/no-manager" && XDG_RUNTIME_DIR="$RUNNER_TEMP/no-manager" bun scripts/linux-scope-probe.ts kill
+      - name: A user manager (lingering, if none runs yet)
         run: |
           sudo loginctl enable-linger "$(id -u)"
           for i in $(seq 1 60); do [ -S /run/user/$(id -u)/systemd/private ] && break; sleep 1; done

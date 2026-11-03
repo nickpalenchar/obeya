@@ -125,21 +125,25 @@ async function escapes() {
   const dir = mkdtempSync(join(tmpdir(), 'obeya-job-escapes-'));
   const task = `obeya-escape-${process.pid}`;
   const canary = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore', windowsHide: true });
-  const beat = (file: string) => `${python} -c "import os,time,pathlib; pathlib.Path(r'${join(dir, file)}').write_text(str(os.getpid())); time.sleep(1000)"`;
-  // each way out ends with a pid file of the process that tried it
+  // paths and names come by the environment, so no Windows path is quoted in code within code
   const agent = `
     const { spawn, spawnSync } = require('node:child_process');
     const fs = require('node:fs');
-    const c = spawn(process.execPath, ['-e', "require('node:fs').writeFileSync(${JSON.stringify(join(dir, 'detached'))}, String(process.pid)); setInterval(()=>{},1000)"], { detached: true, stdio: 'ignore', windowsHide: true }); c.unref();
-    spawn('cmd.exe', ['/d', '/c', 'start', '""', '/b', ${JSON.stringify(beat('cmd-start'))}], { stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: false });
-    const wmi = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', "(Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine=" + ${JSON.stringify(`'${beat('wmi-inner')}'`)} + "}).ProcessId"], { encoding: 'utf8', windowsHide: true });
-    fs.writeFileSync(${JSON.stringify(join(dir, 'wmi-result'))}, (wmi.stdout || '') + (wmi.stderr || ''));
-    const st = spawnSync('schtasks.exe', ['/Create', '/F', '/TN', ${JSON.stringify(task)}, '/SC', 'ONCE', '/ST', '23:59', '/TR', ${JSON.stringify(beat('task'))}], { encoding: 'utf8', windowsHide: true });
-    const run = spawnSync('schtasks.exe', ['/Run', '/TN', ${JSON.stringify(task)}], { encoding: 'utf8', windowsHide: true });
-    fs.writeFileSync(${JSON.stringify(join(dir, 'task-result'))}, [st.status, st.stdout, st.stderr, run.status, run.stdout, run.stderr].join(' | '));
+    const path = require('node:path');
+    const dir = process.env.OBEYA_ESC_DIR, task = process.env.OBEYA_ESC_TASK, python = process.env.OBEYA_ESC_PYTHON;
+    const beat = (file) => python + ' -c "import os,time,pathlib; pathlib.Path(r\'' + path.join(dir, file) + '\').write_text(str(os.getpid())); time.sleep(1000)"';
+    const log = (name, r) => fs.writeFileSync(path.join(dir, name), [r.status, r.stdout, r.stderr, r.error].join(' | '));
+    const c = spawn(process.execPath, ['-e', 'require("node:fs").writeFileSync(process.env.OBEYA_ESC_DIR + "/detached", String(process.pid)); setInterval(()=>{},1000)'], { detached: true, stdio: 'ignore', windowsHide: true }); c.unref();
+    spawn('cmd.exe /d /c start "" /b ' + beat('cmd-start'), { shell: true, stdio: 'ignore', windowsHide: true });
+    log('wmi-result', spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '(Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine=$env:OBEYA_ESC_CMD}).ProcessId'], { encoding: 'utf8', windowsHide: true, env: { ...process.env, OBEYA_ESC_CMD: beat('wmi-inner') } }));
+    const st = spawnSync('schtasks.exe', ['/Create', '/F', '/TN', task, '/SC', 'ONCE', '/ST', '23:59', '/TR', beat('task')], { encoding: 'utf8', windowsHide: true });
+    const run = spawnSync('schtasks.exe', ['/Run', '/TN', task], { encoding: 'utf8', windowsHide: true });
+    log('task-result', { status: [st.status, run.status].join(','), stdout: st.stdout + run.stdout, stderr: st.stderr + run.stderr });
     setInterval(() => {}, 1000);`;
-  const r = await launchInJob(process.execPath, ['-e', agent], { stdio: ['ignore', 'ignore', 'pipe'] });
+  const r = await launchInJob(process.execPath, ['-e', agent], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, OBEYA_ESC_DIR: dir, OBEYA_ESC_TASK: task, OBEYA_ESC_PYTHON: python } });
   if (r.boundary !== 'job') return { kind: 'escapes', status: 'blocked', why: r.reason };
+  let stderr = '';
+  r.child.stderr!.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
   const files = { 'detached spawn': 'detached', 'cmd start /b': 'cmd-start', 'WMI Win32_Process.Create': 'wmi-inner', 'task scheduler': 'task' };
   const pids: Record<string, number> = {};
   try {
@@ -152,7 +156,7 @@ async function escapes() {
     return {
       kind: 'escapes', status: 'measured',
       ways: Object.fromEntries(Object.entries(pids).map(([way, pid]) => [way, pid ? { inJob: where[way], survivesJobKill: alive(pid) } : { started: false }])),
-      wmi: read(join(dir, 'wmi-result')).slice(0, 300), task: read(join(dir, 'task-result')).slice(0, 300),
+      wmi: read(join(dir, 'wmi-result')).slice(0, 300), task: read(join(dir, 'task-result')).slice(0, 300), agentStderr: stderr.slice(0, 500),
       canaryAlive: alive(canary.pid!),
     };
   } finally {

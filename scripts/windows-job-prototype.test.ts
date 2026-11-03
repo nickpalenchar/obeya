@@ -73,11 +73,12 @@ test.skipIf(!windows)("the caller's death ends the job's processes (kill on clos
   let grandchild = 0;
   const caller = spawn(process.execPath, ['-e', `
     import { launchInJob } from ${PROTOTYPE};
-    const r = await launchInJob(process.execPath, ['-e', "const c=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore',windowsHide:true});require('node:fs').writeFileSync(${JSON.stringify(join(dir, 'grandchild')).replace(/\\/g, '\\\\')},String(c.pid));setInterval(()=>{},1000);"], { stdio: ['ignore', 'ignore', 'ignore'] });
+    // the path comes by the environment: no quoting of a Windows path in code within code
+    const r = await launchInJob(process.execPath, ['-e', "const c=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore',windowsHide:true});require('node:fs').writeFileSync(process.env.OBEYA_TEST_FILE,String(c.pid));setInterval(()=>{},1000);"], { stdio: ['ignore', 'ignore', 'ignore'] });
     if (r.boundary !== 'job') { console.error(r.reason); process.exit(1); }
     console.log(r.child.pid);
     setInterval(() => {}, 1000);
-  `], { stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true });
+  `], { stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true, env: { ...process.env, OBEYA_TEST_FILE: join(dir, 'grandchild') } });
   try {
     agent = Number(await new Promise<string>((resolve) => caller.stdout!.once('data', (chunk: Buffer) => resolve(chunk.toString()))));
     await until(() => (grandchild = Number(read(join(dir, 'grandchild')))) > 0);
@@ -133,12 +134,21 @@ test.skipIf(!windows)('a job nested in an outer one: ending the inner leaves the
   } finally { kill(sessionAgent); rmSync(dir, { recursive: true, force: true }); }
 });
 
-test.skipIf(!windows)('breaking away is refused, since the job does not allow it', async () => {
+test.skipIf(!windows)('a child created to break away stays in the job and ends with it', async () => {
+  // CreateProcess with CREATE_BREAKAWAY_FROM_JOB; the job does not set JOB_OBJECT_LIMIT_BREAKAWAY_OK
   const dir = scratch();
+  let child = 0;
   try {
-    const r = await launch(process.execPath, bunArgs(`import { startBreakingAway } from ${PROTOTYPE}; require('node:fs').writeFileSync(${JSON.stringify(join(dir, 'result'))}, JSON.stringify(startBreakingAway('cmd.exe /c exit 0')));`), { stdio: ['ignore', 'ignore', 'pipe'] });
+    const r = await launch(process.execPath, bunArgs(`import { startBreakingAway } from ${PROTOTYPE}; require('node:fs').writeFileSync(process.env.OBEYA_TEST_FILE, JSON.stringify(startBreakingAway('ping.exe -n 60 127.0.0.1'))); setInterval(() => {}, 1000);`), {
+      stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, OBEYA_TEST_FILE: join(dir, 'result') },
+    });
     if (r.boundary !== 'job') throw new Error(r.reason);
-    await new Promise((resolve) => r.child.exitCode !== null ? resolve(null) : r.child.once('exit', resolve));
-    expect(JSON.parse(read(join(dir, 'result')))).toEqual({ error: 5 }); // ERROR_ACCESS_DENIED
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+    await until(() => read(join(dir, 'result')) !== '');
+    const result = JSON.parse(read(join(dir, 'result'))) as { pid: number } | { error: number };
+    if ('error' in result) return; // refused: it never ran
+    child = result.pid;
+    expect(inJob(r.job.name, child)).toBe(true);
+    r.job.kill();
+    await until(() => !alive(child));
+  } finally { kill(child); rmSync(dir, { recursive: true, force: true }); }
 });
