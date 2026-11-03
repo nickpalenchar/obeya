@@ -37,6 +37,7 @@ import { dimensions, outside, tagsOf } from '../core/page-tags';
 import { gitAsync, gitOrNull } from './workspaces';
 import { defaultBranchCommit } from './read-tree';
 import type { CardRow } from './db';
+import { workConfig } from './feedback';
 import { type Forge, parsePrUrl, sameRepo } from './forge';
 import { clip, messageOf } from '../core/text';
 import { holdsNotes } from '../core/queue';
@@ -408,6 +409,8 @@ interface Live {
   preferences: string;
   /** The project the card is a workstream of, and the last of its decisions the worker has heard of. */
   project?: { id: string; decision: number };
+  /** Its setting was not pinned but taken from today's defaults (a legacy session resumed): what it runs on is known only from the session. */
+  guessed?: true;
   /** Stands in for the agent of a card that has no session (`standIn`): its tools run all the same. */
   standIn?: true;
   /** A tool call waits for the owner's permission, the question the card waits on: settles it with their answer. */
@@ -3290,7 +3293,7 @@ export class Workers {
     const setting: AgentSetting = row.agent_setting ? JSON.parse(row.agent_setting) : resume ? { model: chosen.model, effort: chosen.effort } : chosen;
     this.o.board.work(cardId, { agent_setting: JSON.stringify(setting) });
     const preferences = this.o.preferences?.() ?? '';
-    const live: Live = { session: undefined!, host: hostName(row.workspace), handedOver: false, acted: false, nudged: false, lastText: '', busy: true, background: 0, tasks: new Map(), stalled: false, preferences };
+    const live: Live = { session: undefined!, host: hostName(row.workspace), handedOver: false, acted: false, nudged: false, lastText: '', busy: true, background: 0, tasks: new Map(), stalled: false, preferences, ...(!row.agent_setting && resume ? { guessed: true as const } : {}) };
     const project = this.o.board.item(cardId)?.parent;
     if (project) live.project = { id: project, decision: this.o.board.decisions(project).at(-1)?.id ?? 0 };
     this.live.set(cardId, live);
@@ -3634,6 +3637,9 @@ export class Workers {
         // a session that replaces another (none resumed, say) keeps the one before for the Arbeitsrückschau
         const before = this.o.board.row(cardId).session_id;
         if (before && before !== e.id) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.newSession(this.o.board.t.worker.earlierRun(before)));
+        // what this session runs on, as asked for and as it resolved, for whom the owner's response on the work credits
+        const pinned = this.o.board.row(cardId).agent_setting;
+        if (pinned) this.o.board.recordRun(cardId, e.id, workConfig(JSON.parse(pinned) as AgentSetting, e.model ?? e.setting?.codex?.model, live.guessed));
         this.o.board.work(cardId, { session_id: e.id, ...(e.setting ? { agent_setting: JSON.stringify(e.setting) } : {}) });
         break;
       }

@@ -158,6 +158,24 @@ one set to start later, one in a new repository) takes no choice.
 Unqualified old session ids mean Claude; Codex locators carry `codex:` and cannot resume in Claude
 or the other way round. A locator alone is not authorization to attach it to another card.
 
+Each session that works on a card is recorded with what it actually ran on: harness, the model it
+resolved to (the model the session names, not the alias it was asked for), effort, and the alias or
+choice it started with, from the time it is first heard. Heard again (a resume), it keeps what it
+had and only fills in what was unknown. What is not known stays unknown (`null`), never taken from
+today's defaults: a model a Claude session never named, the effort of a legacy session resumed on
+defaults. The owner's response on a card's work (`/api/c/<canvas>/cards/<id>/feedback`; when Obeya
+asks for one is the plan doc „Feedback on agent performance“'s) is about one handover and credits
+the configurations of the sessions that ran on the card up to that handover, as they were then: one
+configuration (`single`, credited even with unknown fields), several (`mixed`: none is credited on
+its own), or nothing known (`missing`). Two configurations that differ in any field, an unknown
+one included, count as two. The response keeps its card (by id, wherever the card goes), the
+card's title, repository and project as they were, an answer (a rating, a comment, or both) and
+optional named facets for later dimensions such as the task's complexity or type. Given again for
+the same handover, it replaces the answer and keeps whom it credits. Cards from before sessions were
+recorded get their last session as its pinned setting has it, with the model only where their
+worker's messages name one, and a run of unknown effort for each other identity those messages
+carry; where they carry two, neither is taken for the pinned session.
+
 ### Workspaces
 
 A card works in a worktree of its own, unless the repository's settings say clones or its
@@ -491,6 +509,14 @@ the one the drop may have left running there, by the pid it wrote, never itself 
 a container say, reuses pids). A host needs git, Claude Code and what the repository's work needs.
 
 ### Decisions
+
+- **Feedback credits the sessions that ran, frozen at the handover** (2026-11-03): attribution
+  read from the card's pinned setting or today's defaults at the time of the response would credit
+  a model that did not do the work after a fresh start, a harness change or a settings change.
+  Work by several configurations credits none of them alone rather than the last or the most
+  frequent, since the owner judges the result as a whole. Rejected: crediting the latest session;
+  splitting credit by turns or time (it suggests a precision the owner's judgement does not have);
+  filling unknown fields from defaults.
 
 - **The installed app runs the machine's own Claude Code**, not the SDK's binary (2026-10-07): that
   would add 224 MB to every download, put Anthropic's proprietary binary into an MIT app and pin its

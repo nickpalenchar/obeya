@@ -1,6 +1,6 @@
 import { Database } from 'bun:sqlite';
 import { currentAgent } from './agent-identity';
-import type { AgentIdentity } from '../core/types';
+import type { AgentIdentity, Attribution, Feedback, FeedbackAnswer, WorkConfig } from '../core/types';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { AnswerFile, AnswerRef, CardEvent, DeviceView, CardKind, CardState, Mock, Need, Preference, PreferenceState, ProposedSetting, RepoCommands, SettingProposal, SettingProposalState, Spot, Talk, TalkAfter, TalkMoved, TalkQuote, TalkRef, TalkWait } from '../core/types';
@@ -479,6 +479,57 @@ export const MIGRATIONS = [
   'ALTER TABLE talk ADD COLUMN then_place TEXT;',
   // a line that Obeya made a follow-up card of the card: that card (JSON `CardEvent['made']`)
   'ALTER TABLE events ADD COLUMN made TEXT;',
+  // each session that worked on a card, with the configuration it ran on (`WorkConfig`, null where
+  // unknown), and the owner's responses on approved work with whom they credit as at their handover.
+  // Cards from before take their last session as its pinned setting has it, and one run for each
+  // other identity their agents' messages carry; the model only where those messages name it, or a
+  // Codex setting names it (a Codex model chosen by name is the one it runs).
+  `CREATE TABLE agent_runs (
+    card_id TEXT NOT NULL REFERENCES cards(id),
+    session_id TEXT NOT NULL,
+    harness TEXT,
+    model TEXT,
+    effort TEXT,
+    requested TEXT,
+    started_at TEXT NOT NULL,
+    PRIMARY KEY (card_id, session_id)
+  );
+   CREATE TABLE feedback (
+    id INTEGER PRIMARY KEY,
+    card_id TEXT NOT NULL REFERENCES cards(id),
+    canvas_id TEXT NOT NULL REFERENCES canvases(id),
+    handover INTEGER NOT NULL,
+    context TEXT NOT NULL,
+    attribution TEXT NOT NULL,
+    configs TEXT NOT NULL,
+    harness TEXT,
+    model TEXT,
+    effort TEXT,
+    answer TEXT NOT NULL,
+    facets TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT,
+    UNIQUE (card_id, handover)
+  );
+   WITH c AS (
+     SELECT id, session_id, created_at, agent_setting AS s,
+       CASE WHEN json_extract(agent_setting, '$.harness') = 'codex' OR (agent_setting IS NULL AND session_id LIKE 'codex:%') THEN 'codex' ELSE 'claude' END AS h
+     FROM cards),
+   i AS (
+     SELECT card_id, json_extract(agent, '$.harness') AS h, json_extract(agent, '$.model') AS m, min(at) AS at
+     FROM events WHERE agent IS NOT NULL AND author IN ('worker', 'explorer') GROUP BY 1, 2, 3),
+   n AS (SELECT card_id, count(*) AS k FROM i GROUP BY card_id)
+   INSERT OR IGNORE INTO agent_runs (card_id, session_id, harness, model, effort, requested, started_at)
+     SELECT id, session_id, h, CASE WHEN h = 'codex' AND json_extract(s, '$.codex.model') <> 'default' THEN json_extract(s, '$.codex.model') END,
+       json_extract(s, CASE h WHEN 'codex' THEN '$.codex.effort' ELSE '$.effort' END),
+       json_extract(s, CASE h WHEN 'codex' THEN '$.codex.model' ELSE '$.model' END), created_at
+       FROM c WHERE session_id IS NOT NULL AND id NOT IN (SELECT card_id FROM i)
+     UNION ALL
+     SELECT x.card_id, CASE WHEN x.own THEN c.session_id ELSE 'earlier:' || x.h || ':' || coalesce(x.m, '') END, x.h, x.m,
+       CASE WHEN x.own THEN json_extract(c.s, CASE c.h WHEN 'codex' THEN '$.codex.effort' ELSE '$.effort' END) END,
+       CASE WHEN x.own THEN json_extract(c.s, CASE c.h WHEN 'codex' THEN '$.codex.model' ELSE '$.model' END) END, x.at
+       FROM (SELECT i.*, n.k = 1 AND i.h = c.h AND c.session_id IS NOT NULL AS own FROM i JOIN n USING (card_id) JOIN c ON c.id = i.card_id) x
+       JOIN c ON c.id = x.card_id;`,
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, agent, token, made';
@@ -584,6 +635,7 @@ export class Store {
       this.update(id, { ...fields, x: at.x, y: at.y, repo: null, group_id: null });
       this.db.query('UPDATE cards SET canvas_id = $c WHERE id = $id').run({ id, c: canvasId });
       this.db.query('UPDATE decisions SET canvas_id = $c WHERE card_id = $id').run({ id, c: canvasId });
+      this.db.query('UPDATE feedback SET canvas_id = $c WHERE card_id = $id').run({ id, c: canvasId });
     })();
   }
 
@@ -1408,6 +1460,106 @@ export class Store {
   removeDevice(id: string): boolean {
     return this.db.query('DELETE FROM devices WHERE id = $id').run({ id }).changes > 0;
   }
+
+  /**
+   * A session worked on the card with `config`: the first time it is heard, from `at`. Heard again
+   * (a resume, the model it resolved to), it keeps what it ran on and only learns what was unknown.
+   */
+  recordRun(cardId: string, session: string, config: WorkConfig, at: string = now()) {
+    this.db
+      .query(
+        `INSERT INTO agent_runs (card_id, session_id, harness, model, effort, requested, started_at) VALUES ($card, $session, $harness, $model, $effort, $requested, $at)
+         ON CONFLICT (card_id, session_id) DO UPDATE SET harness = coalesce(harness, excluded.harness), model = coalesce(model, excluded.model),
+           effort = coalesce(effort, excluded.effort), requested = coalesce(requested, excluded.requested)`,
+      )
+      .run({ card: cardId, session, harness: config.harness, model: config.model, effort: config.effort, requested: config.requested ?? null, at });
+  }
+
+  /** The sessions that worked on the card, the earliest first. */
+  runs(cardId: string): (WorkConfig & { session: string; at: string })[] {
+    const rows = this.db
+      .query('SELECT session_id AS session, harness, model, effort, requested, started_at AS at FROM agent_runs WHERE card_id = $c ORDER BY started_at, rowid')
+      .all({ c: cardId }) as (Omit<WorkConfig, 'requested'> & { requested: string | null; session: string; at: string })[];
+    return rows.map(({ requested, ...r }) => ({ ...r, ...(requested ? { requested } : {}) }));
+  }
+
+  /**
+   * The owner's response on the card's `handover`: a new one, or the one given before for the same
+   * handover with its answer and facets replaced. Whom it credits stays as it was first recorded.
+   */
+  putFeedback(f: Omit<Feedback, 'id' | 'at' | 'updatedAt' | 'cardId' | 'canvasId' | 'short'> & { cardId: string; canvasId: string }): Feedback {
+    const credited = f.attribution === 'single' ? f.configs[0] : undefined;
+    const context = { title: f.title, ...(f.repo ? { repo: f.repo } : {}), ...(f.project ? { project: f.project } : {}) };
+    const row = this.db
+      .query(
+        `INSERT INTO feedback (card_id, canvas_id, handover, context, attribution, configs, harness, model, effort, answer, facets, created_at)
+         VALUES ($card, $canvas, $handover, $context, $attribution, $configs, $harness, $model, $effort, $answer, $facets, $at)
+         ON CONFLICT (card_id, handover) DO UPDATE SET answer = excluded.answer, facets = excluded.facets,
+           updated_at = CASE WHEN answer IS excluded.answer AND facets IS excluded.facets THEN updated_at ELSE excluded.created_at END
+         RETURNING id`,
+      )
+      .get({
+        card: f.cardId,
+        canvas: f.canvasId,
+        handover: f.handover,
+        context: JSON.stringify(context),
+        attribution: f.attribution,
+        configs: JSON.stringify(f.configs),
+        harness: credited?.harness ?? null,
+        model: credited?.model ?? null,
+        effort: credited?.effort ?? null,
+        answer: JSON.stringify(f.answer),
+        facets: f.facets ? JSON.stringify(f.facets) : null,
+        at: now(),
+      }) as { id: number };
+    return this.feedback({ id: row.id })[0]!;
+  }
+
+  /** The owner's responses, the earliest first: all of them, a card's, or one. */
+  feedback(of: { cardId?: string; id?: number } = {}): Feedback[] {
+    const rows = this.db
+      .query(
+        `SELECT f.*, c.short FROM feedback f JOIN cards c ON c.id = f.card_id
+         WHERE ($card IS NULL OR f.card_id = $card) AND ($id IS NULL OR f.id = $id) ORDER BY f.id`,
+      )
+      .all({ card: of.cardId ?? null, id: of.id ?? null }) as FeedbackRow[];
+    return rows.map(feedbackOf);
+  }
+}
+
+interface FeedbackRow {
+  id: number;
+  card_id: string;
+  canvas_id: string;
+  handover: number;
+  context: string;
+  attribution: Attribution;
+  configs: string;
+  answer: string;
+  facets: string | null;
+  created_at: string;
+  updated_at: string | null;
+  short: string | null;
+}
+
+function feedbackOf(r: FeedbackRow): Feedback {
+  const context = JSON.parse(r.context) as Pick<Feedback, 'title' | 'repo' | 'project'>;
+  const configs = JSON.parse(r.configs) as WorkConfig[];
+  return {
+    id: r.id,
+    cardId: r.card_id,
+    ...(r.short ? { short: r.short } : {}),
+    canvasId: r.canvas_id,
+    handover: r.handover,
+    ...context,
+    attribution: r.attribution,
+    configs,
+    ...(r.attribution === 'single' && configs[0] ? { credited: configs[0] } : {}),
+    answer: JSON.parse(r.answer) as FeedbackAnswer,
+    ...(r.facets ? { facets: JSON.parse(r.facets) as Record<string, string> } : {}),
+    at: r.created_at,
+    ...(r.updated_at ? { updatedAt: r.updated_at } : {}),
+  };
 }
 
 const now = () => new Date().toISOString();

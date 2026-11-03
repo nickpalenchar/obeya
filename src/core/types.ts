@@ -990,6 +990,58 @@ export interface AgentIdentity {
 }
 
 /**
+ * One configuration that worked on a card, as its session actually ran: never filled from the
+ * defaults of today. `null` is unknown (an old session, a model the session never named).
+ */
+export interface WorkConfig {
+  harness: 'claude' | 'codex' | null;
+  /** The model the session resolved to (`claude-opus-5-5`), not the alias it was asked for. */
+  model: string | null;
+  effort: AgentEffort | null;
+  /** The alias or choice the session was started with (`opus`, `default`), for context only. */
+  requested?: string;
+}
+
+/**
+ * Whom a response credits: `single` one configuration did all the work up to the handover (its
+ * fields may still be unknown), `mixed` more than one did and none alone is credited, `missing`
+ * nothing is known of who did it.
+ */
+export type Attribution = 'single' | 'mixed' | 'missing';
+
+/** What the owner said of the work; at least one of them. */
+export interface FeedbackAnswer {
+  rating?: number;
+  comment?: string;
+}
+
+/** The owner's response on a card's approved work, with whom it credits as at the handover it is about. */
+export interface Feedback {
+  id: number;
+  /** The card's id, the stable link to it (its address uses `short`), whatever canvas it is on now. */
+  cardId: string;
+  short?: string;
+  canvasId: string;
+  /** The handover (its `review` event) the response is about: one response per handover. */
+  handover: number;
+  /** The card as it was when the response was given. */
+  title: string;
+  repo?: string;
+  project?: { id: string; title: string; file?: string };
+  attribution: Attribution;
+  /** Every configuration that worked on the card up to the handover, the earliest first. */
+  configs: WorkConfig[];
+  /** The one configuration credited, only where `attribution` is `single`. */
+  credited?: WorkConfig;
+  answer: FeedbackAnswer;
+  /** Further dimensions of the task (its complexity, its type), none required. */
+  facets?: Record<string, string>;
+  at: string;
+  /** When the response was last changed, where it was given again for the same handover. */
+  updatedAt?: string;
+}
+
+/**
  * Where an agent shows at work: a card's (its worker, an idea's agent, a Question card's agent, the
  * reviser of a proposal), the one looking up the question of an exchange in the sheet, or the
  * Koordinator reading the owner's words.

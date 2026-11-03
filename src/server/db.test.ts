@@ -99,6 +99,8 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     s.db.run('ALTER TABLE events DROP COLUMN token');
     s.db.run('ALTER TABLE talk DROP COLUMN then_place');
     s.db.run('ALTER TABLE events DROP COLUMN made');
+    s.db.run('DROP TABLE agent_runs');
+    s.db.run('DROP TABLE feedback');
     s.db.run(`PRAGMA user_version = ${RELEASED}`);
     s.db.close();
 
@@ -147,9 +149,65 @@ test('the migration gives the cards there are codes of their own, longer where t
     for (const index of ['cards_open', 'cards_plan_docs', 'cards_prototypes', 'cards_waiting', 'cards_shared']) s.db.run(`DROP INDEX ${index}`);
     s.db.run('ALTER TABLE talk DROP COLUMN then_place');
     s.db.run('ALTER TABLE events DROP COLUMN made');
+    s.db.run('DROP TABLE agent_runs');
+    s.db.run('DROP TABLE feedback');
     s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.findIndex((m) => m.includes('ADD COLUMN short'))}`);
     s.db.close();
     const after = new Store(path);
     expect(ids.map((id) => after.card(id)!.short)).toEqual(['12345678000040008000000000000001', '12345678000040008000000000000002', '1234aa', 'ffffff']);
+    after.db.close();
+  }));
+
+test('the sessions of cards from before runs were recorded: the last as pinned, one for each other identity their agents spoke as', () =>
+  withPath((path) => {
+    const s = new Store(path);
+    s.ensureCanvas('c', 'C');
+    const [pinned, spoke, legacy, mixed, idle] = s.insert([0, 1, 2, 3, 4].map((y) => ({ canvas_id: 'c', kind: 'task' as const, x: 0, y })));
+    s.update(pinned!.id, { session_id: 's-1', agent_setting: JSON.stringify({ model: 'opus', effort: 'high' }) });
+    s.update(spoke!.id, { session_id: 'codex:t-1', agent_setting: JSON.stringify({ model: 'opus', effort: 'high', harness: 'codex', codex: { model: 'gpt-x', effort: 'low' } }) });
+    s.addEvent({ cardId: spoke!.id, kind: 'say', author: 'worker', text: 'On it.', agent: { harness: 'codex', model: 'gpt-x' } });
+    s.addEvent({ cardId: spoke!.id, kind: 'say', author: 'koordinator', text: 'Not the worker.', agent: { harness: 'claude', model: 'claude-opus-5-5' } });
+    s.update(legacy!.id, { session_id: 'old-claude' });
+    const [named] = s.insert([{ canvas_id: 'c', kind: 'task', x: 1, y: 0 }]);
+    s.update(named!.id, { session_id: 'codex:t-2', agent_setting: JSON.stringify({ model: 'opus', effort: 'high', harness: 'codex', codex: { model: 'gpt-y', effort: 'max' } }) });
+    s.update(mixed!.id, { session_id: 's-3', agent_setting: JSON.stringify({ model: 'sonnet', effort: 'low' }) });
+    s.addEvent({ cardId: mixed!.id, kind: 'say', author: 'worker', text: 'First.', agent: { harness: 'claude', model: 'claude-opus-5-5' } });
+    s.addEvent({ cardId: mixed!.id, kind: 'say', author: 'worker', text: 'Second.', agent: { harness: 'claude', model: 'claude-sonnet-5-5' } });
+    s.db.run('DROP TABLE agent_runs');
+    s.db.run('DROP TABLE feedback');
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.findIndex((m) => m.includes('CREATE TABLE agent_runs'))}`);
+    s.db.close();
+
+    const after = new Store(path);
+    const runs = (id: string) => after.runs(id).map(({ at: _, ...r }) => r);
+    expect(runs(pinned!.id)).toEqual([{ session: 's-1', harness: 'claude', model: null, effort: 'high', requested: 'opus' }]);
+    expect(runs(spoke!.id)).toEqual([{ session: 'codex:t-1', harness: 'codex', model: 'gpt-x', effort: 'low', requested: 'gpt-x' }]);
+    expect(runs(named!.id)).toEqual([{ session: 'codex:t-2', harness: 'codex', model: 'gpt-y', effort: 'max', requested: 'gpt-y' }]);
+    expect(runs(legacy!.id)).toEqual([{ session: 'old-claude', harness: 'claude', model: null, effort: null }]);
+    // which of two identities ran with the pinned setting is not known: neither gets it
+    expect(runs(mixed!.id)).toEqual([
+      { session: 'earlier:claude:claude-opus-5-5', harness: 'claude', model: 'claude-opus-5-5', effort: null },
+      { session: 'earlier:claude:claude-sonnet-5-5', harness: 'claude', model: 'claude-sonnet-5-5', effort: null },
+    ]);
+    expect(runs(idle!.id)).toEqual([]);
+    // heard again, a run learns what was unknown and keeps what it knew
+    after.recordRun(pinned!.id, 's-1', { harness: 'codex', model: 'claude-opus-5-5', effort: 'low' });
+    expect(runs(pinned!.id)).toEqual([{ session: 's-1', harness: 'claude', model: 'claude-opus-5-5', effort: 'high', requested: 'opus' }]);
+    after.db.close();
+  }));
+
+test('runs and responses survive a restart, one response for each handover', () =>
+  withPath((path) => {
+    const s = new Store(path);
+    s.ensureCanvas('c', 'C');
+    const [card] = s.insert([{ canvas_id: 'c', kind: 'task', x: 0, y: 0, title: 'T' }]);
+    s.recordRun(card!.id, 's-1', { harness: 'claude', model: 'm', effort: 'high' }, '2026-01-01T00:00:00.000Z');
+    const given = { cardId: card!.id, canvasId: 'c', handover: 7, title: 'T', attribution: 'single' as const, configs: [{ harness: 'claude' as const, model: 'm', effort: 'high' as const }], answer: { rating: 3 } };
+    const first = s.putFeedback(given);
+    s.putFeedback({ ...given, configs: [], attribution: 'missing' });
+    s.db.close();
+    const after = new Store(path);
+    expect(after.runs(card!.id)).toHaveLength(1);
+    expect(after.feedback()).toEqual([first]);
     after.db.close();
   }));

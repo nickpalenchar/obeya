@@ -683,6 +683,11 @@ export function serve(
       // a script acting as the card's agent, in a scratch Obeya whose workers are idle (scripts/scratch-obeya.ts --say)
       '/api/c/:canvas/cards/:id/stand-in': { POST: on(async (c, req) => ({ result: await c.standIn(req.params.id!, (await req.json()) as Parameters<typeof c.standIn>[1]) })) },
       '/api/c/:canvas/cards/:id/events': { GET: on((c, req) => c.board.events(req.params.id!)) },
+      // the owner's responses on the card's approved work, and a new one (`{ answer, handover?, facets? }`); the same handover again replaces its answer
+      '/api/c/:canvas/cards/:id/feedback': {
+        GET: on((c, req) => c.board.feedback(req.params.id!)),
+        POST: on(async (c, req) => c.board.giveFeedback(req.params.id!, await req.json().catch(() => null))),
+      },
       // the skills the owner can ask the card's agent for by `/name`, for the field's menu
       '/api/c/:canvas/cards/:id/skills': { GET: on((c, req) => c.skillsOf(req.params.id!)) },
       // a screenshot for a message: uploaded first, the message then names it by id

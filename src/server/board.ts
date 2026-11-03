@@ -7,7 +7,7 @@
 // leaves its doc stays stored but is not shown.
 
 import { createHash } from 'node:crypto';
-import type { AgentAt, AgentIdentity } from '../core/types';
+import type { AgentAt, AgentIdentity, Feedback, WorkConfig } from '../core/types';
 import { existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { arrangeWorkstreams, type Bounds, boundsOf, CARD_SIZE, freeSpotNear, GAP, type Place, PROJECT_HEAD, placeProjects, planDirNoteBox, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
@@ -75,6 +75,7 @@ import {
   type WorkerTurn,
 } from '../core/types';
 import type { CardRow, DecisionRow, Friction, FrictionNote, GroupRow, HeldTalk, Mark, NewRow, RowUpdate, Store, TalkWaitRow } from './db';
+import { attribute, checkedFeedback } from './feedback';
 import type { Images } from './images';
 import { branchName, CARD_BRANCH } from './workspaces';
 import { clip, messageOf, oneLine } from '../core/text';
@@ -712,6 +713,49 @@ export class Board {
 
   row(id: string): CardRow {
     return this.own(id);
+  }
+
+  /** A session of the card's agent started or named what it runs on (`Store.recordRun`). */
+  recordRun(cardId: string, session: string, config: WorkConfig) {
+    this.own(cardId);
+    this.store.recordRun(cardId, session, config);
+  }
+
+  /** The owner's responses on the card's work, the earliest first. */
+  feedback(cardId: string): Feedback[] {
+    this.own(cardId);
+    return this.store.feedback({ cardId });
+  }
+
+  /**
+   * The owner's response on the card's work at a handover (its latest, unless `handover` names an
+   * earlier one), crediting the sessions that ran on the card up to that handover, as they ran. Given
+   * again for the same handover (a second click, a retry), it replaces the answer of the one before.
+   */
+  giveFeedback(cardId: string, input: unknown): Feedback {
+    const row = this.own(cardId);
+    const given = checkedFeedback(input);
+    if (typeof given === 'string') throw new BadRequest('invalid', given);
+    const handovers = this.store.events(cardId).filter((e) => e.kind === 'review');
+    const handover = given.handover === undefined ? handovers.at(-1) : handovers.find((e) => e.id === given.handover);
+    if (!handover) throw new BadRequest('invalid', given.handover === undefined ? 'the card has not handed over any work' : 'no such handover on the card');
+    const before = this.store.feedback({ cardId }).find((f) => f.handover === handover.id);
+    const { attribution, configs } = before ?? attribute(this.store.runs(cardId), handover.at);
+    // a workstream's title and its project's come from the plan doc
+    const parent = row.parent_id ? this.store.card(row.parent_id) : null;
+    const project = parent?.kind === 'project' ? { id: parent.id, title: this.item(parent.id)?.title ?? parent.title ?? parent.plan_ref ?? '', ...(parent.plan_ref ? { file: parent.plan_ref } : {}) } : undefined;
+    return this.store.putFeedback({
+      cardId,
+      canvasId: row.canvas_id,
+      handover: handover.id,
+      title: before?.title ?? this.item(cardId)?.title ?? row.title ?? '',
+      repo: before ? before.repo : (row.repo ?? this.home),
+      project: before ? before.project : project,
+      attribution,
+      configs,
+      answer: given.answer,
+      ...(given.facets ? { facets: given.facets } : {}),
+    });
   }
 
   /** The directory and kind of the card's latest demo, or of the `n`th of its earlier ones; it stays with the card after approval. */

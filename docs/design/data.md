@@ -26,6 +26,9 @@ Persistent (SQLite):
   it; an idea's brief, open questions and picks; a prototype's idea
   and outcome; a project's plan doc as last read and the plan docs its landed work added; its short
   code for addresses (see Addresses in The canvas), unique across the database;
+- each session that worked on a card, with the harness, resolved model and effort it ran on (see
+  Models and effort in Agents and workspaces), and the owner's responses on approved work: the
+  handover each is about, whom it credits, the card's context as it was, the answer and facets;
 - card events (the conversation log, with the owner's screenshots and agents' mocks, and the
   producing agent's harness and model when known); the Koordinator's replies and looked-up answers
   each retain their own producing identity, never inferred for old messages; workspaces
