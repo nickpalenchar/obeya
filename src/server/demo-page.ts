@@ -325,9 +325,17 @@ ${credit(language)}</main>
 `;
 }
 
-const IMAGE_FRAME_SCRIPT = `const imageFrame = (f, open) => {
-  if (open) { f.dataset.obeyaPreviousStyle = f.getAttribute('style') || ''; f.style.cssText += ';position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;border:0'; }
-  else if (f.dataset.obeyaPreviousStyle !== undefined) { f.setAttribute('style', f.dataset.obeyaPreviousStyle); delete f.dataset.obeyaPreviousStyle; }
+const IMAGE_FRAME_SCRIPT = `let imageClose;
+const imageFrame = (f, open) => {
+  const close = () => {
+    if (f.dataset.obeyaPreviousStyle !== undefined) { f.setAttribute('style', f.dataset.obeyaPreviousStyle); delete f.dataset.obeyaPreviousStyle; f.contentWindow.postMessage({ obeyaCloseImage: true }, '*'); }
+    if (imageClose) imageClose.remove(); imageClose = null;
+  };
+  if (open && !imageClose) {
+    f.dataset.obeyaPreviousStyle = f.getAttribute('style') || ''; f.style.cssText += ';position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483646;border:0';
+    imageClose = document.createElement('button'); imageClose.textContent = '×'; imageClose.setAttribute('aria-label', document.documentElement.lang === 'de' ? 'Schließen' : 'Close');
+    imageClose.style.cssText = 'position:fixed;right:16px;top:12px;z-index:2147483647;color:white;background:#222;border:0;font:36px sans-serif;cursor:pointer'; imageClose.onclick = close; document.body.append(imageClose);
+  } else if (!open) close();
 };`;
 
 /** What an unlisted page's head says: no index, no referrer (the meta tags hold where a host sends no headers of the site's own, GitHub Pages). */
