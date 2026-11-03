@@ -2381,3 +2381,8 @@ button.link:hover { text-decoration: underline; }
 .rate-compare { margin-top: 6px; font-size: 13px; }
 #config .cfg-perf { margin-top: 10px; }
 @media (max-width: 700px) { #perf { padding: 10px; } .perf-main { padding: 20px 56px 24px 18px; } .perf-spread, .perf-dots { min-width: 100px; } }
+.perf-trend { margin: 0 0 18px; }
+.perf-trend svg { display: block; width: 100%; height: auto; overflow: visible; }
+.perf-grid { stroke: var(--line); }
+.perf-axis-text { fill: var(--muted); font-size: 12px; }
+.perf-line-key::before { content: ""; display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: 3px; background: var(--r); }

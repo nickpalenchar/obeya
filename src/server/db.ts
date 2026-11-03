@@ -1540,7 +1540,7 @@ export class Store {
   feedback(of: { cardId?: string; id?: number } = {}): Feedback[] {
     const rows = this.db
       .query(
-        `SELECT f.*, c.short FROM feedback f JOIN cards c ON c.id = f.card_id
+        `SELECT f.*, c.short, c.deleted_at FROM feedback f JOIN cards c ON c.id = f.card_id
          WHERE ($card IS NULL OR f.card_id = $card) AND ($id IS NULL OR f.id = $id) ORDER BY f.id`,
       )
       .all({ card: of.cardId ?? null, id: of.id ?? null }) as FeedbackRow[];
@@ -1561,6 +1561,7 @@ interface FeedbackRow {
   created_at: string;
   updated_at: string | null;
   short: string | null;
+  deleted_at: string | null;
 }
 
 function feedbackOf(r: FeedbackRow): Feedback {
@@ -1580,6 +1581,7 @@ function feedbackOf(r: FeedbackRow): Feedback {
     ...(r.facets ? { facets: JSON.parse(r.facets) as Record<string, string> } : {}),
     at: r.created_at,
     ...(r.updated_at ? { updatedAt: r.updated_at } : {}),
+    ...(r.deleted_at ? { deleted: true as const } : {}),
   };
 }
 

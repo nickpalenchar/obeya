@@ -1044,6 +1044,8 @@ export interface Feedback {
   at: string;
   /** When the response was last changed, where it was given again for the same handover. */
   updatedAt?: string;
+  /** The card was deleted since: the response still counts, with no card to go back to. */
+  deleted?: true;
 }
 
 /**

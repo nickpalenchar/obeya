@@ -5,7 +5,7 @@
 // averages. A row opens to its responses, each linking back to its card.
 
 import { createContext, Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { FEW, filterChoices, filterFeedback, performance, type PerformanceFilter, type PerformanceRow, stars } from '../core/performance';
+import { FEW, filterChoices, filterFeedback, performance, type PerformanceFilter, type PerformanceRow, stars, trend } from '../core/performance';
 import type { CanvasInfo, Feedback, WorkConfig } from '../core/types';
 import { cardPath } from './address';
 import { api } from './api';
@@ -16,7 +16,8 @@ import { failText, t } from './strings';
 export const OpenPerformance = createContext<(() => void) | null>(null);
 
 type Period = 'all' | '30' | '90';
-type View = 'stars' | 'dots';
+type View = 'stars' | 'dots' | 'trend';
+const VIEWS: View[] = ['stars', 'dots', 'trend'];
 const VIEW_KEY = 'obeya.performance.view';
 
 const DAY = 86_400_000;
@@ -36,19 +37,37 @@ export function PerformanceDialog({ on, onClose, canvases, here, onOpenCard }: P
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<PerformanceFilter>({});
   const [period, setPeriod] = useState<Period>('all');
-  const [view, setViewState] = useState<View>(() => (localStorage.getItem(VIEW_KEY) === 'dots' ? 'dots' : 'stars'));
+  const [view, setViewState] = useState<View>(() => VIEWS.find((v) => v === localStorage.getItem(VIEW_KEY)) ?? 'stars');
   const setView = (v: View) => {
     localStorage.setItem(VIEW_KEY, v);
     setViewState(v);
   };
   const [open, setOpen] = useState<string | null>(null);
   const close = useRef<HTMLButtonElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  // what had the focus when it opened gets it back when it closes, unless a card opened from it
+  const opener = useRef<HTMLElement | null>(null);
+  const toCard = useRef(false);
   useEffect(() => {
     if (!on) return;
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    toCard.current = false;
     setError('');
     api.allFeedback().then(setAll, (e) => setError(failText(e)));
     requestAnimationFrame(() => close.current?.focus());
+    return () => {
+      if (!toCard.current && opener.current?.isConnected) opener.current.focus({ preventScroll: true });
+    };
   }, [on]);
+  /** Tab stays within the dialog while it is open. */
+  const trap = (e: React.KeyboardEvent) => {
+    if (e.key !== 'Tab' || !box.current) return;
+    const all = [...box.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), select, input, textarea')].filter((x) => x.offsetParent !== null);
+    if (!all.length) return;
+    const first = all[0]!, last = all.at(-1)!;
+    if (e.shiftKey && document.activeElement === first) (e.preventDefault(), last.focus());
+    else if (!e.shiftKey && document.activeElement === last) (e.preventDefault(), first.focus());
+  };
   const since = period === 'all' ? undefined : new Date(Date.now() - Number(period) * DAY).toISOString();
   const shown = useMemo(() => filterFeedback(all ?? [], { ...filter, ...(since ? { since } : {}) }), [all, filter, since?.slice(0, 10)]);
   const perf = useMemo(() => performance(shown), [shown]);
@@ -57,6 +76,12 @@ export function PerformanceDialog({ on, onClose, canvases, here, onOpenCard }: P
   const canvasName = (id: string) => canvases.find((c) => c.id === id)?.name ?? id;
   const link = (f: Feedback) => {
     const code = f.short ?? f.cardId;
+    if (f.deleted)
+      return (
+        <span>
+          {plain(f.title) || code} <span className="hint">{p.deleted}</span>
+        </span>
+      );
     return (
       <a
         className="link card-link"
@@ -64,6 +89,7 @@ export function PerformanceDialog({ on, onClose, canvases, here, onOpenCard }: P
         onClick={(e) => {
           if (f.canvasId !== here || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
           e.preventDefault();
+          toCard.current = true;
           onClose();
           onOpenCard(code);
         }}
@@ -105,6 +131,7 @@ export function PerformanceDialog({ on, onClose, canvases, here, onOpenCard }: P
     let head = '';
     body = (
       <>
+        {view === 'trend' && <Trend rows={perf.rows} />}
         <table className="perf-table">
           <thead>
             <tr>
@@ -115,7 +142,7 @@ export function PerformanceDialog({ on, onClose, canvases, here, onOpenCard }: P
               <th scope="col" className="num">
                 {p.cols.mean}
               </th>
-              <th scope="col">{view === 'stars' ? p.cols.spread : <DotScale />}</th>
+              <th scope="col">{view !== 'dots' ? p.cols.spread : <DotScale />}</th>
               <th scope="col" className="num">
                 {p.cols.comments}
               </th>
@@ -152,7 +179,7 @@ export function PerformanceDialog({ on, onClose, canvases, here, onOpenCard }: P
                     </th>
                     <td className="num">{r.ratings.length}</td>
                     <td className="num">{r.mean === null ? '–' : r.mean.toFixed(1)}</td>
-                    <td>{view === 'stars' ? <Spread r={r} /> : <Dots r={r} />}</td>
+                    <td>{view !== 'dots' ? <Spread r={r} /> : <Dots r={r} />}</td>
                     <td className="num">{r.comments}</td>
                   </tr>
                   {expanded && (
@@ -167,7 +194,7 @@ export function PerformanceDialog({ on, onClose, canvases, here, onOpenCard }: P
             })}
           </tbody>
         </table>
-        {view === 'stars' ? (
+        {view !== 'dots' ? (
           <p className="perf-legend">
             {[1, 2, 3, 4, 5].map((s) => (
               <span key={s} className={`perf-key perf-r${s}`}>
@@ -188,7 +215,7 @@ export function PerformanceDialog({ on, onClose, canvases, here, onOpenCard }: P
 
   return (
     <div id="perf" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="perf-box" role="dialog" aria-modal="true" aria-labelledby="perf-title">
+      <div ref={box} className="perf-box" role="dialog" aria-modal="true" aria-labelledby="perf-title" onKeyDown={trap}>
         <button ref={close} className="cfg-close" title={t.close} aria-label={t.close} onClick={onClose}>
           ✕
         </button>
@@ -224,7 +251,7 @@ export function PerformanceDialog({ on, onClose, canvases, here, onOpenCard }: P
               </div>
               {comparable && shown.length > 0 && (
                 <div className="perf-views" role="group" aria-label={p.views.label}>
-                  {(['stars', 'dots'] as const).map((v) => (
+                  {VIEWS.map((v) => (
                     <button key={v} className={view === v ? 'on' : undefined} aria-pressed={view === v} onClick={() => setView(v)}>
                       {p.views[v]}
                     </button>
@@ -353,5 +380,63 @@ function Responses({ list, link, canvasName, withConfig }: { list: Feedback[]; l
         </li>
       ))}
     </ul>
+  );
+}
+
+/** Inks for the lines over time, one per row, in the rows' order. */
+const LINE_INKS = ['var(--working)', 'var(--approved)', 'var(--waiting)', 'var(--proposal)', 'var(--inPr)', 'var(--idea)', 'var(--question)', 'var(--planned)'];
+
+/** A row's name as plain text, for the chart's legend and labels. */
+function rowText(r: PerformanceRow) {
+  const p = t.performance;
+  return r.kind === 'mixed' ? p.mixed : r.kind === 'missing' ? p.missing : configText(r.config!, true);
+}
+
+/** Each model and effort's average per month as a line; a month of fewer than `FEW` ratings is a hollow point. */
+function Trend({ rows }: { rows: PerformanceRow[] }) {
+  const p = t.performance;
+  // the lines are the models': work credited to none of them has no line of its own
+  const { months, series } = trend(rows.filter((r) => r.kind === 'config'));
+  const W = 900, H = 200, L = 44, R = 16, T = 12, B = 30;
+  const x = (m: string) => (months.length < 2 ? L + (W - L - R) / 2 : L + (months.indexOf(m) / (months.length - 1)) * (W - L - R));
+  const y = (v: number) => T + ((5 - v) / 4) * (H - T - B);
+  const named = new Map(rows.map((r) => [r.key, r]));
+  const lines = series.map((s, k) => ({ ...s, ink: LINE_INKS[k % LINE_INKS.length]!, name: rowText(named.get(s.key)!) }));
+  return (
+    <figure className="perf-trend">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={p.trendLabel(months.length)}>
+        {[1, 2, 3, 4, 5].map((v) => (
+          <g key={v}>
+            <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} className="perf-grid" />
+            <text x={L - 8} y={y(v) + 4} textAnchor="end" className="perf-axis-text">
+              {v}★
+            </text>
+          </g>
+        ))}
+        {months.map((m) => (
+          <text key={m} x={x(m)} y={H - 8} textAnchor="middle" className="perf-axis-text">
+            {p.month(m)}
+          </text>
+        ))}
+        {lines.map((s) => (
+          <g key={s.key} style={{ color: s.ink }}>
+            <polyline fill="none" stroke="currentColor" strokeWidth={2} points={s.points.map((pt) => `${x(pt.month)},${y(pt.mean)}`).join(' ')} />
+            {s.points.map((pt) => (
+              <circle key={pt.month} cx={x(pt.month)} cy={y(pt.mean)} r={4.5} stroke="currentColor" strokeWidth={2} fill={pt.n < FEW ? 'var(--panel)' : 'currentColor'}>
+                <title>{p.point(s.name, p.month(pt.month), pt.mean, pt.n)}</title>
+              </circle>
+            ))}
+          </g>
+        ))}
+      </svg>
+      <figcaption className="perf-legend">
+        {lines.map((s) => (
+          <span key={s.key} className="perf-line-key" style={{ ['--r' as string]: s.ink }}>
+            {s.name}
+          </span>
+        ))}
+        <span>{p.trendHint(FEW)}</span>
+      </figcaption>
+    </figure>
   );
 }

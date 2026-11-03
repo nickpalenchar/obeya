@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { FEW, filterChoices, filterFeedback, performance } from './performance';
+import { FEW, filterChoices, filterFeedback, performance, trend } from './performance';
 import type { Feedback, WorkConfig } from './types';
 
 const opusHigh: WorkConfig = { harness: 'claude', model: 'claude-opus-5-5', effort: 'high', requested: 'opus' };
@@ -85,4 +85,21 @@ test('filters by canvas, repository, project and since when; the choices are wha
   expect(ids({ since: '2026-10-15T00:00:00.000Z' })).toEqual([list[1]!.id, list[2]!.id]);
   expect(ids({ canvas: 'b', project: 'p1' })).toEqual([]);
   expect(filterChoices(list)).toEqual({ canvases: ['a', 'b'], repos: ['api', 'web'], projects: [{ id: 'p2', title: 'Auth' }, { id: 'p1', title: 'Billing' }] });
+});
+
+test('the trend is each row’s average per month, over every month from the first to the last', () => {
+  const list = [
+    fb([opusHigh], { rating: 5 }, { at: '2026-08-03T00:00:00.000Z' }),
+    fb([opusHigh], { rating: 3 }, { at: '2026-10-03T00:00:00.000Z' }),
+    fb([opusHigh], { rating: 4 }, { at: '2026-10-20T00:00:00.000Z' }),
+    fb([sonnet], { comment: 'no stars' }, { at: '2026-11-01T00:00:00.000Z' }),
+    fb([sonnet], { rating: 2 }, { at: '2026-07-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z' }),
+  ];
+  const t = trend(performance(list).rows);
+  expect(t.months).toEqual(['2026-08', '2026-09', '2026-10']);
+  expect(t.series).toEqual([
+    { key: 'claude|claude-opus-5-5|high', points: [{ month: '2026-08', mean: 5, n: 1 }, { month: '2026-10', mean: 3.5, n: 2 }] },
+    { key: 'claude|claude-sonnet-5-5|medium', points: [{ month: '2026-10', mean: 2, n: 1 }] },
+  ]);
+  expect(trend([])).toEqual({ months: [], series: [] });
 });

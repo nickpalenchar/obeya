@@ -122,6 +122,16 @@ test('a workstream’s response carries its project; it follows the card to anot
   expect(store.feedback({ cardId: w.id })[0]).toMatchObject({ id: f.id, canvasId: 'd', project: { title: 'A' } });
   // the dashboard reads every canvas's responses, from any canvas
   expect(board.allFeedback().map((x) => [x.id, x.canvasId])).toEqual([[f.id, 'd']]);
+  expect(board.allFeedback()[0]!.deleted).toBeUndefined();
+});
+
+test('a deleted card’s response still counts, marked as having no card to go back to', () => {
+  const card = manual();
+  board.log(card.id, 'review', 'worker', 'Done.');
+  approve(card.id);
+  board.giveFeedback(card.id, { answer: { rating: 3 } });
+  store.db.query('UPDATE cards SET deleted_at = $at WHERE id = $id').run({ at: new Date().toISOString(), id: card.id });
+  expect(board.allFeedback().find((x) => x.cardId === card.id)).toMatchObject({ deleted: true, answer: { rating: 3 } });
 });
 
 test('a response is checked before it is kept', () => {

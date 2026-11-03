@@ -178,7 +178,10 @@ own under „Keinem Modell allein zugeordnet“, never counted for a model. Rows
 model and effort, never by score. Each says how many ratings it rests on, their average and
 comments; a row with fewer than five ratings is greyed and tagged „wenige“. The main view shows
 each row's ratings split by stars as one bar („Verteilung“); „Jede Bewertung“ draws each rating as a
-dot on the scale from 1 to 5 with the median as a line, the view chosen kept per browser. With
+dot on the scale from 1 to 5 with the median as a line; „Im Zeitverlauf“ puts above the table each
+model and effort's average per month as a line (from the first month with a rating to the last), a
+month of fewer than five ratings a hollow point, work credited to no one model without a line. The
+view chosen is kept per browser. With
 fewer than five ratings in all (after the filters), there is no table and no average, only the
 responses so far, each with whom it credits. The head counts responses, ratings and those credited
 to no one model. Filters: canvas, repository and project (each only where there is more than one to
@@ -186,8 +189,10 @@ choose, a project as soon as there is one), and the period (all, the last 90 or 
 response was last given). A click on a row lists its responses, the latest first: the card's title
 as it was (a link to the card: on this canvas it closes the dialog and opens the card, archived
 ones from the archive; on another, its address), project, repository, canvas where they differ,
-date, stars and comment, and for mixed work the configurations that did it. Closed and opened
-again, the dialog keeps its filters and open row. A response with only a comment counts as a
+date, stars and comment, and for mixed work the configurations that did it. A deleted card's
+response still counts and says so, its title without a link. Closed and opened
+again, the dialog keeps its filters and open row; it holds the keyboard's focus while open and
+gives it back to what opened it. A response with only a comment counts as a
 response, not a rating. The phone view has no dashboard.
 
 ### Live and done
@@ -242,9 +247,9 @@ sheet), lists its decisions and links the idea or task its plan doc came from (s
 - **The dashboard compares without ranking** (owner, 2026-11-03): ratings are the owner's judgement
   of single tasks, whose difficulty and kind count too, so rows keep a fixed order, always show how
   many ratings they rest on, and below five ratings in all give no averages. The owner chose the
-  table with each row's spread of stars as the main view and the dots of each rating as the second.
-  Rejected: sorting by average (it reads as a ranking the numbers cannot carry); a trend over time
-  (meaningless until months of ratings); recommending a model from the ratings, which is for
+  table with each row's spread of stars as the main view, beside it the dots of each rating and the
+  trend per month, whose sparse months are drawn hollow rather than left out. Rejected: sorting by
+  average (it reads as a ranking the numbers cannot carry); recommending a model from the ratings, which is for
   [Choosing an agent for a task](../plan/agent-choice.md) to take up.
 
 - **Feedback is five stars and an optional comment, asked after the approval and never in its way**

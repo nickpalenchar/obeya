@@ -118,3 +118,40 @@ export function filterChoices(list: Feedback[]) {
   for (const f of list) if (f.project) projects.set(f.project.id, f.project.title);
   return { canvases, repos, projects: [...projects].map(([id, title]) => ({ id, title })).sort((a, b) => a.title.localeCompare(b.title)) };
 }
+
+export interface TrendPoint {
+  /** The month, `2026-10`. */
+  month: string;
+  mean: number;
+  n: number;
+}
+
+/** Each row's average rating per month (by when a response was last given), and the months from the first to the last with any. */
+export function trend(rows: PerformanceRow[]): { months: string[]; series: { key: string; points: TrendPoint[] }[] } {
+  const monthOf = (f: Feedback) => (f.updatedAt ?? f.at).slice(0, 7);
+  const series = rows.map((r) => {
+    const by = new Map<string, number[]>();
+    for (const f of r.responses) {
+      const s = stars(f.answer.rating);
+      if (s === null) continue;
+      const m = monthOf(f);
+      by.set(m, [...(by.get(m) ?? []), s]);
+    }
+    const points = [...by].map(([month, v]) => ({ month, mean: v.reduce((a, b) => a + b, 0) / v.length, n: v.length })).sort((a, b) => a.month.localeCompare(b.month));
+    return { key: r.key, points };
+  });
+  const all = series.flatMap((s) => s.points.map((p) => p.month)).sort();
+  const months: string[] = [];
+  if (all.length) {
+    let [y, m] = all[0]!.split('-').map(Number) as [number, number];
+    const last = all.at(-1)!;
+    for (;;) {
+      const at = `${y}-${String(m).padStart(2, '0')}`;
+      months.push(at);
+      if (at >= last) break;
+      m++;
+      if (m > 12) (m = 1), y++;
+    }
+  }
+  return { months, series: series.filter((s) => s.points.length) };
+}
