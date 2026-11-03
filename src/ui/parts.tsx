@@ -209,7 +209,7 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
         {shownTitle(item)}
       </div>
       {meta && <div className="meta">{meta}</div>}
-      <div className="state">
+      <div className={doingNow(item) && !underway ? 'state doing-now' : 'state'}>
         {item.snoozed && !underway && <ClockMark />}
         {/* one line on the card, cut short rather than running into the text above it */}
         <span className="state-text">
@@ -220,6 +220,7 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
           {item.state === 'proposal' && item.proposal?.startAt && !item.proposal.idea && ` · ${t.startAt.short(snoozeWhen(item.proposal.startAt))}`}
           {item.idea?.buildAfterReply && ` · ${t.idea.buildsAfterReply}`}
           {item.idea?.next && needsYou(item) && ` · ${t.idea.suggests[item.idea.next.step]}`}
+          {!underway && doingNow(item) && <span className={demoStage(doingNow(item)!) ? 'doing demo' : 'doing'}> · {t.doing[doingNow(item)!]}</span>}
           {since && <span className="since"> · {since}</span>}
         </span>
       </div>
@@ -228,11 +229,8 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
   );
 }
 
-/** What the card's worker is doing in its turn, in small italics under the card; a stage of its demo in green. */
-export function Doing({ item }: { item: Item }) {
-  if (!item.inTurn || !item.doing || item.paused) return null;
-  return <div className={demoStage(item.doing) ? 'doing demo' : 'doing'}>{t.doing[item.doing]}</div>;
-}
+/** What the card's worker is doing in its turn, after its state line: a stage of its demo in green. */
+const doingNow = (item: Item) => (item.inTurn && !item.paused ? item.doing : undefined);
 
 export const CardView = memo(
   function CardView({ item, b, lifted, dragging, pop, prototyped, showRepo, els, onStart, onArchive, dep, onHover, underway }: CardProps) {
@@ -260,7 +258,6 @@ export const CardView = memo(
       >
         {(dep === 'before' || dep === 'after') && <div className="dep-tag">{t.deps[dep]}</div>}
         <CardFace item={item} where={showRepo ? item.repo : undefined} underway={underway} chip={shape === 'chip'} />
-        <Doing item={item} />
         {!underway && <CardTurn item={item} />}
         {startable && (
           <button

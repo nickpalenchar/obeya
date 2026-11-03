@@ -119,14 +119,15 @@ holds across reloads, devices and the archive.
 
 A planned or queued card shows a play button under the pointer that starts it without unfolding.
 
-While a card's worker is in a turn, a word in small italics under the card says what it is doing,
-read from its steps alone, without asking the agent: „arbeitet“; „denkt nach“ once it has gone
+While a card's worker is in a turn, a word in italics after its state line („Agent arbeitet ·
+denkt nach“) says what it is doing, and the moving line runs thin under that line instead of beside
+it. The word is read from the agent's steps alone, without asking the agent: „arbeitet“; „denkt nach“ once it has gone
 about twenty seconds without a step while no tool of its runs; „sucht einen Fehler“ after one of its
 tool calls failed (a command's non-zero exit), until that tool succeeds again; and, in green, the
 stages of its demo: „bereitet die Demo vor“ from the demo skill, a demo script or a dry run on,
 „nimmt die Demo auf“ while the render runs (also as background work after the turn ended), „stellt
 die Demo fertig“ from its next step until the handover. A failure outranks the demo, the demo
-outranks thinking. The phone's „Läuft“ list shows the same word under each card.
+outranks thinking. The phone's „Läuft“ list shows its cards the same way.
 
 Every wait between cards on the canvas shows at all times as a thin, solid, grey arrow from the card
 waited for to the card waiting, under the cards and above projects like the dashed line: only direct
@@ -334,7 +335,7 @@ code, a generic one otherwise.
 
 ### Decisions
 
-- **What the agent does is read from its steps** (owner, 2026-11-03): the word under a working card
+- **What the agent does is read from its steps** (owner, 2026-11-03): the word on a working card
   comes from the tool calls, their results and the pauses between them, so it costs the agent nothing
   and cannot be forgotten. Thinking is a pause without a running tool rather than the model's
   thinking blocks, which arrive only once the thinking is done. Rejected: a tool or instruction for
