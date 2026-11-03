@@ -286,10 +286,26 @@ test("an agent whose repository's trust takes git to tell starts once it is told
   expect(fake.sessions).toHaveLength(1);
 });
 
-test('a Codex agent is not asked for a command the owner-confirmed allow list covers, and only for that', async () => {
+test("a Codex agent in a repository whose Claude Code configuration is held starts as it would, only marked: not as one that must not run on Codex", () => {
+  const fake = new FakeRuntime();
+  const runtime = withRepoTrust(fake, () => true);
+  const spec = { cwd: '/nowhere', system: 'Work.', tools: [], onEvent: () => {} };
+  runtime.start({ ...spec, setting: { model: 'opus', effort: 'high', harness: 'codex' } }, 'Start.');
+  expect(fake.last.spec).toMatchObject({ claudeHeld: true, system: 'Work.' });
+  expect(fake.last.spec.untrusted).toBeUndefined();
+  runtime.start(spec, 'Start.');
+  expect(fake.last.spec.untrusted).toBe(true);
+  expect(fake.last.spec.claudeHeld).toBeUndefined();
+  // a review card's comes untrusted already, and stays so
+  runtime.start({ ...spec, untrusted: true, setting: { model: 'opus', effort: 'high', harness: 'codex' } }, 'Start.');
+  expect(fake.last.spec).toMatchObject({ untrusted: true });
+  expect(fake.last.spec.claudeHeld).toBeUndefined();
+});
+
+test('a Codex agent is not asked for a command the owner-confirmed allow list covers, nor for its network, and only for that', async () => {
   const seen: { spec: Parameters<FakeRuntime['start']>[0] }[] = [];
   const base = { start: (spec: Parameters<FakeRuntime['start']>[0]) => { seen.push({ spec }); return undefined as never; } };
-  const rules = (cwd: string) => (cwd === '/repo' ? ['bun test *', 'bun run typecheck'] : []);
+  const rules = (cwd: string) => (cwd === '/repo' ? ['bun test *', 'bun run typecheck', 'pnpm -C * install *'] : []);
   const asked: string[] = [];
   const spec = (over: Record<string, unknown> = {}) => ({ cwd: '/repo', system: '', tools: [], onEvent: () => {}, setting: { harness: 'codex' }, askOwner: async (r: { input: Record<string, unknown> }) => { asked.push(String(r.input.command)); return { allow: false as const, message: 'no' }; }, ...over }) as never;
   const wrapped = withTrustedAllow(base as never, rules);
@@ -299,17 +315,39 @@ test('a Codex agent is not asked for a command the owner-confirmed allow list co
   };
   expect(await answer({}, 'Bash', { command: "/bin/zsh -lc 'bun run typecheck'" })).toEqual({ allow: true });
   expect(await answer({}, 'Bash', { command: "/bin/zsh -lc 'bun test a.test.ts'" })).toEqual({ allow: true });
+  // with network for it, as Codex asks for it on its own or for a host of its managed network
+  const install = "/bin/zsh -lc 'pnpm -C app install --frozen-lockfile && pnpm -C ext install --frozen-lockfile'";
+  expect(await answer({}, 'Bash', { command: install, additionalPermissions: { network: { enabled: true } } })).toEqual({ allow: true });
+  expect(await answer({}, 'Bash', { command: install, additionalPermissions: { network: { enabled: true }, fileSystem: null } })).toEqual({ allow: true });
+  expect(await answer({}, 'Bash', { command: install, networkApprovalContext: { host: 'registry.npmjs.org', protocol: 'https' }, proposedNetworkPolicyAmendments: [{ host: 'registry.npmjs.org', action: 'allow' }] })).toEqual({ allow: true });
   expect(asked).toEqual([]);
-  // chained, uncovered, a grant beyond the command, another tool, another repository, held or Claude's own
+  // chained with an uncovered part, uncovered, a grant beyond network, another tool, another repository, held or Claude's own
   expect((await answer({}, 'Bash', { command: "/bin/zsh -lc 'bun test x; rm -rf y'" })).allow).toBe(false);
+  expect((await answer({}, 'Bash', { command: "/bin/zsh -lc 'source ~/.nvm/nvm.sh && pnpm -C app install'", additionalPermissions: { network: { enabled: true } } })).allow).toBe(false);
   expect((await answer({}, 'Bash', { command: "/bin/zsh -lc 'git push'" })).allow).toBe(false);
-  expect((await answer({}, 'Bash', { command: "/bin/zsh -lc 'bun run typecheck'", additionalPermissions: { network: true } })).allow).toBe(false);
+  expect((await answer({}, 'Bash', { command: "/bin/zsh -lc 'curl https://example.com'", additionalPermissions: { network: { enabled: true } } })).allow).toBe(false);
+  expect((await answer({}, 'Bash', { command: install, additionalPermissions: { network: { enabled: true }, fileSystem: { write: ['/etc'] } } })).allow).toBe(false);
+  expect((await answer({}, 'Bash', { command: install, additionalPermissions: { fileSystem: { entries: [{ path: { type: 'path', path: '/' }, access: 'write' }] } } })).allow).toBe(false);
+  expect((await answer({}, 'Bash', { command: install, additionalPermissions: { macos: { accessibility: true } } })).allow).toBe(false);
+  expect((await answer({}, 'Bash', { command: install, grantRoot: '/' })).allow).toBe(false);
+  expect((await answer({}, 'Bash', { command: install, kind: 'writeStdin' })).allow).toBe(false);
   expect((await answer({}, 'Edit', { command: "/bin/zsh -lc 'bun run typecheck'" })).allow).toBe(false);
   expect((await answer({ cwd: '/other' }, 'Bash', { command: "/bin/zsh -lc 'bun run typecheck'" })).allow).toBe(false);
-  expect(asked).toHaveLength(5);
-  const held = spec({ untrusted: true });
-  wrapped.start(held, '', []);
-  expect(seen.at(-1)!.spec).toBe(held);
+  expect(asked).toHaveLength(11);
+  // setting the shell up in front: sourcing a file the agent cannot write, not one in its writable places
+  const home = mkdtempSync(join(homedir(), '.obeya-runtime-test-'));
+  try {
+    writeFileSync(join(home, 'nvm.sh'), '');
+    const nvm = `/bin/zsh -lc 'source ${home}/nvm.sh && nvm use 24 && pnpm -C app install --frozen-lockfile'`;
+    expect(await answer({}, 'Bash', { command: nvm, additionalPermissions: { network: { enabled: true } } })).toEqual({ allow: true });
+    expect((await answer({ dirs: [home] }, 'Bash', { command: nvm })).allow).toBe(false);
+  } finally { rmSync(home, { recursive: true, force: true }); }
+  expect(asked).toHaveLength(12);
+  for (const over of [{ untrusted: true }, { claudeHeld: true }]) {
+    const held = spec(over);
+    wrapped.start(held, '', []);
+    expect(seen.at(-1)!.spec).toBe(held);
+  }
   const claude = spec({ setting: { harness: 'claude' } });
   wrapped.start(claude, '', []);
   expect(seen.at(-1)!.spec).toBe(claude);

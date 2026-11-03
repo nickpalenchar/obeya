@@ -7,6 +7,7 @@ import { OBEYA_PLUGIN } from './demo';
 import { withAgentSetting, type AgentEvent, type AgentSpec } from './runtime';
 import { FakeRuntime, gitRepo } from './testing';
 import { workerHarnessRuntime } from './worker-runtime';
+import { createCodexRuntime } from './codex-runtime';
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -71,4 +72,18 @@ test("a repository's .codex no longer stops a Codex worker: whether Codex loads 
   expect(codex.sessions).toHaveLength(1);
   expect(codex.last.spec.codexConfig).toBeUndefined();
   expect(events.filter((e) => e.type === 'error')).toEqual([]);
+});
+
+test("a Codex worker starts in a repository whose Claude Code configuration is held, a review card's stays refused", async () => {
+  const connected: AgentSpec[] = [];
+  const codex = createCodexRuntime((spec) => { connected.push(spec); throw new Error('no Codex here'); });
+  const held = fixture({ setting, claudeHeld: true });
+  await withAgentSetting(workerHarnessRuntime(held.claude, codex), () => AGENT_DEFAULTS.worker).start(held.spec, 'build').done;
+  expect(connected).toHaveLength(1);
+  expect(held.events).toContainEqual(expect.objectContaining({ type: 'error', message: 'no Codex here' }));
+  const review = fixture({ setting, untrusted: true });
+  await withAgentSetting(workerHarnessRuntime(review.claude, codex), () => AGENT_DEFAULTS.worker).start(review.spec, 'build').done;
+  expect(connected).toHaveLength(1);
+  expect(review.events).toContainEqual(expect.objectContaining({ type: 'error', message: expect.stringContaining('untrusted repository configuration') }));
+  expect(review.claude.sessions).toHaveLength(0);
 });

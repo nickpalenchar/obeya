@@ -68,6 +68,8 @@ const de = {
     newSession: (earlier: string) => `Neue Sitzung. ${earlier}`,
     earlierRun: (session: string) => `Der frühere Lauf (Sitzung ${session}) bleibt für die Arbeitsrückschau erhalten.`,
     started: (branch: string) => `Agent gestartet auf ${branch}.`,
+    /** The owner chose the worker's harness, model and effort for this start. */
+    startedWith: (choice: string) => `Für diesen Start gewählt: ${choice}.`,
     /** A review card started: its worker reviews the contributor's pull request. */
     reviewStarted: (n: number, author: string) => `Agent gestartet: Er prüft PR #${n} von ${author}.`,
     /** The worker sent the owner's change request to the contributor as a review on the PR. */
@@ -489,7 +491,7 @@ const de = {
   },
   adapterSetup: {
     title: (repo: string) => `Obeya für ${repo} einrichten`,
-    body: 'Füll mit dem Skill `obeya:settings` die Einstellungen dieses Repositorys für alle aus (`.obeya/settings.json`, in der Konfiguration unter „Einstellungen“ als „aus dem Repository“ zu sehen): welche Prüfungen laufen, wie Arbeit landet, wie ein Agent die App betreibt (starten, nach einer Änderung, für eine Demo), wie Obeya sie stoppt, und wo die Plan-Docs liegen, die Obeya als Projekte zeigt. Hat das Repository noch ein `.obeya/adapter/`, übernimm, was darin steht, in die Einstellungen und lösch es. Was du im Repository nicht herausfindest (Login, Testdaten), frag mich.',
+    body: 'Füll mit dem Skill `obeya:settings` die Einstellungen dieses Repositorys für alle aus (`.obeya/settings.json`, in der Konfiguration unter „Einstellungen“ als „aus dem Repository“ zu sehen): welche Prüfungen laufen, wie Arbeit landet, wie ein Agent die App betreibt (starten, nach einer Änderung, für eine Demo), wie Obeya sie stoppt, und wo die Plan-Docs liegen, die Obeya als Projekte zeigt. Entwirf dazu die Allow-Liste der Befehle, die Agenten hier ohne Rückfrage ausführen (die `Bash`-Regeln in `.claude/settings.json`), damit ich sie in der Konfiguration prüfe und ihr vertraue. Hat das Repository noch ein `.obeya/adapter/`, übernimm, was darin steht, in die Einstellungen und lösch es. Was du im Repository nicht herausfindest (Login, Testdaten), frag mich.',
     reason: (repo: string) => `Obeya weiß noch nicht, wie die App von ${repo} startet, welche Prüfungen laufen und wie ein Agent sie für eine Demo betreibt.`,
   },
   /** The card that turns a doc in the plan directory that is not a project into one. */
@@ -579,6 +581,7 @@ const en: Messages = {
     restarted: (earlier: string) => `Started from scratch. ${earlier}`,
     newSession: (earlier: string) => `New session. ${earlier}`,
     earlierRun: (session: string) => `The earlier run (session ${session}) is kept for the work retrospective.`,
+    startedWith: (choice: string) => `Chosen for this start: ${choice}.`,
     started: (branch: string) => `Agent started on ${branch}.`,
     reviewStarted: (n: number, author: string) => `Agent started: it reviews PR #${n} by ${author}.`,
     changesRequested: (n: number, author: string) => `Change request sent as a review comment on PR #${n}. Waiting for ${author}.`,
@@ -948,7 +951,7 @@ const en: Messages = {
   },
   adapterSetup: {
     title: (repo: string) => `Set up Obeya for ${repo}`,
-    body: "With the skill `obeya:settings`, fill in this repository's settings for everyone (`.obeya/settings.json`, shown in the configuration under “Settings” as “from the repository”): which checks run, how work lands, how an agent runs the app (starting it, after a change, for a demo), how Obeya stops it, and where the plan docs are that Obeya shows as projects. If the repository still has a `.obeya/adapter/`, move what it says into the settings and delete it. Ask me what you cannot find out in the repository (login, test data).",
+    body: "With the skill `obeya:settings`, fill in this repository's settings for everyone (`.obeya/settings.json`, shown in the configuration under “Settings” as “from the repository”): which checks run, how work lands, how an agent runs the app (starting it, after a change, for a demo), how Obeya stops it, and where the plan docs are that Obeya shows as projects. Also draft the allow list of commands agents run here without asking (the `Bash` rules in `.claude/settings.json`), for me to review and trust in the configuration. If the repository still has a `.obeya/adapter/`, move what it says into the settings and delete it. Ask me what you cannot find out in the repository (login, test data).",
     reason: (repo: string) => `Obeya does not know yet how the app of ${repo} starts, which checks run or how an agent runs it for a demo.`,
   },
   preparePlanDoc: {

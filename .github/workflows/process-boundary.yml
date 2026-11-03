@@ -1,0 +1,92 @@
+# The process-boundary prototypes' tests and probes on native runners, with the real Codex CLI (no
+# login: the probes run no model turn): Job Objects on Windows (scripts/windows-job-prototype.ts),
+# systemd user scopes on Ubuntu (scripts/linux-scope-prototype.ts), the latter without a reachable
+# user manager, with one, with its D-Bus daemon stopped and with a read-only cgroupfs. Run by hand,
+# or by pushing a branch under boundary-probe/; the results are in the run's log as JSON lines.
+# Nothing is built or published.
+name: Process boundary
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['boundary-probe/**']
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: 1.4.3 }
+      - run: bun install --frozen-lockfile
+      - name: Codex CLI
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/codex" && cd "$RUNNER_TEMP/codex"
+          bun add @openai/codex@0.162.0
+          codex="$(find "$RUNNER_TEMP/codex/node_modules/@openai" -name codex.exe -path '*bin*' | head -1)"
+          echo "found: $codex"; "$codex" --version
+          echo "OBEYA_CODEX=$codex" >> "$GITHUB_ENV"
+      - name: Prototype tests
+        continue-on-error: true
+        run: bun test scripts/windows-job-prototype.test.ts
+      - name: Today's tracker on Windows
+        continue-on-error: true
+        run: bun test src/server/agent-processes.test.ts
+      - name: Probe
+        run: bun scripts/windows-job-probe.ts
+
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: 1.4.3 }
+      - run: bun install --frozen-lockfile
+      - name: Codex CLI
+        run: |
+          mkdir -p "$RUNNER_TEMP/codex" && cd "$RUNNER_TEMP/codex"
+          bun add @openai/codex@0.162.0
+          codex="$(find "$RUNNER_TEMP/codex/node_modules/@openai" -path '*/bin/codex' -type f | head -1)"
+          echo "found: $codex"; "$codex" --version
+          echo "OBEYA_CODEX=$codex" >> "$GITHUB_ENV"
+      - name: Environment
+        run: |
+          systemctl --version | head -1; uname -r; grep cgroup /proc/self/mounts; cat /proc/self/cgroup
+          echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-unset} DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unset}"
+          loginctl show-user "$(id -u)" 2>&1 | head -5 || true
+      - name: No user manager (a runtime directory without one)
+        continue-on-error: true
+        run: mkdir -p "$RUNNER_TEMP/no-manager" && XDG_RUNTIME_DIR="$RUNNER_TEMP/no-manager" bun scripts/linux-scope-probe.ts kill
+      - name: A user manager (lingering, if none runs yet)
+        run: |
+          sudo loginctl enable-linger "$(id -u)"
+          for i in $(seq 1 60); do [ -S /run/user/$(id -u)/systemd/private ] && break; sleep 1; done
+          echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+          XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user is-system-running || true
+      - name: Prototype tests
+        continue-on-error: true
+        run: bun test scripts/linux-scope-prototype.test.ts
+      - name: Probe
+        continue-on-error: true
+        run: bun scripts/linux-scope-probe.ts
+      - name: Read-only cgroupfs
+        continue-on-error: true
+        run: |
+          sudo unshare -m sh -c "mount --bind /sys/fs/cgroup /sys/fs/cgroup && mount -o remount,bind,ro /sys/fs/cgroup && exec setpriv --reuid=$(id -u) --regid=$(id -g) --init-groups env HOME=$HOME XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR PATH=$PATH $(command -v bun) scripts/linux-scope-probe.ts kill"
+      - name: Without a D-Bus daemon
+        run: |
+          systemctl --user stop dbus.socket dbus.service || true
+          mv "$XDG_RUNTIME_DIR/bus" "$XDG_RUNTIME_DIR/bus.off" 2>/dev/null || true
+          systemctl --user is-active dbus.service || true; ls "$XDG_RUNTIME_DIR"
+          env -u DBUS_SESSION_BUS_ADDRESS bun scripts/linux-scope-probe.ts kill
+          env -u DBUS_SESSION_BUS_ADDRESS bun test scripts/linux-scope-prototype.test.ts

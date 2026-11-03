@@ -35,10 +35,11 @@ Harden the local Codex worker preview and complete its remaining acceptance and 
   the transport's process identity is the agent's own, not the supervisor's. Verdict: combine it
   with the registry rather than adopt it alone, and keep it out of Obeya's launch path until W3; see
   "Liveness-pipe prototype: evaluation" below.
-- [ ] **W5:** Platform process boundaries. Investigate stronger platform boundaries separately: native Windows Job Objects with a
-  gated launch, and Linux systemd user scopes including no-manager, no-D-Bus and read-only-cgroup
-  fallback. Test native harnesses, nested jobs and breakaway, and preserve app parking semantics.
-  macOS has no selected unprivileged equivalent. Do not claim an untested boundary or platform.
+- [x] **W5:** Platform process boundaries. Evaluated (2026-11-03): systemd user scopes (Linux) and
+  Job Objects (Windows) hold everything a real Codex app-server's commands started, the job also
+  through Obeya's death, where today's tracker misses a child that detached before its first sample;
+  neither holds a process that asks the system to start it elsewhere. Prototypes only, out of the
+  launch path; Claude, macOS and the installed app untested. See "Platform process boundaries" below.
 - [ ] **W6:** Live phase 1 acceptance. Rerun live mixed-harness cards, rate-limit recovery and longer-running pause/restart scenarios.
 - [x] **W7:** Active session identity. Done (2026-11-02): the working and reading bubbles name the
   harness and model of the session at work; see `docs/design/conversation-on-the-card.md`.
@@ -449,11 +450,118 @@ launched through it (W3):
   exit combined with a supervisor death; macOS creation times have one-second resolution; every
   numeric signal (PID or group) races reuse; the group signal at exit can reach a reused number once
   the group has emptied.
-- *Packaging.* POSIX only, with `/bin/sh` as the gate; Windows needs a different mechanism (W5). A
+- *Packaging.* POSIX only, with `/bin/sh` as the gate; Windows needs a different mechanism (W5: a
+  Job Object, see "Platform process boundaries"). A
   compiled Obeya must start the bundled resource with `BUN_BE_BUN=1`, which the caller side does
   not set yet.
 - *Both harnesses.* Claude's processes survived the host's death in the probes above; the launch path
   should be shared by Claude and Codex, not a Codex transport detail.
+
+### Platform process boundaries (W5, evaluated 2026-11-03)
+
+Two prototypes, outside Obeya's launch path like W4's: a transient systemd user scope per session on
+Linux (`scripts/linux-scope-prototype.ts`) and a Job Object per session on Windows
+(`scripts/windows-job-prototype.ts`). Each has tests (skipped where the mechanism does not exist) and
+a probe with a real Codex CLI 0.162.0 app-server, no model turn and no login
+(`scripts/linux-scope-probe.ts`, `scripts/windows-job-probe.ts`). `scripts/boundary-matrix.ts` runs the
+Linux side in a Docker container that boots systemd; `.github/workflows/process-boundary.yml` runs
+both on native GitHub runners (by hand, or on a push to a `boundary-probe/` branch).
+
+How they work. *Linux:* `systemd-run --user --scope --unit=obeya-<random>.scope` has the user manager
+move systemd-run's own process into the new cgroup before it execs the command in place (same pid,
+same stdio, the environment kept), so the launch is gated by construction. A shell in between writes
+the cgroup it finds itself in to a private fd 3, closes it and execs the agent; no line on fd 3 means
+systemd-run exited without running anything, and the caller may start the agent without a scope.
+Ending writes `cgroup.kill` (kernel 5.14+), which the kernel applies to every member at once, forks
+during the kill included, with no pid looked up; where that file cannot be written, `systemctl --user
+kill --signal=SIGKILL <unit>`. A scope outlives its caller, and its random unit name names nothing
+else while it exists, so a sweep can end it by name (for the registry: record the unit, not pids).
+*Windows:* a named job with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` and without breakaway. Bun cannot
+create a process suspended, so the caller starts a gate (the prototype itself, `BUN_BE_BUN=1`) that
+polls until it finds itself in that job; the caller assigns it by a handle of the still-waiting
+process; only then does the gate start the agent with its own stdio and stay its parent. Ending is
+`TerminateJobObject` by the job's handle; the caller's death closes the handle and the kernel ends
+every member.
+
+Where it ran: a Debian 13 container (systemd 257, Docker Desktop's Linux 6.10, ARM64, privileged with
+a private cgroup namespace); GitHub's Ubuntu 22.04 (systemd 249) and 24.04 (255) runners, x64, native,
+cgroup v2, a lingering user manager; GitHub's Windows Server 2025 runner (10.0.26100), x64, whose
+step processes are already in a job of the runner's, so every job the probe made was nested. All
+three Linux systems gave the same results. Windows took four runs, the first three with faults of
+the tests and probe themselves (quoting, a locked scratch directory); the Codex cases measured the
+same in each run that reached them.
+
+Real Codex, four heartbeats started by `thread/shellCommand` (in the shell's tree; detached into a
+session or process group of their own by a launcher that stays, exits after 1.5 s, or exits at once,
+"fast"), an unrelated canary throughout:
+
+| Case | Today's tracker alone | In a scope (Linux) | In a job (Windows) |
+| --- | --- | --- | --- |
+| Session closes (transport close) | three stop; **"fast" keeps running** (Linux and Windows alike) | all four stop (`cgroup.kill`) | all four stop (`TerminateJobObject`) |
+| Obeya's stand-in SIGKILLed/terminated | **all four keep running** | all four keep running in the scope; a sweep by unit name then ends them | all four stop at once (kill on close) |
+
+The canary lived in every case. "fast" is new: its launcher exits before the tracker's first 500 ms
+sample, so nothing links it to the app-server; this is the gap W1 named ("a child that detaches
+and loses its ancestry between snapshots"), now observed on both platforms. In the first Windows run
+the tracker's PowerShell snapshot failed at the transport's start ("Cannot inspect agent process
+ownership", the 3 s limit on a cold runner) and the case was blocked; the second run measured it.
+
+Prototype tests, passing on all three Linux systems with and without a D-Bus daemon, and on Windows:
+the agent is inside its boundary from its first instruction (and on Linux without the report pipe,
+and with the pid the caller holds); a daemon detached at once is ended with the boundary and nothing
+else is; the boundary outlives (Linux) or dies with (Windows) a killed caller; the agent's exit leaves
+its app running in the boundary until something ends it; no reachable manager starts nothing and says
+why; on Windows also a second job of the same name is refused, a nested job ends alone or with its
+outer one, and a child created with `CREATE_BREAKAWAY_FROM_JOB` is created (CreateProcess accepts the flag there;
+why was not examined) but stays in the prototype's job and ends with it.
+
+Linux situations (the probe's `kill` case and the tests):
+
+| Situation | Result |
+| --- | --- |
+| user manager and D-Bus | scope; ended by `cgroup.kill` |
+| manager without a D-Bus daemon (dbus stopped, its socket gone) | scope, on systemd 249, 255 and 257 alike: systemd-run and systemctl reach the manager over its private socket |
+| read-only cgroupfs in the caller's mount namespace | scope (the manager moves the process); ended by `systemctl --user kill` |
+| no user manager (no lingering, no session; or no `XDG_RUNTIME_DIR`) | none: "Failed to connect to user scope bus", nothing ran |
+| unprivileged container (no systemd, cgroupfs read-only) | none, nothing ran; tests skipped |
+
+Ways out (measured; Linux on all three systems, Windows on the runner):
+
+- Linux, stay in the scope: `setsid` and double forks. Leave it: `systemd-run --user --scope` and
+  `systemd-run --user` (a unit of the manager's), and a process that makes a cgroup of its own in the
+  user's subtree and writes its pid to its `cgroup.procs` (the user owns that subtree; moving into
+  another session's scope works the same way). A boundary against accidents, not against an agent
+  that means to leave.
+- Windows, stay in the job: a detached spawn (`DETACHED_PROCESS`, a group of its own), `cmd /c start
+  /b`, and `CREATE_BREAKAWAY_FROM_JOB` (above). Leave it: WMI's `Win32_Process.Create` (the process is
+  WMI's child, outside the job, and survives `TerminateJobObject`). The task scheduler accepted and
+  started a task, but its process wrote nothing within 20 s, so that way was not measured.
+- Nesting, Linux: a session scope is a sibling of the caller's unit, not inside it: stopping the
+  caller's scope or service (a terminal closing, `systemctl --user stop`) leaves session scopes
+  running until a sweep. Windows: the probe's own process was in the runner's job; nested jobs
+  worked, and ending the inner one left the outer.
+
+App parking. Neither boundary ends anything by itself while its caller lives: the agent's exit leaves
+the app in it, `app.stop` (run by Obeya outside the boundary) ends the app, and an empty scope goes
+by itself. Ending the boundary when the session ends is what Obeya does to Codex session work today,
+so for Codex parking and `app.keep` would behave as now, with the "fast" gap closed. Two differences
+would need deciding before integration: for Claude, ending its boundary with the session widens
+session work beyond its own process group (an app it started then dies with the session, as Codex's
+does); and on Windows, kill on close ends session work at every exit of Obeya, a graceful restart
+included, where Linux leaves it to the next start's sweep.
+
+Not covered, so not claimed: Claude Code on Linux or Windows (no login there; nothing ran); Pi; macOS
+(no unprivileged equivalent was selected, nothing changes there); cgroup v1 or hybrid hosts, kernels
+before 5.14 (no `cgroup.kill`), distributions without systemd, WSL, Flatpak or Snap sandboxes; Windows
+on ARM, a desktop Windows session, an unnested job, and the installed (compiled) app on either
+platform; a Codex sandboxed command (the probe's ran with full access); the registry recording unit or
+job names.
+
+Verdict: both are real boundaries for what a cooperating agent starts, closing the gap sampling
+leaves (W1, W4), and neither is containment against a process that means to leave. Linux scopes are
+available only with a reachable user manager and need the existing tracker as the fallback; Windows
+jobs need no service and also answer Obeya's crash. Integration is a launch-path change for both
+harnesses (the W3/W4 open point) plus the two decisions above, not part of this workstream.
 
 ## Phase 2: Pi
 

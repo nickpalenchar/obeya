@@ -1185,7 +1185,7 @@ const de = {
     },
     agents: {
       title: 'Agenten, Modelle und Effort',
-      chooseStart: 'Agent für diesen Start wählen', currentDefault: 'Aktueller Standard', startWith: 'Mit dieser Auswahl starten', unavailable: 'Nicht verfügbar', choiceHint: 'Nur für diese Aufgabe; der Standard bleibt unverändert.', unavailableChoice: 'Diese Auswahl ist hier nicht verfügbar. Wähle ein verfügbares Modell und Effort.',
+      chooseStart: 'Agent für diesen Start wählen', currentDefault: 'Aktueller Standard', startWith: 'Mit dieser Auswahl starten', unavailable: 'Nicht verfügbar', codexUnavailableHere: 'Codex startet keine Aufgaben in einem Ordner und keine Prüfung eines Pull Requests.', choiceHint: 'Nur für diese Aufgabe; der Standard bleibt unverändert.', unavailableChoice: 'Diese Auswahl ist hier nicht verfügbar. Wähle ein verfügbares Modell und Effort.',
       harness: 'Harness',
       harnesses: { claude: 'Claude Code', codex: 'Codex' },
       codexDefault: 'Codex-Kontostandard',
@@ -3111,7 +3111,7 @@ const en: Strings = {
     },
     agents: {
       title: 'Agents, models and effort',
-      chooseStart: 'Choose an agent for this start', currentDefault: 'Current default', startWith: 'Start with this choice', unavailable: 'Unavailable', choiceHint: 'Only for this task; the default stays unchanged.', unavailableChoice: 'This choice is unavailable here. Choose an available model and effort.',
+      chooseStart: 'Choose an agent for this start', currentDefault: 'Current default', startWith: 'Start with this choice', unavailable: 'Unavailable', codexUnavailableHere: 'Codex does not start tasks in a folder or review a pull request.', choiceHint: 'Only for this task; the default stays unchanged.', unavailableChoice: 'This choice is unavailable here. Choose an available model and effort.',
       harness: 'Harness',
       harnesses: { claude: 'Claude Code', codex: 'Codex' },
       codexDefault: 'Codex account default',

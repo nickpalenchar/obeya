@@ -13,20 +13,26 @@ export function StartAgent({ label, disabled, title, codexAllowed = true, onStar
   const [loading, setLoading] = useState(false);
   const [initial, setInitial] = useState<AgentSetting | null>(null);
   const box = useRef<HTMLDivElement>(null);
-  useMenuClose(open, box, () => setOpen(false), true);
   const a = t.config.agents;
   const loadModels = async () => {
     setLoading(true); setError('');
     try { setModels(await api.codexModels()); } catch (e) { setError(e instanceof ApiError ? e.message : failText(e)); }
     setLoading(false);
   };
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!open) return;
     let active = true;
     setSetting(null); setInitial(null); setError(''); setModels(null);
     api.agents().then((v) => { if (active) { setSetting(v.agents.worker); setInitial(v.agents.worker); } }).catch((e) => { if (active) setError(e instanceof ApiError ? e.message : failText(e)); });
     return () => { active = false; };
-  }, [open]);
+  }, [open, attempt]);
+  // the keyboard lands in the menu once it has its choices, and back on the chevron when it closes
+  const chevron = useRef<HTMLButtonElement>(null);
+  const first = useRef<HTMLSelectElement>(null);
+  useEffect(() => { if (open && setting) first.current?.focus({ preventScroll: true }); }, [open, !!setting]);
+  const close = () => { setOpen(false); chevron.current?.focus(); };
+  useMenuClose(open, box, () => (setOpen(false), chevron.current?.focus()), true);
   useEffect(() => { if (open && setting?.harness === 'codex') void loadModels(); }, [open, setting?.harness]);
   const codex = setting?.harness === 'codex';
   const choice = setting?.codex ?? { model: 'default', effort: 'high' as const };
@@ -37,15 +43,18 @@ export function StartAgent({ label, disabled, title, codexAllowed = true, onStar
   return <div className="start-agent" ref={box}>
     <div className="start-agent-buttons">
       <button className="btn primary" disabled={disabled} title={title} onClick={() => onStart()}>{label}</button>
-      <button type="button" className="btn primary start-agent-chevron" disabled={disabled} aria-label={a.chooseStart} aria-expanded={open} title={a.chooseStart} onClick={() => setOpen(!open)}>⌄</button>
+      <button type="button" ref={chevron} className="btn primary start-agent-chevron" disabled={disabled} aria-label={a.chooseStart} aria-haspopup="true" aria-expanded={open} title={a.chooseStart} onClick={() => (open ? close() : setOpen(true))}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m6 9 6 6 6-6" /></svg>
+      </button>
     </div>
-    {open && <div className="start-agent-menu">
+    {open && <div className="start-agent-menu" role="group" aria-label={a.chooseStart}>
       {initial && <p className="hint">{a.currentDefault}: {describe(initial)}</p>}
       <p className="hint">{a.choiceHint}</p>
       {setting && <>
-        <label>{a.harness}<select value={setting.harness ?? 'claude'} onChange={(e) => setSetting({ ...setting, harness: e.target.value as 'claude' | 'codex', ...(e.target.value === 'codex' ? { codex: setting.codex ?? choice } : {}) })}>
+        <label>{a.harness}<select ref={first} value={setting.harness ?? 'claude'} onChange={(e) => setSetting({ ...setting, harness: e.target.value as 'claude' | 'codex', ...(e.target.value === 'codex' ? { codex: setting.codex ?? choice } : {}) })}>
           <option value="claude">{a.harnesses.claude}</option><option value="codex" disabled={!codexAllowed}>{a.harnesses.codex}{!codexAllowed ? ` (${a.unavailable})` : ''}</option>
         </select></label>
+        {!codexAllowed && <p className="hint">{a.codexUnavailableHere}</p>}
         <label>{a.model}<select value={codex ? choice.model : setting.model} disabled={codex && (!models || loading)} onChange={(e) => {
           if (!codex) return setSetting({ ...setting, model: e.target.value as AgentModel });
           const model = models?.find((m) => e.target.value === 'default' ? m.isDefault : m.model === e.target.value);
@@ -60,9 +69,9 @@ export function StartAgent({ label, disabled, title, codexAllowed = true, onStar
         </select></label>
         {codex && <p className="hint">{a.codexScope}</p>}
       </>}
-      {(error || loading) && <p className="p-error" role="status">{loading ? a.loadingModels : error} {error && setting?.harness === 'codex' && <button className="link" onClick={loadModels}>{a.reloadModels}</button>}</p>}
+      {(error || loading) && <p className="p-error" role="status">{loading ? a.loadingModels : error} {error && (setting ? setting.harness === 'codex' && <button className="link" onClick={loadModels}>{a.reloadModels}</button> : <button className="link" onClick={() => setAttempt(attempt + 1)}>{a.reloadModels}</button>)}</p>}
       {codex && models && !loading && !valid && <p className="p-error" role="status">{a.unavailableChoice}</p>}
-      <button className="btn primary" disabled={!valid || loading} onClick={() => { if (setting) onStart(setting); setOpen(false); }}>{a.startWith}</button>
+      <button className="btn primary" disabled={!valid || loading} onClick={() => { if (setting) onStart(setting); close(); }}>{a.startWith}</button>
     </div>}
   </div>;
 }

@@ -843,6 +843,11 @@ export class Board {
     return this.items().find((i) => i.kind === 'task' && i.repo === repo && (i.id === id || i.title === title) && !finished(i.state) && !i.archivedAt);
   }
 
+  /** Whether the card is the one made to fill in its repository's settings (`setupCard`). */
+  isSetupCard(card: Item): boolean {
+    return this.setting(`${SETUP_CARD_SETTING}${card.repo ?? this.home}`) === card.id;
+  }
+
   /**
    * Makes the card that fills in a repository's settings for everyone, right of everything on the
    * canvas, at the top: the owner's, or Obeya's proposal (`propose`) with why. Either way Obeya

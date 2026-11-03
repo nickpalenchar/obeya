@@ -290,6 +290,21 @@ skill's check script (which shows what Obeya makes of it, plan docs included, an
 the dialog's own checks), run setup and checks, and prove `app.run` by recording a demo with it. The
 compiled binary carries `docs/settings.md` where the skill finds it.
 
+The same skill drafts the repository's allow list, the `Bash` rules of `.claude/settings.json` (see
+Native Codex workers for what it does for Codex), from the commands it found: setup, checks, the
+app's recipe, scripts, and what README, CLAUDE.md, AGENTS.md and CI tell a developer to run. It
+keeps every entry a file there already has and adds what is missing, whether or not one was there;
+the skill's script says which of the gathered commands the list covers and marks rules that let a
+whole program through. The setup card's briefing names the agent harnesses that can work on this
+machine (Claude Code; Codex where it is installed and signed in); with more than one, the worker
+asks the owner which to set the list up for, in its one question. Claude Code and Obeya's Codex
+workers read the one list; for Codex the skill also writes `.codex/rules/obeya.rules` from it, for
+Codex run outside Obeya. Nothing of it counts before the owner trusts it in „Konfiguration“ (see
+Trusting a repository's commands), so the draft is a proposal to review there. Decided 2026-11-02
+(owner): without a list every Codex command asked, and Claude workers asked for the everyday ones
+too; rejected: drafting it only where Codex workers are configured, or only where no list exists
+yet (commands documented after a list was written stayed uncovered).
+
 ### The Konfiguration dialog
 
 The „Konfiguration“ dialog covers the page but for a margin (a press there or Esc closes it,

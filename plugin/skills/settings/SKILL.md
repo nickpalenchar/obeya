@@ -1,6 +1,6 @@
 ---
 name: settings
-description: Write a repository's Obeya settings (`.obeya/settings.json`) — how its app runs and stops, which checks run, how work lands, where demos are shared, where its plan docs are — from what the repository shows, prove the recipe for running the app by recording a demo with it, and ask the owner what the repository does not tell. Use when a task asks to set up Obeya for a repository, to write or fix its settings, or names this skill.
+description: Write a repository's Obeya settings (`.obeya/settings.json`) — how its app runs and stops, which checks run, how work lands, where demos are shared, where its plan docs are — and draft the allow list of commands agents run without asking, from what the repository shows, prove the recipe for running the app by recording a demo with it, and ask the owner what the repository does not tell. Use when a task asks to set up Obeya for a repository, to write or fix its settings, or names this skill.
 ---
 
 # Writing a repository's settings
@@ -55,7 +55,10 @@ Some things only the owner knows: the login for a demo when no seed makes one, w
 shows the app well, whether approved work may go straight
 onto the default branch, where demos are shared with colleagues (a static site: `demo.site`), and
 where plan docs go: the directory of plans you found (its docs then converted with "Als Projekt
-aufbereiten" on the canvas), or a new `docs/plan/`. Collect them and ask in one question
+aufbereiten" on the canvas), or a new `docs/plan/`. Where your briefing names more than one agent
+harness that can work on this machine, the owner also picks which of them the allow list (step 4)
+is set up for: that question is always asked, with each harness as an option and several
+pickable. Collect them and ask in one question
 (the `ask` tool under Obeya), with the options you found, while you go on with the rest. A secret
 (a real password, an API key) goes into `app.run` only as where to find it (a file outside git,
 an environment variable), never itself.
@@ -84,7 +87,43 @@ every problem (an unknown field, a wrong type, a site's deploy program that is n
 adapter module still there), and exits with 1 while there is one. Go on once it says "No
 problems."
 
-## 4. Prove it
+## 4. Draft the allow list
+
+Agents ask the owner before each shell command no rule allows. The repository's allow list, the
+`Bash` rules under `permissions.allow` in `.claude/settings.json`, lets the everyday ones run
+without a question: Claude Code applies it itself, and Obeya applies the same list to its Codex
+workers (network included for a covered command). The owner reviews it and trusts it in
+the configuration before any of it counts.
+
+Gather the commands an agent working here runs: the `setup` and `checks` you wrote, the steps of
+`app.run` and of stopping the app, the scripts (`package.json`, `Makefile`, `justfile`, `bin/`,
+`scripts/`), the commands README, CONTRIBUTING, CLAUDE.md or AGENTS.md and CI tell a developer to
+run, and code generators, linters and formatters. Keep the list to what runs inside the
+workspace and can be undone: tests, builds, type checks, linters, the dev server, installing from
+the lock file. Leave out what publishes, deploys, deletes outside the workspace, pushes or touches
+real accounts and data.
+
+A rule is `Bash(<command>)`: the exact command, or with `*` for any text (`Bash(bun test *)`
+covers `bun test` with any arguments). Name the program and its subcommand: `Bash(npm *)` would
+let `npm exec` run anything. A file the repository already has is the start: keep every rule in
+it, and every other entry (`deny`, `ask`, hooks …), and add only what is missing. Then check it,
+with the commands you gathered:
+
+```bash
+bun ${CLAUDE_SKILL_DIR}/lib/allow-list.ts 'bun install' 'bun test --watch' …
+```
+
+It shows the rules, marks the broad ones, says for each command whether the list covers it, and
+exits with 1 while one is not. For each harness the owner picked:
+
+- **Claude Code** and **Codex in Obeya** read `.claude/settings.json`; nothing more to write.
+- **Codex run outside Obeya** has its own rule engine: with `--codex` the check also writes
+  `.codex/rules/obeya.rules` from the same list. Write it only where the owner picked Codex.
+
+In your summary list the rules you added and where each comes from, so the owner can judge them
+before trusting them.
+
+## 5. Prove it
 
 - Run `setup` and every command of `checks` in this workspace, as a worker will.
 - Follow `app.run` word for word, as if you had never seen the project: start the
@@ -94,9 +133,11 @@ problems."
   else: the app starting up, the login, a page with data. That demo is the proof and your
   handover's demo.
 
-## 5. Hand over
+## 6. Hand over
 
-Commit `.obeya/` alone. In the summary say what the settings set and why where it was a judgement
+Commit `.obeya/` and the allow list (`.claude/settings.json`, `.codex/rules/obeya.rules` where you
+wrote it), nothing else. In the summary say what the settings set and why where it was a judgement
 call (the checks you left out, clones or worktrees), what the owner answered, and
 that they count once they are on the default branch (at once; where they move the workers between
-clones and worktrees, Obeya restarts the repository's agents by itself).
+clones and worktrees, Obeya restarts the repository's agents by itself), and that the allow
+list counts once they trusted it in the configuration.

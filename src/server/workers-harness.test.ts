@@ -29,6 +29,22 @@ test('pins before first session id and resumes the same harness after settings c
   workers.shutdown();
 });
 
+test('a choice made for one start reaches the worker and is kept across replies and restarts, whatever the default', async () => {
+  const chosen: AgentSetting = { model: 'sonnet', effort: 'low' };
+  let choice: AgentSetting = AGENT_DEFAULTS.worker;
+  using(() => choice);
+  const card = manual();
+  await workers.start(card.id, chosen);
+  expect(runtime.last.spec).toMatchObject({ setting: chosen });
+  expect(board.events(card.id).some((e) => e.text.includes('Claude Code · sonnet · low'))).toBe(true);
+  runtime.last.emit({ type: 'session', id: 'session-1' });
+  workers.shutdown(); await flush();
+  choice = codex;
+  using(() => choice); workers.resumeAll();
+  expect(runtime.last.spec).toMatchObject({ resume: 'session-1', setting: chosen });
+  workers.shutdown();
+});
+
 test('legacy session is Claude even when new worker default is Codex', async () => {
   const card = manual(); await workers.start(card.id);
   runtime.last.emit({ type: 'session', id: 'legacy-session' });
@@ -80,4 +96,27 @@ test('a Claude worker gets no extra directory for the demos', async () => {
   } finally {
     rmSync(demos, { recursive: true, force: true });
   }
+});
+
+/** The names of the tools a worker with this setting starts with. */
+async function toolsWith(choice: AgentSetting) {
+  using(() => choice);
+  await workers.start(manual().id);
+  const spec = runtime.last.spec;
+  workers.shutdown();
+  return { tools: spec.tools.map((t) => t.name), system: spec.system };
+}
+
+test('a Codex worker gets obeya_run and obeya_git, and a note on what its sandbox keeps from it', async () => {
+  const { tools, system } = await toolsWith(codex);
+  expect(tools).toContain('obeya_run');
+  expect(tools).toContain('obeya_git');
+  expect(system).toContain('obeya_run');
+});
+
+test('a Claude worker has neither', async () => {
+  const { tools, system } = await toolsWith(AGENT_DEFAULTS.worker);
+  expect(tools).not.toContain('obeya_run');
+  expect(tools).not.toContain('obeya_git');
+  expect(system).not.toContain('obeya_run');
 });

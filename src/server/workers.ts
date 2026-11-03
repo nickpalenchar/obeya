@@ -8,6 +8,7 @@ import type { CardDiff } from '../core/diff';
 import { type Language, LANGUAGE_NAMES, LANGUAGES, ownersLanguage, repositoryLanguage } from '../core/locale';
 import { MESSAGES, type Messages, type Pause } from '../core/messages';
 import { existsSync, realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, isAbsolute } from 'node:path';
 import { type CardFile, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
 import { DEFAULT_DEMO_DIRECTORY, expandHome } from '../../plugin/skills/demo/lib/settings.ts';
@@ -22,6 +23,7 @@ import { outsidePlanDir } from './repo';
 import type { InputContext } from './koordinator';
 import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, BACKGROUND_GRACE, BACKGROUND_LIMIT, failureReason, LIMIT_LIFTED, limitLifts, type PermissionAnswer, type PermissionRequest } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
+import { EXEC_LANE_NOTE, execTools } from './exec-tools';
 import { type Forward, HOST_DIR, hostName, remote } from './hosts';
 import { runAppCommand } from './app-command';
 import { readingShared } from '../adapters';
@@ -108,6 +110,10 @@ export interface WorkerOptions {
   env?: Record<string, string>;
   /** The narration language of the demo settings, for a repository that names none for its demos; the conversation language when left out. */
   demoLanguage?: () => Language;
+  /** The `Bash` rules of the allow list the owner confirmed for the repository `cwd` lies in: what a Codex worker's `obeya_run` runs without asking. None when left out. */
+  allowRules?: (cwd: string) => string[];
+  /** The agent harnesses that can work on this machine (Claude Code; Codex where it is signed in), for the allow list a setup card drafts; Claude Code alone when left out. */
+  harnesses?: () => string[];
   /** The directory demos go into on this machine (the demo settings'); `~/demos` when left out. */
   demoDirectory?: () => string;
   /** A card's work ended (landed, closed without a change, a prototype discarded or built): its runs can be read now. */
@@ -694,6 +700,7 @@ export class Workers {
     this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, agent_setting: selected ? JSON.stringify(selected) : null, pr, approved_at: null, parked: null, paused: null, pausing: null, snoozed: null, app: null });
     const t = this.o.board.t.worker;
     this.o.board.log(card.id, 'state', 'obeya', this.folder ? t.startedInFolder : contribution ? t.reviewStarted(contribution.number, contribution.author) : t.started(branch));
+    if (selected) this.o.board.log(card.id, 'state', 'obeya', t.startedWith(selected.harness === 'codex' && selected.codex ? `Codex · ${selected.codex.model} · ${selected.codex.effort}` : `Claude Code · ${selected.model} · ${selected.effort}`));
     const launch = (headProblem?: string | null) => this.launch(card.id, this.briefing(card, branch, !!row.branch, headProblem), undefined, this.taskImages(card));
     return this.whenReady(
       card.id,
@@ -3174,7 +3181,7 @@ export class Workers {
         setting,
         ...(dirs.length ? { dirs } : {}),
         ...(review ? { untrusted: true } : {}),
-        system: `${this.system(preferences, !!row.prototype_of, this.o.board.item(cardId))}${notes ? `\n\nThe repository's CLAUDE.md, as its default branch has it:\n\n${notes}` : ''}`,
+        system: `${this.system(preferences, !!row.prototype_of, this.o.board.item(cardId))}${setting.harness === 'codex' && !live.host && !review ? `\n\n${EXEC_LANE_NOTE}` : ''}${notes ? `\n\nThe repository's CLAUDE.md, as its default branch has it:\n\n${notes}` : ''}`,
         tools: this.tools(cardId, live, !!row.prototype_of),
         plugins: [OBEYA_PLUGIN],
         ...(env ? { env } : {}),
@@ -4578,6 +4585,7 @@ export class Workers {
             } satisfies AgentTool,
           ]
         : []),
+      ...this.execLane(cardId, live),
       ...(this.o.toObeya
         ? [
             toObeyaTool((request) => {
@@ -4588,6 +4596,32 @@ export class Workers {
           ]
         : []),
     ]);
+  }
+
+  /**
+   * A Codex worker on this machine gets `obeya_run` and `obeya_git`: Obeya runs what its sandbox
+   * keeps from it (`exec-tools.ts`). Not a review card's worker: its workspace holds a stranger's code.
+   */
+  private execLane(cardId: string, live: Live): AgentTool[] {
+    const row = this.o.board.row(cardId);
+    if (!this.usesExecLane(row, live) || !row.workspace) return [];
+    const workspace = row.workspace;
+    return execTools({
+      workspace,
+      places: () => ['/tmp', '/private/tmp', tmpdir(), expandHome(this.demosDir(cardId))],
+      rules: () => this.o.allowRules?.(workspace) ?? [],
+      ask: (request) => this.askOwner(cardId, live, request, new AbortController().signal),
+      ...(this.env() ? { env: this.env()! } : {}),
+    });
+  }
+
+  private usesExecLane(row: CardRow, live: Live): boolean {
+    if (live.host || contributionOf(row)) return false;
+    try {
+      return (row.agent_setting ? (JSON.parse(row.agent_setting) as AgentSetting) : null)?.harness === 'codex';
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -4862,10 +4896,17 @@ ${idea.idea.brief}` : '',
     );
     if (this.o.adapter.setup) parts.push(`First run \`${this.o.adapter.setup}\` in the clone.`);
     const made = this.o.board.row(card.id).new_repo;
-    if (made && (JSON.parse(made) as StoredNewRepo).made)
+    const isNew = !!made && !!(JSON.parse(made) as StoredNewRepo).made;
+    if (isNew)
       parts.push(
         `This repository is new: Obeya created it for this card with a first commit of what its folder held (a default .gitignore, else nothing). It is local only, with no remote. Besides the task, set it up as part of your work: a CLAUDE.md with what the task says about how to work in this repository, and its Obeya settings (\`.obeya/settings.json\`) with the skill \`obeya:settings\`, as the card “${this.o.board.t.adapterSetup.title(basename(this.o.repoPath ?? ''))}” would.`,
       );
+    if (isNew || this.o.board.isSetupCard(card)) {
+      const harnesses = this.o.harnesses?.() ?? ['Claude Code'];
+      parts.push(
+        `The agent harnesses that can work on this machine, for the allow list the skill \`obeya:settings\` drafts: ${harnesses.join(', ')}.${harnesses.length > 1 ? ' Ask the owner which of them to set it up for, with each one as an option, in the question the skill has you ask.' : ''}`,
+      );
+    }
     const { run, stop } = this.o.adapter.app ?? {};
     const parking = stop ? ' While the card waits for the owner, Obeya stops the app in your workspace; your next message then says so.' : '';
     const far = hostName(this.o.board.row(card.id).workspace) ? " (this workspace is on another machine: Obeya forwards that address's port, and only that one, to the owner's)" : '';

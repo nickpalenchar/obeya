@@ -47,12 +47,28 @@ export function projectTrust(cwd: string, trusted: boolean): string {
   return `projects={${projectRoots(cwd).map((p) => `${JSON.stringify(p)}={trust_level="${level}"}`).join(',')}}`;
 }
 
+/**
+ * The installed Codex's native executable, or null. Resolved before applying session environment
+ * additions. An npm .cmd shim is not a native executable on Windows; do not work around that by
+ * introducing a shell into the transport.
+ */
+function installedCodex(): string | null {
+  const executable = Bun.which(process.env.OBEYA_CODEX ?? 'codex', { PATH: process.env.PATH ?? '' });
+  return executable && isAbsolute(executable) && !/\.(cmd|bat|ps1)$/i.test(executable) ? executable : null;
+}
+
+/** Whether a Codex worker could start on this machine: Codex is installed and signed in (`codex login status`). */
+export function codexConnected(): boolean {
+  const executable = installedCodex();
+  if (!executable) return false;
+  const r = spawnSync(executable, ['login', 'status'], { env: cleanEnv(), timeout: 5000, stdio: 'ignore' });
+  return r.status === 0;
+}
+
 type Connect = (spec: AgentSpec, handlers: CodexHandlers) => CodexConnection;
 const connectInstalled: Connect = (spec, handlers) => {
-  // Resolve before applying session environment additions. An npm .cmd shim is not a native
-  // executable on Windows; do not work around that by introducing a shell into the transport.
-  const executable = Bun.which(process.env.OBEYA_CODEX ?? 'codex', { PATH: process.env.PATH ?? '' });
-  if (!executable || !isAbsolute(executable) || /\.(cmd|bat|ps1)$/i.test(executable)) throw new Error('Installed Codex executable unavailable; set OBEYA_CODEX to its native executable path');
+  const executable = installedCodex();
+  if (!executable) throw new Error('Installed Codex executable unavailable; set OBEYA_CODEX to its native executable path');
   // An earlier Obeya crashed and its sweep could not end this workspace's old session: a new one
   // could write beside it. The sweep tries again when Obeya next starts.
   const left = sessionRegistry()?.unaccounted(spec.cwd);

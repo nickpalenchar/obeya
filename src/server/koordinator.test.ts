@@ -96,6 +96,7 @@ describe('Koordinator', () => {
     k.request(b.id, { model: 'sonnet', effort: 'low' });
     await scope(['src/a.ts'], ['K1']);
     k.dequeue(b.id);
+    expect(board.row(b.id).agent_setting).toBeNull();
     k.request(b.id);
     await scope(['src/b.ts']);
     expect(workerOf(b.id).spec.setting).toMatchObject({ model: 'opus', effort: 'high' });

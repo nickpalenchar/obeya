@@ -52,6 +52,12 @@ Decided 2026-11-02: stricter than for Claude, whose workspace changes count whil
 are trusted, since Codex's configuration runs outside the sandbox Obeya relies on; rejected:
 refusing any `.codex/` (it stopped Codex workers in every repository with one, Obeya's own
 included). The user's global Codex configuration is trusted.
+A repository's Claude Code configuration (`.claude/`, `.mcp.json`) waiting for the owner's trust
+does not stop a Codex worker, which reads none of it: the worker starts as it would, only without
+the allow-list shortcut below (no command runs unasked on that list until the owner has trusted the
+configuration). Decided 2026-11-02; rejected: refusing it, as before, which stopped Codex workers in
+every repository with a change to `.claude/` not trusted yet, for no protection. A review card, whose
+workspace holds a stranger's code, stays refused for Codex.
 Other roles, setup and the usage meter remain Claude-based; Codex transcript-based work retrospectives
 are not available. An unsupported capability fails visibly, never by substituting Claude.
 
@@ -62,11 +68,41 @@ what it holds dangerous) and on-request approvals, not Claude's `auto`
 classifier or pre-command hooks. Approvals use the same owner question as Claude (see Refused and
 confirmed tool calls); extended permission profiles are refused. A command that a `Bash` rule of
 the repository's `.claude/settings.json` allow list covers, as the owner last confirmed it, is not
-asked: Claude Code applies that list itself, Obeya applies it to Codex. Only one plain command
-counts, alone or in the shell Codex wraps it in; chaining, redirection, substitution and `..` in a
-path never ride on a rule, and a request for a network or path grant is always asked. The same list
-also gives `.codex/rules/obeya.rules` for Codex's own rule engine (`scripts/codex-rules.ts`), for
-the rules that are literal word prefixes, loaded once the owner trusts the repository's `.codex/`.
+asked: Claude Code applies that list itself, Obeya applies it to Codex. A command counts when it is
+plain: one or more programs joined by `&&`, `;` or new lines, each covered by a rule, alone or in
+the shell Codex wraps it in; leading `NAME=value` assignments (not `PATH`, `GIT_*` and the like) and
+output redirected to a file under a temporary directory or `2>&1` are looked through, and so is
+setting the shell up in front of covered commands without a rule of its own: `source` (or `.`) of
+an existing file, symlinks resolved, outside every place the worker writes (its workspace, the
+demos directory, the temporary directories), and `nvm use` with at most a version, `--lts` and
+`--silent`, neither with a variable set in front (`NVM_DIR=…` would choose what it loads). A leading `~/` in a command or a rule is the home directory. Pipes, `||`,
+substitution, heredocs, other redirection, other `~` and `..` in a path never ride on a rule. Decided
+2026-11-02 (owner): workers set up Node with `source ~/.nvm/nvm.sh && nvm use 24 && …` before
+nearly every command, and a file the worker cannot change runs what the owner put there, not what
+the agent wrote; such a file that `obeya_run` changed on the owner's question is the one way around
+it. Both: the rules for those who want only their own files, the look-through for everyone else.
+Such a command
+also gets network without a question, whether Codex asks for it with the command or for a host of
+its managed network; Obeya accepts only that one command's access, never one for the session, a
+host for good or an amended rule. A path grant or permissions beyond network are always asked, and
+so is network for a command the list does not cover. Decided 2026-11-02, the same as `obeya_run`
+gives a covered command: an owner who listed `pnpm install` meant it to install, and the question
+said no more than the rule did; rejected: asking for every network grant, as before. The same list also gives `.codex/rules/obeya.rules` for
+Codex's own rule engine (`scripts/codex-rules.ts` here, the settings skill in other repositories,
+see Writing the settings), for the rules that are literal word prefixes, loaded once the owner
+trusts the repository's `.codex/`.
+
+What the sandbox keeps from a Codex worker (network, a browser, a local server, git writes in its
+worktree, whose `.git` lies in the main repository, the demos) goes through two tools Obeya runs
+itself with the owner's rights, for workers on this machine that are not review cards:
+`obeya_run` (a shell line; covered by the allow list it runs at once, else the owner is asked as for
+any permission; runs in the workspace, a temporary directory or the demos directory, symlinks and
+`..` resolved; no stdin, a timeout of 300 s by default and 1800 s at most that ends everything the
+command started, output cut to its start and end) and `obeya_git` (add, commit, rebase, merge, reset
+and the other worktree commands, never push, remote, config or options that run a program or move the
+work tree; no question). The gate and the places are the protection, not a sandbox. A call of several
+minutes returns intact (checked with a 200 s command). The worker's prompt says which tools do what
+its own shell cannot.
 Obeya's tools and their card scope are shared. Bundled skills are supplied as readable skill files, not Claude plugins.
 Context changes reach Codex in Obeya tool results or by steering; a Codex worker has no
 foreground-wait guard, because it needs none. Steering reaches Codex while a foreground command is
@@ -107,11 +143,17 @@ installed CLI's account catalog; loading failures can be retried, and an unavail
 is shown, not replaced. An account-default choice is resolved to an actual model at first start.
 The card persists its harness, model and effort before starting and retains them across parking,
 restart, replies and changes to defaults. A deliberate fresh start takes the current selection.
-On an individual planned task or an immediately accepted task proposal, the chevron beside the
-start button shows the worker default and lets the owner choose a harness, model and effort for that
-start alone. The ordinary button uses the configured default. The choice is kept while the task is
-scheduled or waits for a workspace, and does not alter the configuration. Unavailable choices and
-catalog errors are visible; a selected unavailable model is not silently replaced.
+On an individual planned task, a stopped one that starts again, or an immediately accepted task
+proposal (on the phone too), the chevron beside the start button shows the worker default and lets
+the owner choose a harness, model and effort for that start alone. The ordinary button uses the
+configured default. The menu is reachable by keyboard (focus moves into it, Esc closes it and
+returns to the chevron without closing the card). The choice is stored on the card when it is
+requested, kept while the task is scheduled or waits for a workspace, taken back with the queue
+entry, recorded in the card's conversation at the start, and does not alter the configuration; from
+the start on, the pinning above holds it. Unavailable choices (Codex where it does not apply) and
+catalog or default-loading errors are visible, with a retry; a selected unavailable model is not
+silently replaced. A start that is not an immediate one of a single task (a project's workstreams,
+one set to start later, one in a new repository) takes no choice.
 Unqualified old session ids mean Claude; Codex locators carry `codex:` and cannot resume in Claude
 or the other way round. A locator alone is not authorization to attach it to another card.
 

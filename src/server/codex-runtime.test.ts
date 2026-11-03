@@ -196,6 +196,10 @@ test('owner permits only the individual action and a pending permission aborts o
   await until(() => wire.n === 1);
   expect(await wire.server('item/commandExecution/requestApproval', { availableDecisions: ['accept', 'acceptForSession'] })).toEqual({ decision: 'accept' });
   expect(await wire.server('item/commandExecution/requestApproval', { availableDecisions: ['acceptForSession'] })).toEqual({ decision: 'decline' });
+  // a granted network request is that command's network alone: no session-wide host, no amendment
+  const network = { command: 'pnpm install', networkApprovalContext: { host: 'registry.npmjs.org', protocol: 'https' }, proposedNetworkPolicyAmendments: [{ host: 'registry.npmjs.org', action: 'allow' }] };
+  const offered = ['accept', 'acceptForSession', { applyNetworkPolicyAmendment: { network_policy_amendment: { host: 'registry.npmjs.org', action: 'allow' } } }, 'cancel'];
+  expect(await wire.server('item/commandExecution/requestApproval', { ...network, availableDecisions: offered })).toEqual({ decision: 'accept' });
   let signal: AbortSignal | undefined;
   const second = fixture({ askOwner: async (_r, s) => { signal = s; return new Promise((resolve) => s.addEventListener('abort', () => resolve({ allow: false, message: 'closed' }))); } });
   await until(() => second.wire.n === 1);

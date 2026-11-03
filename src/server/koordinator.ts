@@ -380,6 +380,8 @@ export class Koordinator {
     }
     if (!card.queue) throw new BadRequest('notQueued', 'the card is not waiting');
     this.setQueue(cardId, null);
+    // a choice made for this start goes with it
+    this.o.board.work(cardId, { agent_setting: null });
     this.o.board.log(cardId, 'state', 'owner', this.o.board.t.koordinator.dequeued);
   }
 
