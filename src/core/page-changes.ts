@@ -39,7 +39,7 @@ export type KnownChange = (typeof PAGE_CHANGES)[number];
 export type PageChangeId = KnownChange['id'];
 
 /** The sample pages' hash (`pagesHash` in site.ts) the changes above account for. */
-export const PAGES_HASH = { video: '5812f704acfb', html: '6097b6293422', stacked: '9e4b0893eb03' };
+export const PAGES_HASH = { video: '5812f704acfb', html: '4ec87896d00d', stacked: '9e4b0893eb03' };
 
 /** The version a page published now gets: the newest change; '' while there is none. */
 export const pagesVersion = (changes: readonly PageChange[] = PAGE_CHANGES): string => changes.at(-1)?.id ?? '';
