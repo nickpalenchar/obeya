@@ -3291,6 +3291,8 @@ export class Workers {
     // A legacy unqualified session belongs to Claude regardless of today's worker default.
     const chosen = this.o.agentSetting?.() ?? AGENT_DEFAULTS.worker;
     const setting: AgentSetting = row.agent_setting ? JSON.parse(row.agent_setting) : resume ? { model: chosen.model, effort: chosen.effort } : chosen;
+    // a legacy session resumed on today's defaults ran on what is not known: recorded so before they are pinned for it
+    if (!row.agent_setting && resume) this.o.board.recordRun(cardId, resume, { harness: 'claude', model: null, effort: null });
     this.o.board.work(cardId, { agent_setting: JSON.stringify(setting) });
     const preferences = this.o.preferences?.() ?? '';
     const live: Live = { session: undefined!, host: hostName(row.workspace), handedOver: false, acted: false, nudged: false, lastText: '', busy: true, background: 0, tasks: new Map(), stalled: false, preferences, ...(!row.agent_setting && resume ? { guessed: true as const } : {}) };

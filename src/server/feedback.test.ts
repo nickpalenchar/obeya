@@ -14,6 +14,7 @@ function using(choice: () => AgentSetting) {
   setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, workspaces: 'clones', land: 'main' }, agentSetting: choice }));
 }
 const handOver = () => runtime.last.call('ready_for_review', { summary: 'Done.', demo: artifact() });
+const approve = (id: string) => board.work(id, { approved_at: new Date().toISOString() });
 const claudeOpus: WorkConfig = { harness: 'claude', model: 'claude-opus-5-5', effort: 'high', requested: 'opus' };
 
 test('a response credits the session that did the work as it ran, through changed defaults, a restart and a second click', async () => {
@@ -29,6 +30,7 @@ test('a response credits the session that did the work as it ran, through change
   using(() => choice);
   workers.resumeAll();
   runtime.last.emit({ type: 'session', id: 's-1', model: 'claude-opus-5-5' });
+  approve(card.id);
 
   const first = board.giveFeedback(card.id, { answer: { rating: 4 } });
   expect(first.configs).toEqual([claudeOpus]);
@@ -51,15 +53,18 @@ test('work done by two configurations credits neither alone, and an earlier resp
   await workers.start(card.id);
   runtime.last.emit({ type: 'session', id: 's-1', model: 'claude-opus-5-5' });
   await handOver();
+  approve(card.id);
   const first = board.giveFeedback(card.id, { answer: { rating: 5 } });
   await workers.stop(card.id);
   await workers.freed();
   choice = codex;
   await workers.start(card.id);
   // a run begun after a handover is not credited with it
+  approve(card.id);
   expect(board.giveFeedback(card.id, { answer: { rating: 5 }, handover: first.handover }).credited).toEqual(claudeOpus);
   runtime.last.emit({ type: 'session', id: 'codex:t-1', setting: { ...codex, codex: { model: 'gpt-resolved', effort: 'low' } } });
   await handOver();
+  approve(card.id);
   const second = board.giveFeedback(card.id, { answer: { comment: 'Good in the end.' } });
   expect(second.handover).toBeGreaterThan(first.handover);
   expect(second).toMatchObject({ attribution: 'mixed', configs: [claudeOpus, { harness: 'codex', model: 'gpt-resolved', effort: 'low', requested: 'default' }] });
@@ -71,6 +76,7 @@ test('work done by two configurations credits neither alone, and an earlier resp
 test('nothing known of who did the work credits no one; a model the session never named stays unknown', async () => {
   const card = manual();
   board.log(card.id, 'review', 'worker', 'Done.');
+  approve(card.id);
   expect(board.giveFeedback(card.id, { answer: { rating: 3 } })).toMatchObject({ attribution: 'missing', configs: [] });
 
   using(() => ({ model: 'default', effort: 'medium' }));
@@ -78,6 +84,7 @@ test('nothing known of who did the work credits no one; a model the session neve
   await workers.start(other.id);
   runtime.last.emit({ type: 'session', id: 's-2' });
   await handOver();
+  approve(other.id);
   expect(board.giveFeedback(other.id, { answer: { rating: 3 } }).credited).toEqual({ harness: 'claude', model: null, effort: 'medium', requested: 'default' });
   workers.shutdown();
 });
@@ -95,12 +102,19 @@ test('a legacy session resumed on today’s defaults is credited only with what 
   runtime.last.emit({ type: 'session', id: 'legacy', model: 'claude-sonnet-5-5' });
   expect(store.runs(card.id)).toMatchObject([{ session: 'legacy', harness: 'claude', model: 'claude-sonnet-5-5', effort: null }]);
   expect(store.runs(card.id)[0]!.requested).toBeUndefined();
+  // restarted before the session names itself, the defaults pinned for it meanwhile are not taken for what it ran on
+  workers.shutdown();
+  await flush();
+  workers.resumeAll();
+  runtime.last.emit({ type: 'session', id: 'legacy', model: 'claude-sonnet-5-5' });
+  expect(store.runs(card.id)).toMatchObject([{ session: 'legacy', harness: 'claude', model: 'claude-sonnet-5-5', effort: null }]);
   workers.shutdown();
 });
 
 test('a workstream’s response carries its project; it follows the card to another canvas', () => {
   const w = board.snapshot().items.find((i) => i.label === 'W1')!;
   board.log(w.id, 'review', 'worker', 'Done.');
+  approve(w.id);
   const f = board.giveFeedback(w.id, { answer: { rating: 1 }, facets: { type: 'bug' } });
   expect(f).toMatchObject({ title: 'Title W1', project: { id: w.parent, title: 'A', file: 'docs/plan/a.md' }, facets: { type: 'bug' } });
   store.ensureCanvas('d', 'D');
@@ -113,9 +127,15 @@ test('a response is checked before it is kept', () => {
   const give = (input: unknown) => () => board.giveFeedback(card.id, input);
   expect(give({ answer: { rating: 1 } })).toThrow('has not handed over');
   board.log(card.id, 'review', 'worker', 'Done.');
+  expect(give({ answer: { rating: 1 } })).toThrow('only approved work');
+  approve(card.id);
   for (const bad of [null, {}, { answer: {} }, { answer: { comment: '   ' } }, { answer: { rating: 'good' } }, { answer: { rating: Infinity } }, { answer: { stars: 3 } }, { answer: { rating: 1 }, handover: 999 }, { answer: { rating: 1 }, facets: { type: 3 } }])
     expect(give(bad)).toThrow(BadRequest);
   expect(give({ answer: { comment: 'x'.repeat(4001) } })).toThrow('at most');
+  // a long conversation after the handover does not hide it
+  for (let n = 0; n < 510; n++) board.log(card.id, 'state', 'obeya', `Line ${n}`);
+  expect(board.giveFeedback(card.id, { answer: { rating: 1 } }).handover).toBeGreaterThan(0);
+  store.db.run('DELETE FROM feedback');
   expect(board.feedback(card.id)).toEqual([]);
   expect(() => board.giveFeedback('nope', { answer: { rating: 1 } })).toThrow(BadRequest);
 });

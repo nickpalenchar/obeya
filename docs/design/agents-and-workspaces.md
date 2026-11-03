@@ -161,10 +161,11 @@ or the other way round. A locator alone is not authorization to attach it to ano
 Each session that works on a card is recorded with what it actually ran on: harness, the model it
 resolved to (the model the session names, not the alias it was asked for), effort, and the alias or
 choice it started with, from the time it is first heard. Heard again (a resume), it keeps what it
-had and only fills in what was unknown. What is not known stays unknown (`null`), never taken from
+had and only learns the model it resolved to, if that was unknown. What is not known stays unknown (`null`), never taken from
 today's defaults: a model a Claude session never named, the effort of a legacy session resumed on
 defaults. The owner's response on a card's work (`/api/c/<canvas>/cards/<id>/feedback`; when Obeya
-asks for one is the plan doc „Feedback on agent performance“'s) is about one handover and credits
+asks for one is the plan doc „Feedback on agent performance“'s) is taken only on approved work, is
+about one handover and credits
 the configurations of the sessions that ran on the card up to that handover, as they were then: one
 configuration (`single`, credited even with unknown fields), several (`mixed`: none is credited on
 its own), or nothing known (`missing`). Two configurations that differ in any field, an unknown
@@ -172,7 +173,7 @@ one included, count as two. The response keeps its card (by id, wherever the car
 card's title, repository and project as they were, an answer (a rating, a comment, or both) and
 optional named facets for later dimensions such as the task's complexity or type. Given again for
 the same handover, it replaces the answer and keeps whom it credits. Cards from before sessions were
-recorded get their last session as its pinned setting has it, with the model only where their
+recorded get their last session as its pinned setting has it, from their last start, with the model only where their
 worker's messages name one, and a run of unknown effort for each other identity those messages
 carry; where they carry two, neither is taken for the pinned session.
 

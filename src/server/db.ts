@@ -481,7 +481,7 @@ export const MIGRATIONS = [
   'ALTER TABLE events ADD COLUMN made TEXT;',
   // each session that worked on a card, with the configuration it ran on (`WorkConfig`, null where
   // unknown), and the owner's responses on approved work with whom they credit as at their handover.
-  // Cards from before take their last session as its pinned setting has it, and one run for each
+  // Cards from before take their last session as its pinned setting has it, from their last start, and one run for each
   // other identity their agents' messages carry; the model only where those messages name it, or a
   // Codex setting names it (a Codex model chosen by name is the one it runs).
   `CREATE TABLE agent_runs (
@@ -512,7 +512,8 @@ export const MIGRATIONS = [
     UNIQUE (card_id, handover)
   );
    WITH c AS (
-     SELECT id, session_id, created_at, agent_setting AS s,
+     SELECT id, session_id, agent_setting AS s,
+       coalesce((SELECT max(at) FROM events WHERE card_id = cards.id AND kind = 'state' AND author = 'obeya' AND (text LIKE 'Agent started%' OR text LIKE 'Agent gestartet%')), created_at) AS started,
        CASE WHEN json_extract(agent_setting, '$.harness') = 'codex' OR (agent_setting IS NULL AND session_id LIKE 'codex:%') THEN 'codex' ELSE 'claude' END AS h
      FROM cards),
    i AS (
@@ -522,7 +523,7 @@ export const MIGRATIONS = [
    INSERT OR IGNORE INTO agent_runs (card_id, session_id, harness, model, effort, requested, started_at)
      SELECT id, session_id, h, CASE WHEN h = 'codex' AND json_extract(s, '$.codex.model') <> 'default' THEN json_extract(s, '$.codex.model') END,
        json_extract(s, CASE h WHEN 'codex' THEN '$.codex.effort' ELSE '$.effort' END),
-       json_extract(s, CASE h WHEN 'codex' THEN '$.codex.model' ELSE '$.model' END), created_at
+       json_extract(s, CASE h WHEN 'codex' THEN '$.codex.model' ELSE '$.model' END), started
        FROM c WHERE session_id IS NOT NULL AND id NOT IN (SELECT card_id FROM i)
      UNION ALL
      SELECT x.card_id, CASE WHEN x.own THEN c.session_id ELSE 'earlier:' || x.h || ':' || coalesce(x.m, '') END, x.h, x.m,
@@ -1463,16 +1464,23 @@ export class Store {
 
   /**
    * A session worked on the card with `config`: the first time it is heard, from `at`. Heard again
-   * (a resume, the model it resolved to), it keeps what it ran on and only learns what was unknown.
+   * (a resume), it keeps what it ran on and only learns the model it resolved to, if that was unknown:
+   * what it was started with is not known better later (a legacy session resumes on today's defaults).
    */
   recordRun(cardId: string, session: string, config: WorkConfig, at: string = now()) {
     this.db
       .query(
         `INSERT INTO agent_runs (card_id, session_id, harness, model, effort, requested, started_at) VALUES ($card, $session, $harness, $model, $effort, $requested, $at)
-         ON CONFLICT (card_id, session_id) DO UPDATE SET harness = coalesce(harness, excluded.harness), model = coalesce(model, excluded.model),
-           effort = coalesce(effort, excluded.effort), requested = coalesce(requested, excluded.requested)`,
+         ON CONFLICT (card_id, session_id) DO UPDATE SET model = coalesce(model, excluded.model)`,
       )
       .run({ card: cardId, session, harness: config.harness, model: config.model, effort: config.effort, requested: config.requested ?? null, at });
+  }
+
+  /** The card's handover (its `review` event) with the id `id`, or its latest. */
+  handover(cardId: string, id?: number): { id: number; at: string } | undefined {
+    return (this.db
+      .query("SELECT id, at FROM events WHERE card_id = $c AND kind = 'review' AND ($id IS NULL OR id = $id) ORDER BY id DESC LIMIT 1")
+      .get({ c: cardId, id: id ?? null }) as { id: number; at: string } | null) ?? undefined;
   }
 
   /** The sessions that worked on the card, the earliest first. */

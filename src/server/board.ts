@@ -371,6 +371,9 @@ export class BadRequest extends Error {
   }
 }
 
+/** The states of a card whose handed-over work the owner approved. */
+const APPROVED: CardState[] = ['approved', 'inPr', 'live', 'done'];
+
 /** What the owner can reply to: the messages of a conversation. */
 const QUOTABLE: CardEvent['kind'][] = ['say', 'closing', 'question', 'answer', 'hint', 'review', 'talk'];
 
@@ -736,9 +739,10 @@ export class Board {
     const row = this.own(cardId);
     const given = checkedFeedback(input);
     if (typeof given === 'string') throw new BadRequest('invalid', given);
-    const handovers = this.store.events(cardId).filter((e) => e.kind === 'review');
-    const handover = given.handover === undefined ? handovers.at(-1) : handovers.find((e) => e.id === given.handover);
+    const handover = this.store.handover(cardId, given.handover);
     if (!handover) throw new BadRequest('invalid', given.handover === undefined ? 'the card has not handed over any work' : 'no such handover on the card');
+    const state = this.item(cardId)?.state;
+    if (!row.approved_at && !(state && APPROVED.includes(state))) throw new BadRequest('invalid', 'only approved work takes feedback');
     const before = this.store.feedback({ cardId }).find((f) => f.handover === handover.id);
     const { attribution, configs } = before ?? attribute(this.store.runs(cardId), handover.at);
     // a workstream's title and its project's come from the plan doc
