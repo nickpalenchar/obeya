@@ -60,7 +60,18 @@ export interface BackgroundTask {
 export interface WorkerTurn {
   tasks: BackgroundTask[];
   over: boolean;
+  /** What the worker does, for a card's own worker. */
+  doing?: AgentDoing;
 }
+
+/**
+ * What a card's worker is doing in its turn, read from its steps: at work, thinking (a long while
+ * without a step), debugging (a step of its failed), or at a stage of its demo.
+ */
+export type AgentDoing = 'working' | 'thinking' | 'debugging' | 'preparingDemo' | 'recordingDemo' | 'finalizingDemo';
+
+/** Whether the worker is at a stage of its demo, which its card shows in green. */
+export const demoStage = (d: AgentDoing) => d.endsWith('Demo');
 
 /** The card's agent is snoozed (by itself or the owner, „Später …“): it stops until its time, and neither pauses nor resumes meanwhile. */
 const snoozedAway = (i: Pick<Item, 'snoozed'>) => !!i.snoozed && !i.snoozed.waiting;
@@ -437,6 +448,8 @@ export interface Item {
    * itself has ended and only its background work runs (the app served after the handover).
    */
   inTurn?: true;
+  /** While `inTurn`: what its worker is doing, shown under the card. */
+  doing?: AgentDoing;
   /** The harness and model of the card's agent whose session runs now (`AgentAt`), as far as known: its bubble at work names them. */
   agentAtWork?: AgentIdentity;
   /** The worker's background work that runs (a test run, a render, a watcher), the oldest first: while `inTurn`, or after the turn on a card that waits for the owner. */

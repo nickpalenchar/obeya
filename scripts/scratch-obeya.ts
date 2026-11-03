@@ -30,7 +30,10 @@
 // asks, and the card waits for the owner), `review` (a handover that keeps the card's demo); besides
 // those, `to_obeya` (it passes the owner's words on to Obeya, whose Koordinator is real and answers
 // on the card), `tool` (any other tool of the agent's, the text a JSON object `{ "tool", "args" }`)
-// and `end` (the agent's turn ends, which an idle worker's never does by itself).
+// `step` (a step of the agent's own that the card shows it doing, the text a JSON object: a tool call
+// `{ "type": "tool", "name": "Bash", "input": { "command": "…" } }`, its end `{ "type": "toolDone",
+// "name": "Bash", "ok": false }`, or `{ "type": "text", "text": "…" }`; a card staged at work gets a
+// turn for it, which `end` ends) and `end` (the agent's turn ends, which an idle worker's never does by itself).
 // --artifact copies the file into the card's HTML artifact (<dir>/artifacts/<key>, where staging
 // put a copy of the stage's) and hands it over again, as an agent does after rewriting it, with the
 // summary given or "Updated the artifact."; a card without one starts it with an index.html. Each
@@ -305,6 +308,7 @@ const SAYS = {
   review: (summary: string) => ({ tool: 'ready_for_review', args: { summary } }),
   to_obeya: (request: string) => ({ tool: 'to_obeya', args: { request } }),
   tool: (json: string) => ({ args: {}, ...(JSON.parse(json) as { tool: string; args?: Record<string, unknown> }) }) as { tool: string; args: Record<string, unknown> },
+  step: (json: string) => ({ step: JSON.parse(json) as { type: 'tool'; name: string } }),
   end: () => ({ end: true as const }),
 };
 
@@ -1088,7 +1092,7 @@ async function stagedCard(port: number, key: string): Promise<Item> {
 }
 
 /** The card's agent says or does `act`, through the server (`Workers.standIn`); returns what the agent would have read back. */
-async function standIn(port: number, key: string, act: { say: string } | { tool: string; args: Record<string, unknown> } | { end: true }): Promise<string> {
+async function standIn(port: number, key: string, act: { say: string } | { tool: string; args: Record<string, unknown> } | { end: true } | { step: unknown }): Promise<string> {
   const { base, headers, id } = cardOf(port, key);
   const r = await fetch(`${base}/cards/${id}/stand-in`, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(act) }).catch(() =>
     fail(`no scratch Obeya answers on port ${port}`),

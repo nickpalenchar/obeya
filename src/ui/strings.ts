@@ -339,6 +339,8 @@ const de = {
   proposalQuestionsHint: 'Mit „Antworten“ schreibt ein Agent den Vorschlag nach deiner Wahl neu. Übernimmst du gleich, steht deine Wahl als entschieden im Text; der Rest geht als offene Frage mit.',
   proposedByRetro: (basis: string) => `Aus der Arbeitsrückschau: ${basis}`,
   revisingShort: 'Wird überarbeitet',
+  /** What a card's worker is doing in its turn, under the card (`AgentDoing`). */
+  doing: { working: 'arbeitet', thinking: 'denkt nach', debugging: 'sucht einen Fehler', preparingDemo: 'bereitet die Demo vor', recordingDemo: 'nimmt die Demo auf', finalizingDemo: 'stellt die Demo fertig' },
   /** A proposal its agent wants started later: when, on the proposal and short on its canvas card; the menu to change it, and accepting it. */
   startAt: {
     line: (when: string) => `Startet ${when}`,
@@ -2378,6 +2380,7 @@ const en: Strings = {
   proposalQuestionsHint: 'With “Answer” an agent rewrites the proposal by your choice. If you accept it right away, your choice goes into the text as decided; the rest goes along as an open question.',
   proposedByRetro: (basis: string) => `From the work retrospective: ${basis}`,
   revisingShort: 'Being reworked',
+  doing: { working: 'working', thinking: 'thinking', debugging: 'debugging', preparingDemo: 'preparing demo', recordingDemo: 'recording demo', finalizingDemo: 'finalizing demo' },
   startAt: {
     line: (when: string) => `Starts ${when}`,
     short: (when: string) => `starts ${when}`,

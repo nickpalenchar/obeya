@@ -31,6 +31,7 @@ import { readingShared } from '../adapters';
 import { branchName, type CardWorkspaces, type FileAt, gitSteps, type Landed, type Lease, type PullStopped, shortageOf, together, WorkspaceError, type Workspaces } from './workspaces';
 import type { FolderWorkspaces, UndoReport } from './folder';
 import { contributionOf, type PrState, type Shipped, type StoredContribution, type StoredNewRepo } from './board';
+import { type Doing, onTool, onToolDone, shownDoing, THINKING_AFTER } from './doing';
 import { type ChangeRoute, type Clash, type Finding, type FindingStatus, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
 import { dimensions, outside, tagsOf } from '../core/page-tags';
 import { gitAsync, gitOrNull } from './workspaces';
@@ -100,6 +101,8 @@ export interface WorkerOptions {
   reconnectMs?: number;
   /** How long after a usage limit lifts the worker goes on, so that clocks a little apart do not matter. */
   limitMargin?: number;
+  /** How long a worker goes without a step before its card shows it thinking; THINKING_AFTER when left out. */
+  thinkingAfter?: number;
   /** The files of the owner's screenshots, by id; unknown ones are left out. */
   imageFiles?: (ids?: string[]) => string[];
   /**
@@ -343,6 +346,9 @@ function onlyApp(live: Live): boolean {
   return live.tasks.size > 0 && [...live.tasks.values()].every((t) => t.app);
 }
 
+/** A step a script takes as a card's agent in a scratch Obeya (`standIn`), as the runtime would tell of it. */
+export type StandInStep = { type: 'tool'; name: string; input?: Record<string, unknown> } | { type: 'toolDone'; name: string; ok?: boolean } | { type: 'text'; text: string };
+
 interface Live {
   session: AgentSession;
   /** The machine its workspace is on (null: the one Obeya runs on), where it holds a slot while in a turn. */
@@ -370,6 +376,12 @@ interface Live {
   failed?: string;
   /** Between a message and the end of the turn it starts: a restart now would cut the worker off. */
   busy: boolean;
+  /** What the worker is doing in its turn, as its card shows it (`doing.ts`); nothing yet: at work. */
+  doing?: Doing;
+  /** How many of its tool calls run: while one does, the agent waits for it rather than thinking. */
+  running?: number;
+  /** Set while the agent goes without a step: it then shows as thinking. */
+  quiet?: ReturnType<typeof setTimeout>;
   /** Set while an ended turn waits for the worker's background work to wake it. */
   waiting?: ReturnType<typeof setTimeout>;
   /** Set while the worker waits for a usage limit to lift: it then goes on where it stopped. */
@@ -613,6 +625,8 @@ const EVICT_SESSION_WAIT = 30_000;
 
 export class Workers {
   private live = new Map<string, Live>();
+  /** Turns a script plays for cards without a session in a scratch Obeya (`standIn` steps), shown as their workers'. */
+  private standIns = new Map<string, Live>();
   /** Cards whose approved work is landing: the server answers meanwhile, but approving again is refused, and a restart waits. */
   private landing = new Set<string>();
   /** Cards approved while git tells what the approval does (`approve`). */
@@ -2829,13 +2843,31 @@ export class Workers {
    * itself, `end` ends the one under way as the agent would. A card without a session (one staged at
    * work) gets a stand-in for it. Returns what the agent would have read as the tool's result.
    */
-  async standIn(cardId: string, act: { say: string } | { tool: string; args?: Record<string, unknown> } | { end: true }): Promise<string> {
+  async standIn(cardId: string, act: { say: string } | { tool: string; args?: Record<string, unknown> } | { end: true } | { step: StandInStep }): Promise<string> {
     const card = this.card(cardId);
     const live = this.live.get(cardId);
     // the agent ends its turn, as an idle worker never does by itself
     if ('end' in act) {
       if (live) this.onEvent(cardId, live, { type: 'idle' });
+      if (this.standIns.delete(cardId)) this.o.board.changed();
       return 'Turn ended.';
+    }
+    // a step of the agent's own (a command, a file it reads, its end), for what the card shows it doing; a card without a session gets a turn for it
+    if ('step' in act) {
+      const s = act.step;
+      const e: AgentEvent = s.type === 'tool' ? { type: 'tool', name: String(s.name), input: s.input ?? {} } : s.type === 'toolDone' ? { type: 'toolDone', name: String(s.name), ok: s.ok !== false } : s.type === 'text' ? { type: 'text', text: String(s.text ?? '') } : (undefined as never);
+      if (!e) throw new BadRequest('invalid', 'a step is a tool call (tool), its end (toolDone) or words (text)');
+      if (live) this.onEvent(cardId, live, e);
+      else {
+        let stand = this.standIns.get(cardId);
+        if (!stand) {
+          stand = { session: undefined!, host: null, handedOver: false, acted: true, nudged: false, lastText: '', busy: true, background: 0, tasks: new Map(), stalled: false, preferences: '', standIn: true };
+          this.standIns.set(cardId, stand);
+          this.o.board.changed();
+        }
+        this.follow(stand, e);
+      }
+      return 'Done.';
     }
     if ('say' in act) {
       const text = String(act.say).trim();
@@ -3133,7 +3165,7 @@ export class Workers {
 
   /** The cards whose worker is in a turn, each with its background work that runs and whether the turn waits only for that work. */
   private turnsShown(): Map<string, WorkerTurn> {
-    return new Map([...this.live].filter(([, l]) => l.busy).map(([id, l]) => [id, { tasks: [...l.tasks.values()].map(({ description, since }) => ({ description, since })), over: !!l.waiting }]));
+    return new Map([...this.live, ...this.standIns].filter(([, l]) => l.busy).map(([id, l]) => [id, { tasks: [...l.tasks.values()].map(({ description, since }) => ({ description, since })), over: !!l.waiting, doing: shownDoing(l.doing ?? {}) }]));
   }
 
   /** How many of these workers are in a turn on a machine (null: the one Obeya runs on). */
@@ -3532,6 +3564,7 @@ export class Workers {
     this.live.delete(cardId);
     clearTimeout(live?.waiting);
     clearTimeout(live?.lifts);
+    clearTimeout(live?.quiet);
     live?.session.close();
     // its slot is free again
     if (live?.busy) this.o.board.changed();
@@ -3547,9 +3580,39 @@ export class Workers {
     if ([...this.live.values()].includes(live)) this.o.board.changed();
   }
 
+  /**
+   * Follows what the worker does from its steps, for its card (`doing.ts`): the board hears of a
+   * change of what the card shows; one that comes with the turn's start or end it hears of with that.
+   */
+  private follow(live: Live, e: AgentEvent) {
+    const was = shownDoing(live.doing ?? {});
+    let d = live.doing ?? {};
+    if (e.type === 'tool') (d = onTool(d, e.name, e.input)), (live.running = (live.running ?? 0) + 1);
+    else if (e.type === 'toolDone') (d = onToolDone(d, e.name, e.ok)), (live.running = Math.max(0, (live.running ?? 0) - 1));
+    else if (e.type === 'text') d = { ...d, thinking: false };
+    clearTimeout(live.quiet);
+    live.quiet = undefined;
+    if (e.type === 'idle' || e.type === 'error' || e.type === 'lost') {
+      live.running = 0;
+      // the next turn starts afresh, unless this one only waits for its background work (a render) to wake it
+      if (e.type !== 'idle' || !e.background) d = {};
+      else d = { ...d, thinking: false };
+    } else if (!live.running) {
+      live.quiet = setTimeout(() => {
+        live.quiet = undefined;
+        if (!live.busy || live.running || ![...this.live.values(), ...this.standIns.values()].includes(live)) return;
+        live.doing = { ...live.doing, thinking: true };
+        this.o.board.changed();
+      }, this.o.thinkingAfter ?? THINKING_AFTER);
+    }
+    live.doing = d;
+    if (live.busy && shownDoing(d) !== was) this.o.board.changed();
+  }
+
   private onEvent(cardId: string, live: Live, e: AgentEvent) {
     if (this.live.get(cardId) !== live) return;
     if (e.type === 'background') return this.backgroundChanged(cardId, live, e.tasks);
+    this.follow(live, e);
     // a turn may also start without a message from Obeya (a finished background command)
     this.setBusy(live, e.type !== 'idle');
     this.stopWaiting(live);

@@ -1678,7 +1678,7 @@ export class Board {
       const background = turn.tasks.length ? { background: turn.tasks } : {};
       // a turn that ended while its background work runs (the app served, say) holds the worker's slot,
       // but a card that waits for the owner then has nobody at work on it: only that work runs
-      return turn.over && needsYou(i) ? { ...i, ...background } : { ...i, inTurn: true, ...background };
+      return turn.over && needsYou(i) ? { ...i, ...background } : { ...i, inTurn: true, ...(turn.doing ? { doing: turn.doing } : {}), ...background };
     });
     items = this.withoutStaleSnoozes(items, rows);
     items = this.withWaitingSince(items);

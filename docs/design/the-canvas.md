@@ -119,6 +119,15 @@ holds across reloads, devices and the archive.
 
 A planned or queued card shows a play button under the pointer that starts it without unfolding.
 
+While a card's worker is in a turn, a word in small italics under the card says what it is doing,
+read from its steps alone, without asking the agent: „arbeitet“; „denkt nach“ once it has gone
+about twenty seconds without a step while no tool of its runs; „sucht einen Fehler“ after one of its
+tool calls failed (a command's non-zero exit), until that tool succeeds again; and, in green, the
+stages of its demo: „bereitet die Demo vor“ from the demo skill, a demo script or a dry run on,
+„nimmt die Demo auf“ while the render runs (also as background work after the turn ended), „stellt
+die Demo fertig“ from its next step until the handover. A failure outranks the demo, the demo
+outranks thinking. The phone's „Läuft“ list shows the same word under each card.
+
 Every wait between cards on the canvas shows at all times as a thin, solid, grey arrow from the card
 waited for to the card waiting, under the cards and above projects like the dashed line: only direct
 waits, not the chain. All kinds of wait look alike (a card queued behind another, a workstream and
@@ -325,6 +334,11 @@ code, a generic one otherwise.
 
 ### Decisions
 
+- **What the agent does is read from its steps** (owner, 2026-11-03): the word under a working card
+  comes from the tool calls, their results and the pauses between them, so it costs the agent nothing
+  and cannot be forgotten. Thinking is a pause without a running tool rather than the model's
+  thinking blocks, which arrive only once the thinking is done. Rejected: a tool or instruction for
+  the agent to announce its phase, which it would call late or not at all.
 - **Path addresses with short card codes** (owner, 2026-11-01): a card's address is a permalink
   that survives a reload and can be passed on, and paths leave room for views nested deeper. The
   code is stored, not derived from the cards there are at the time, so a later card whose id starts

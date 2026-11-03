@@ -47,6 +47,8 @@ export type AgentEvent =
   | { type: 'session'; id: string; setting?: AgentSetting; model?: string }
   | { type: 'text'; text: string }
   | { type: 'tool'; name: string; input: Record<string, unknown> }
+  /** A tool call of the agent's own (not a subagent's) ended; `ok` false when it failed (a command's non-zero exit, say). */
+  | { type: 'toolDone'; name: string; ok: boolean }
   /**
    * A tool call was refused without anyone being asked: by a rule of the settings, auto mode's
    * classifier, the permission mode, a hook (`obeya`: Obeya's own, `refuseForegroundWait`).
@@ -516,6 +518,8 @@ export const sdkRuntime: AgentRuntime = {
     let background: { id: string; description: string }[] = [];
     // what the agent's tool calls were called with, by id: a denial names only the call
     const inputs = new Map<string, Record<string, unknown>>();
+    // and which tool each was, for when it ends
+    const names = new Map<string, string>();
     // the account's usage limits as last reported, and whether the turn's request was refused for one
     let limits: SDKRateLimitInfo | undefined;
     let limited = false;
@@ -537,7 +541,11 @@ export const sdkRuntime: AgentRuntime = {
           else if (m.type === 'assistant' && !m.parent_tool_use_id) {
             for (const block of m.message.content) {
               if (block.type === 'text' && block.text.trim()) spec.onEvent({ type: 'text', text: block.text });
-              else if (block.type === 'tool_use') inputs.set(block.id, (block.input ?? {}) as Record<string, unknown>), spec.onEvent({ type: 'tool', name: block.name, input: (block.input ?? {}) as Record<string, unknown> });
+              else if (block.type === 'tool_use') inputs.set(block.id, (block.input ?? {}) as Record<string, unknown>), names.set(block.id, block.name), spec.onEvent({ type: 'tool', name: block.name, input: (block.input ?? {}) as Record<string, unknown> });
+            }
+          } else if (m.type === 'user' && !m.parent_tool_use_id && Array.isArray(m.message.content)) {
+            for (const block of m.message.content) {
+              if (block.type === 'tool_result') spec.onEvent({ type: 'toolDone', name: names.get(block.tool_use_id) ?? '', ok: !block.is_error });
             }
           } else if (m.type === 'result') {
             const failed = resultFailure(m);

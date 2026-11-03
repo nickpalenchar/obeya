@@ -289,6 +289,7 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
           if (method === 'item/completed' && params.turnId === turn) {
             const item = jsonObject.parse(params.item);
             if (item.type === 'commandExecution' || item.type === 'fileChange') {
+              emit({ type: 'toolDone', name: item.type === 'commandExecution' ? 'Bash' : 'Edit', ok: item.status !== 'failed' && (item.exitCode ?? 0) === 0 });
               const update = spec.contextUpdate?.();
               if (update) send(update);
             }

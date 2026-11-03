@@ -7,7 +7,7 @@ import { BadRequest, Board } from './board';
 import { OBEYA_PLUGIN } from './demo';
 import { Images } from './images';
 import { Restarter } from './self-update';
-import { artifact } from './testing';
+import { artifact, until } from './testing';
 import { Workers } from './workers';
 import { board, dir, eachTest, flush, main, manual, runtime, setConversation, setLanguage, setWorkers, spaces, state, store, workers } from './workers-fixture';
 import { git } from './workspaces';
@@ -1267,6 +1267,39 @@ describe('workers', () => {
     workers.answer(c.id, 'A');
     expect(runtime.last.spec.resume).toBe('sess-1');
     expect(runtime.last.inbox[0]).toContain('A');
+  });
+
+  test('the card shows what its worker is doing in its turn: at work, thinking when quiet, debugging after a failed step, the stages of its demo', async () => {
+    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, thinkingAfter: 20 }));
+    const c = manual();
+    await workers.start(c.id);
+    const doing = () => board.item(c.id)!.doing;
+    const agent = runtime.last;
+    agent.emit({ type: 'tool', name: 'Bash', input: { command: 'bun test' } });
+    expect(doing()).toBe('working');
+    // a running command is no silence
+    await Bun.sleep(40);
+    expect(doing()).toBe('working');
+    agent.emit({ type: 'toolDone', name: 'Bash', ok: false });
+    expect(doing()).toBe('debugging');
+    agent.emit({ type: 'tool', name: 'Bash', input: { command: 'bun test' } });
+    agent.emit({ type: 'toolDone', name: 'Bash', ok: true });
+    expect(doing()).toBe('working');
+    await until(() => doing() === 'thinking');
+    agent.emit({ type: 'tool', name: 'Skill', input: { skill: 'obeya:demo' } });
+    expect(doing()).toBe('preparingDemo');
+    agent.emit({ type: 'toolDone', name: 'Skill', ok: true });
+    agent.emit({ type: 'tool', name: 'Bash', input: { command: 'cd ~/demos/shop-x && node demo.ts', run_in_background: true } });
+    agent.emit({ type: 'toolDone', name: 'Bash', ok: true });
+    // the turn waits for the render to wake it: still recording
+    agent.emit({ type: 'idle', background: 1 });
+    expect(doing()).toBe('recordingDemo');
+    agent.emit({ type: 'tool', name: 'Read', input: { file_path: '~/demos/shop-x/report.md' } });
+    expect(doing()).toBe('finalizingDemo');
+    agent.emit({ type: 'toolDone', name: 'Read', ok: true });
+    // a turn that ends without handing over: the nudge's turn starts afresh
+    agent.emit({ type: 'idle' });
+    expect(doing()).toBe('working');
   });
 });
 

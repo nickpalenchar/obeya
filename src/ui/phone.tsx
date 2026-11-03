@@ -19,7 +19,7 @@ import { Notify, registerWorker } from './notify';
 import { plain } from './markdown';
 import { Cards, KoordinatorAgent } from './message';
 import { glide, type Mark, settle, speed, THROWN, thrown } from './panelHeight';
-import { CardFace, cardClass, shownState, TalkIcon } from './parts';
+import { CardFace, cardClass, Doing, shownState, TalkIcon } from './parts';
 import { videoOf } from './spot';
 import { failText, forTouch, t } from './strings';
 import { UsagePill } from './usage';
@@ -753,6 +753,7 @@ function Running({ entries, several, onOpen }: { entries: { item: Item; canvas: 
           <button className={`${cardClass(i)} ph-card`} onClick={() => onOpen(i)}>
             <CardFace item={i} where={several ? c.name : undefined} />
           </button>
+          <Doing item={i} />
         </li>
       ))}
     </ul>

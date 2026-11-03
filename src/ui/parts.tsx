@@ -4,7 +4,7 @@ import { memo, type MouseEvent, type ReactNode, useEffect, useRef, useState } fr
 import { createPortal } from 'react-dom';
 import { type Bounds, dependencyOrder, shapeOf } from '../core/layout';
 import { clip } from '../core/text';
-import { answering, type AppUpdate, type CanvasInfo, type BlockedClone, type ClonePool, finished, finishedArchivable, finishingUp, handedOver, type Item, needsYou, openQuestions, pausable, type PendingRestart, halted, type PoolHost, type ProjectHistory, type PullRequest, type SourceUpdate, stoppedArchivable, titleFrom } from '../core/types';
+import { answering, type AppUpdate, type CanvasInfo, type BlockedClone, type ClonePool, demoStage, finished, finishedArchivable, finishingUp, handedOver, type Item, needsYou, openQuestions, pausable, type PendingRestart, halted, type PoolHost, type ProjectHistory, type PullRequest, type SourceUpdate, stoppedArchivable, titleFrom } from '../core/types';
 import { ProjectTalk } from './koordinator';
 import { api } from './api';
 import type { Cam, Sides } from './camera';
@@ -228,6 +228,12 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
   );
 }
 
+/** What the card's worker is doing in its turn, in small italics under the card; a stage of its demo in green. */
+export function Doing({ item }: { item: Item }) {
+  if (!item.inTurn || !item.doing || item.paused) return null;
+  return <div className={demoStage(item.doing) ? 'doing demo' : 'doing'}>{t.doing[item.doing]}</div>;
+}
+
 export const CardView = memo(
   function CardView({ item, b, lifted, dragging, pop, prototyped, showRepo, els, onStart, onArchive, dep, onHover, underway }: CardProps) {
     const shape = shapeOf(item);
@@ -254,6 +260,7 @@ export const CardView = memo(
       >
         {(dep === 'before' || dep === 'after') && <div className="dep-tag">{t.deps[dep]}</div>}
         <CardFace item={item} where={showRepo ? item.repo : undefined} underway={underway} chip={shape === 'chip'} />
+        <Doing item={item} />
         {!underway && <CardTurn item={item} />}
         {startable && (
           <button
