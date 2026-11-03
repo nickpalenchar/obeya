@@ -5,12 +5,12 @@
 
 import { useRef, useState } from 'react';
 import { type CanvasInfo, type Item, type Waiting, waitingOn } from '../core/types';
+import { canvasPath } from './address';
 import { forYouOf, ForYouRows } from './forYou';
 import type { QuickReply } from './quickReply';
 import { CanvasAgents } from './parts';
 import { useMenuClose } from './queue';
 import { t } from './strings';
-import { canvasPath } from './address';
 
 /** How wide the navigation is, pinned as a sidebar. */
 export const NAV_W = 340;

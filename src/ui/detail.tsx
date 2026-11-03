@@ -18,11 +18,11 @@ import { ResultFiles } from './files';
 import { DiscardChanges, FolderBox, FolderLine, useFolderDiff } from './folder';
 import { landedRef, PauseMark, PlayMark, shownTitle } from './parts';
 import { asksAhead, holdsNotes } from '../core/queue';
-import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitedOn } from './queue';
+import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitText, type Behind } from './queue';
 import { dimensions, shownTags } from '../core/page-tags';
 import { Inline, plain } from './markdown';
 import { Body, Cards, goToMessage, Msg, Quote, Reading, useAnswer, useReportedHeight } from './message';
-import { appended, cardDraft, giveBack, questionsKey, typeAtCursor, updateDraft, useDraft } from './draft';
+import { appended, cardDraft, draftOf, dropDraft, giveBack, questionsKey, typeAtCursor, updateDraft, useDraft, useDraftField, useDrafting } from './draft';
 import { eventQuote, type Reply, setReply } from './reply';
 import { CiteButton } from './cite';
 import { Composer } from './composer';
@@ -79,16 +79,10 @@ interface Props {
   onTell: Tell;
 }
 
-/** What a queued card waits for and why, as `waitText` says it, each card a link that opens it in this one's place. */
-function WaitsFor({ q, all }: { q: { behind: string[]; reason: string; manualWait?: string[] }; all: Item[] }) {
-  const drawn = q.behind.filter((id) => q.manualWait?.includes(id));
-  const inferred = q.behind.filter((id) => !drawn.includes(id));
-  const naming = (ids: string[], text: typeof t.queue.behind) => {
-    const cards = waitedOn(ids, all);
-    return <Naming text={(...names) => text(cards.map((c, k) => ({ ...c, title: names[k]! })))} cards={ids.map((id, k) => ({ card: all.find((x) => x.id === id), title: cards[k]!.title }))} />;
-  };
-  if (!inferred.length) return <>{naming(drawn, t.queue.behind)} {t.queue.drawn}</>;
-  return <>{naming(inferred, t.queue.behind)} {q.reason}{drawn.length > 0 && <> {naming(drawn, t.queue.drawnToo)}</>}</>;
+/** What a queued card waits for, each card a link that opens it in this one's place. */
+function WaitsFor({ queue, all }: { queue: Behind; all: Item[] }) {
+  const cards = queue.behind.map((id) => ({ card: all.find((x) => x.id === id), title: all.find((x) => x.id === id)?.title ?? id }));
+  return <Naming text={(...names) => waitText(queue, all, (id) => names[queue.behind.indexOf(id)]!)} cards={cards} />;
 }
 
 /** Where a waiting card stands in the queue, with the buttons that move it; unfolded, the queue around it, where it is dragged instead. */
@@ -140,7 +134,12 @@ export function Detail(p: Props) {
       setError(failText(e));
     }
   };
-  const act = (a: CardAction, done: ActDone) => run(() => api.act(item.id, a), done);
+  // an approval that posts the text for the PR takes the owner's edit of it as it stands, saved or not
+  const act = (a: CardAction, done: ActDone) =>
+    run(async () => {
+      if (a.action === 'approve' || a.action === 'pushChanges') await saveHeld(item.id);
+      await api.act(item.id, a);
+    }, done);
   // the repository the card is to be built in, before work on it begins: one of the canvas's or a new one
   const choice = useRepoChoice(item, p.onEdit);
   // in a folder without git the card's change list takes the place of its branch
@@ -249,6 +248,7 @@ export function Detail(p: Props) {
   // once the idea has become a project, one of its workstreams is built on the prototype instead
   const project = item.prototypeOf ? all.find((i) => i.kind === 'project' && i.origin === item.prototypeOf) : undefined;
   const ideaCard = item.prototypeOf ? all.find((i) => i.id === item.prototypeOf) : undefined;
+  const builtOn = item.builtOn ? item.prototypes?.find((x) => x.id === item.builtOn) : undefined;
   const workstreams = project ? all.filter((i) => i.parent === project.id && buildableOn(i)) : [];
   // the plan doc says which workstream builds on the prototypes; the owner picks only where it does not, or another
   const named = project && !picking ? prototypeWorkstream(all, project.id) : undefined;
@@ -402,7 +402,7 @@ export function Detail(p: Props) {
       ) : (
         <>
           <div className="q-text">
-            <WaitsFor q={item.queue} all={all} />
+            <WaitsFor queue={item.queue} all={all} />
           </div>
           <QueuePlace item={item} items={all} />
           <div className="actions">
@@ -499,7 +499,7 @@ export function Detail(p: Props) {
       )}
       {item.builtOn && (
         <p className="hint">
-          <Naming text={t.idea.builtOn} cards={[{ card: item.prototypes?.find((x) => x.id === item.builtOn), title: item.prototypes?.find((x) => x.id === item.builtOn)?.title ?? '' }]} />
+          <Naming text={t.idea.builtOn} cards={[{ card: builtOn, title: builtOn?.title ?? '' }]} />
         </p>
       )}
       {p.from && !item.prototypeOf && item.state !== 'proposal' && <p className="hint"><Naming text={t.followUpOf} cards={[{ card: p.from }]} /></p>}
@@ -597,8 +597,19 @@ export function Detail(p: Props) {
                           (!demoWaits || sharing) &&
                           ((shown, latest) => (
                             <>
-                              {!demoWaits && latest && <p className="hint">{item.state === 'working' || item.state === 'waiting' ? t.demo.again : t.demo.kept}</p>}
-                              {sharing && shareBox(shown)}
+                              {!demoWaits && latest && (
+                                <p className="hint">
+                                  {shown.asked && item.state === 'waiting' && item.need === 'question'
+                                    ? t.demo.asked
+                                    : item.state === 'working' || item.state === 'waiting'
+                                      ? shown.asked
+                                        ? t.demo.askedAgain
+                                        : t.demo.again
+                                      : t.demo.kept}
+                                </p>
+                              )}
+                              {/* drafts shown with a question are not the work's demo: the handover brings the one to share */}
+                              {sharing && !shown.asked && shareBox(shown)}
                             </>
                           ))
                         }
@@ -606,7 +617,10 @@ export function Detail(p: Props) {
                     )
                   }
                 />
-                {item.pr && (item.state === 'inPr' || item.state === 'waiting') && <PrBox pr={item.pr} {...(item.contribution?.held && item.state === 'waiting' ? { held: item.contribution.held, author: item.contribution.author } : {})} />}
+                {item.pr && (item.state === 'inPr' || item.state === 'waiting') && (
+                  <PrBox pr={item.pr} {...(item.contribution?.held && item.state === 'waiting' ? { held: item.contribution.held, author: item.contribution.author, card: item.id, save: (body: string) => api.act(item.id, { action: 'editHeld', body }) } : {})} />
+                )}
+                {(item.state === 'inPr' || item.state === 'waiting') && item.morePrs?.map((pr) => <PrBox key={pr.url} pr={pr} />)}
                 {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
                 {item.finishing && finished(item.state) && <p className="hint">{item.followUp ? t.followingUpLong : item.state === 'done' ? t.finishingDoneLong : t.finishingLong}</p>}
                 {brief}
@@ -2369,12 +2383,14 @@ function DecidedChip({ item, decided }: { item: Item; decided: Record<string, Ch
  * agent's own changes wait for the approval (`held`), first what goes onto the PR with it: how many
  * commits, the text posted with them, and the findings it asks the contributor for.
  */
-function PrBox({ pr, held, author }: { pr: PullRequest; held?: HeldChanges; author?: string }) {
+function PrBox({ pr, held, author, card, save }: { pr: PullRequest; held?: HeldChanges; author?: string; card?: string; save?: (body: string) => Promise<void> }) {
+  // a conflict says so on its own line
+  const waits = pr.ready ? [] : (pr.waits ?? []).filter((w) => w !== 'conflict' || !pr.conflict);
   return (
     <div className="question pr">
       <h4>
         <a href={pr.url} target="_blank" rel="noreferrer">
-          {t.pr.title(pr.number)} ↗
+          {t.pr.title(pr.number, pr.repo)} ↗
         </a>
       </h4>
       {held && (
@@ -2382,13 +2398,20 @@ function PrBox({ pr, held, author }: { pr: PullRequest; held?: HeldChanges; auth
           <h5>
             {t.review.heldHead(pr.number)} · {t.review.heldCommits(held.commits)}
           </h5>
-          <div className="pr-held-text">
-            <Body md={held.body} />
-          </div>
+          {card && save ? (
+            <HeldText card={card} body={held.body} save={save} />
+          ) : (
+            <div className="pr-held-text">
+              <Body md={held.body} />
+            </div>
+          )}
           {held.asks.length > 0 && author && <div className="pr-held-asks">{t.review.heldAsks(held.asks, author)}</div>}
         </div>
       )}
+      {pr.merged && <div className="q-text">{t.pr.merged}</div>}
+      {pr.closed && <div className="q-text">{t.pr.closed}</div>}
       {pr.conflict && <div className="q-text">{t.pr.conflict}</div>}
+      {waits.length > 0 && <div className="q-text">{t.pr.waits(waits)}</div>}
       {pr.ready && <div className="q-text">{pr.held ? t.pr.held(pr.held.score, pr.held.by) : pr.manual ? t.pr.manual : t.pr.ready(pr.mergeError ?? '')}</div>}
       {pr.checks.length > 0 ? (
         <ul className="checks">
@@ -2408,6 +2431,85 @@ function PrBox({ pr, held, author }: { pr: PullRequest; held?: HeldChanges; auth
         <div className="hint">{t.pr.noChecks}</div>
       )}
       {pr.review && <PrReview entries={pr.review} />}
+    </div>
+  );
+}
+
+/** The draft of the text for the PR the owner is rewriting on card `id`, kept like the card's field. */
+const heldDraft = (id: string) => `${cardDraft(id)}:pr-text`;
+
+/** Saves what the owner wrote into the text for the PR on card `id` and has not saved yet. */
+async function saveHeld(id: string) {
+  const { text } = draftOf(heldDraft(id));
+  if (!text.trim()) return;
+  await api.act(id, { action: 'editHeld', body: text });
+  dropDraft(heldDraft(id));
+}
+
+/**
+ * The text that goes onto the PR with the approval, and „Bearbeiten“ on it: the text as a field in
+ * its place, which „Speichern“ makes the text that goes out, as does the approval. What is typed
+ * waits in a draft of its own until then, through closing the card and a reload; words dictated
+ * with the cursor in it go in.
+ */
+function HeldText({ card, body, save }: { card: string; body: string; save: (body: string) => Promise<void> }) {
+  const key = heldDraft(card);
+  const editing = useDrafting(key);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const { text } = useDraft(key);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useFitHeight(ref, text, editing);
+  useDraftField(key, () => ref.current, false);
+  // the field opens with the cursor after the text, where words are mostly added
+  useEffect(() => {
+    const f = ref.current;
+    if (!editing || !f || document.activeElement === f) return;
+    f.focus({ preventScroll: true });
+    f.setSelectionRange(f.value.length, f.value.length);
+  }, [editing]);
+  const close = () => {
+    dropDraft(key);
+    setError('');
+  };
+  const submit = async () => {
+    if (text.trim() === body) return close();
+    setSaving(true);
+    setError('');
+    try {
+      await save(text);
+      close();
+    } catch (e) {
+      setError(failText(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+  if (!editing)
+    return (
+      <div className="pr-held-text">
+        <button
+          className="pr-held-edit"
+          title={t.review.heldEditHint}
+          onClick={() => updateDraft(key, { text: body })}
+        >
+          ✎ {t.review.heldEdit}
+        </button>
+        <Body md={body} />
+      </div>
+    );
+  return (
+    <div className="pr-held-editing">
+      <textarea ref={ref} className="pr-held-field" value={text} maxLength={20000} onChange={(e) => updateDraft(key, { text: e.target.value })} />
+      <div className="pr-held-acts">
+        <button className="btn small primary" disabled={saving || !text.trim()} onClick={() => void submit()}>
+          {t.review.heldSave}
+        </button>
+        <button className="btn small" disabled={saving} onClick={close}>
+          {t.review.heldCancel}
+        </button>
+        {error && <span className="p-error">{error}</span>}
+      </div>
     </div>
   );
 }

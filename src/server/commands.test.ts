@@ -1320,26 +1320,26 @@ describe('a step the Koordinator takes once a card gets somewhere', () => {
     });
 
   test('it waits on the new card of the same command, and once that is done takes the step up by itself, with „Rückgängig“', async () => {
-    const other = board.create({ title: 'Leserina einrichten', x: 0, y: 0 });
+    const other = board.create({ title: 'Recipes einrichten', x: 0, y: 0 });
     const notices: Notice[] = [];
     board.onNotice((n) => void notices.push(n));
     const k = making();
     const { heard, session } = await say(k, 'Leg eine Aufgabe an, die das Repo erstellt, und dann die Leinwand', 'act', {
       actions: [
-        { do: 'new_card', title: 'Repository ~/dev/leserina anlegen', body: 'git init in ~/dev/leserina' },
-        { do: 'wait_for', on: 'Repository ~/dev/leserina anlegen', text: 'Start K1, then tell K1 “Leserina einrichten” and „Leserina einrichten“ (K1).' },
+        { do: 'new_card', title: 'Repository ~/dev/recipes anlegen', body: 'git init in ~/dev/recipes' },
+        { do: 'wait_for', on: 'Repository ~/dev/recipes anlegen', text: 'Start K1, then tell K1 “Recipes einrichten” and „Recipes einrichten“ (K1).' },
       ],
-      confirm: 'Neue Aufgabe „Repository ~/dev/leserina anlegen“; sobald sie erledigt ist, starte ich „Leserina einrichten“.',
+      confirm: 'Neue Aufgabe „Repository ~/dev/recipes anlegen“; sobald sie erledigt ist, starte ich „Recipes einrichten“.',
     });
     expect(session.spec.system).toContain('wait_for in the same act');
     k.arm(heard.token!);
     await until(() => board.snapshot().talk[0]!.waits);
-    const card = board.snapshot().items.find((i) => i.title === 'Repository ~/dev/leserina anlegen')!;
+    const card = board.snapshot().items.find((i) => i.title === 'Repository ~/dev/recipes anlegen')!;
     expect(board.snapshot().talk[0]!.waits).toEqual([{ card: card.id, title: card.title, state: 'done' }]);
 
     // the next command knows what it waits on
     const next = await say(k, 'was läuft?', 'reply', { confirm: 'Das Repository wird angelegt.' });
-    expect(next.brief).toMatch(/Cards you wait on.*\n- K\d "Repository ~\/dev\/leserina anlegen" until it is done \(since .*\), then: Start "Leserina einrichten", then tell “Leserina einrichten” and „Leserina einrichten“\./);
+    expect(next.brief).toMatch(/Cards you wait on.*\n- K\d "Repository ~\/dev\/recipes anlegen" until it is done \(since .*\), then: Start "Recipes einrichten", then tell “Recipes einrichten” and „Recipes einrichten“\./);
 
     // still at work: nothing happens
     board.work(card.id, { state: 'working' });
@@ -1353,15 +1353,15 @@ describe('a step the Koordinator takes once a card gets somewhere', () => {
     await until(() => runtime.last.inbox.length === 3);
     const brief = runtime.last.inbox.at(-1)!;
     expect(brief).toContain("No words of the owner's this time");
-    expect(brief).toContain('the card "Repository ~/dev/leserina anlegen" is done');
-    expect(brief).toContain('to then: Start "Leserina einrichten", then tell “Leserina einrichten” and „Leserina einrichten“.');
+    expect(brief).toContain('the card "Repository ~/dev/recipes anlegen" is done');
+    expect(brief).toContain('to then: Start "Recipes einrichten", then tell “Recipes einrichten” and „Recipes einrichten“.');
     const [, , after] = board.snapshot().talk;
     // the exchange stands with what became of the card in place of the owner's words
     expect(after).toMatchObject({ said: '', after: { title: card.title, state: 'done', met: 'reached', from: board.snapshot().talk[0]!.id } });
-    runtime.last.call('act', { actions: [{ do: 'start', card: 'K1' }], confirm: '„Leserina einrichten“ startet.' });
+    runtime.last.call('act', { actions: [{ do: 'start', card: 'K1' }], confirm: '„Recipes einrichten“ startet.' });
     runtime.last.emit({ type: 'idle' });
     await until(() => notices.length);
-    expect(notices[0]).toMatchObject({ text: '„Leserina einrichten“ startet.', talk: after!.id, undoMs: 20 });
+    expect(notices[0]).toMatchObject({ text: '„Recipes einrichten“ startet.', talk: after!.id, undoMs: 20 });
     // decided: it no longer waits
     expect(board.snapshot().talk[0]!.waits).toBeUndefined();
     await until(() => executed.length === 2);
@@ -1453,7 +1453,7 @@ describe('a step the Koordinator takes once a card gets somewhere', () => {
     expect(b.id).toBeString();
   });
 
-  test('a card there already is refused; stop_waiting and „Nicht mehr warten“ drop the step, and it hears of the latter', async () => {
+  test('a card there already is refused, and so is a wait that names two cards; stop_waiting and „Nicht mehr warten“ drop the step, and it hears of the latter', async () => {
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     const b = board.create({ title: 'Login', x: 0, y: 0 });
     board.work(a.id, { state: 'live' });
@@ -1463,6 +1463,7 @@ describe('a step the Koordinator takes once a card gets somewhere', () => {
     await settle();
     expect(String(runtime.last.call('act', { actions: [{ do: 'wait_for', on: 'K1', text: 'start K2' }], confirm: 'x' }))).toContain('is done already: take the step now');
     expect(String(runtime.last.call('act', { actions: [{ do: 'wait_for', on: 'K2' }], confirm: 'x' }))).toContain('the step you take then is missing');
+    expect(String(runtime.last.call('act', { actions: [{ do: 'wait_for', card: 'K1', on: 'K2', text: 'start Login' }], confirm: 'x' }))).toContain('on (K2) and card (K1) name two cards');
     expect(String(runtime.last.call('act', { actions: [{ do: 'wait_for', on: 'Gibt es nicht', text: 'x' }], confirm: 'x' }))).toContain('no card Gibt es nicht: give with on the tag of the card to wait on');
     expect(String(runtime.last.call('act', { actions: [{ do: 'stop_waiting', card: 'K2' }], confirm: 'x' }))).toContain('you do not wait on K2');
     runtime.last.call('act', { actions: [{ do: 'wait_for', on: 'K2', text: 'Tell the owner Login is done.' }], confirm: 'Ich sage dir, wenn Login fertig ist.' });
@@ -1557,6 +1558,30 @@ describe('a step the Koordinator takes once it has looked something up', () => {
     const fresh = looking();
     const later = await say(fresh, 'und?', 'reply', { confirm: 'Nichts weiter.' });
     expect(later.brief).toContain(`the answer A${asking!.id} came in, and you took up the step you had looked it up for → you: "Zwei neue Aufgaben`);
+  });
+
+  test('the tasks of a step it looked up land where the owner was when they asked, also after a restart', async () => {
+    const place = { x: 1200, y: -300, view: { x: 800, y: -600, w: 900, h: 700 } };
+    const k = looking();
+    const heard = k.hear('leg für jedes offene Issue eine Aufgabe an', { place });
+    await settle();
+    runtime.last.call('look_up', { question: 'Welche Issues sind offen?', then: 'Create a task for each.', confirm: 'Ich lese nach und lege sie dann an.' });
+    runtime.last.emit({ type: 'idle' });
+    await heard;
+    const [asking] = board.snapshot().talk;
+    board.answerTalk(asking!.id, '#3 Login\n#4 Logout', 'koordinator');
+    // the server stops before it takes the step up; the next one takes it up where the owner was
+    looking().resume();
+    await until(() => runtime.last.inbox.length === 1);
+    runtime.last.call('act', { actions: [{ do: 'new_card', title: 'Login' }, { do: 'new_card', title: 'Logout' }], confirm: 'Zwei neue Aufgaben.' });
+    runtime.last.emit({ type: 'idle' });
+    await until(() => executed.length === 2);
+    expect(executed).toMatchObject([
+      { do: 'newCard', title: 'Login', place },
+      { do: 'newCard', title: 'Logout', place },
+    ]);
+    expect(board.snapshot().talk[0]!.then).toBeUndefined();
+    expect(board.exchange(asking!.id)!.thenPlace).toBeUndefined();
   });
 
   test('a question looked up without a step is only answered', async () => {

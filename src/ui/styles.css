@@ -334,11 +334,10 @@ button.pill:hover { box-shadow: var(--lift); }
   background: transparent; color: var(--muted); opacity: .55; cursor: pointer; transition: opacity .12s; }
 .agents-turn .btn-mark { margin: 0; }
 .agents-turn:hover, .agents-turn:focus-visible { opacity: 1; color: var(--ink); border-color: var(--muted); }
-/* what it does, at once while the pointer is on it, beside the menu */
-.agents-turn { position: relative; }
-.agents-turn .tip { display: none; position: absolute; left: calc(100% + 16px); top: 50%; transform: translateY(-50%); padding: 6px 10px; border-radius: 3px;
-  background: var(--panel); color: var(--ink); box-shadow: var(--lift); white-space: nowrap; font-size: 13px; font-weight: 400; pointer-events: none; z-index: 31; }
-.agents-turn:is(:hover, :focus-visible) .tip { display: block; }
+/* what it does, at once while the pointer is on it, to its right: on the page itself, since the list and the
+   sidebar scroll and would cut it off at their edge and scroll sideways to it */
+.agents-tip { position: fixed; transform: translateY(-50%); padding: 6px 10px; border-radius: 3px; background: var(--panel); color: var(--ink);
+  box-shadow: var(--lift); white-space: nowrap; font-size: 13px; pointer-events: none; z-index: 40; }
 .nav-row:is(:hover, :focus-within) .agents-turn { display: grid; }
 .nav-row:is(:hover, :focus-within) .canvas-agents::before { display: none; }
 @media (hover: none) {
@@ -405,6 +404,9 @@ button.pill:hover { box-shadow: var(--lift); }
 .pill.workspaces .ws-menu .btn.ws-take { margin-left: 0; background: var(--panel); }
 .pill.workspaces .ws-menu .hint { font-size: 12px; line-height: 1.4; }
 #bar > svg { flex: none; margin-right: 4px; }
+/* the open canvas's name, heading the bar beside the pinned navigation; set lower than the buttons' baseline so its capitals sit centred in the bar */
+.bar-canvas { margin: 0 6px 0 0; padding-left: 14px; border-left: 1px solid var(--line); max-width: 26ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  box-sizing: border-box; height: 34px; padding-top: 5px; font: 600 21px/29px var(--serif); }
 #bar .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 /* the traffic lights of the app's window on a Mac sit at the bar's left, or in the pinned navigation's head */
 #bar.titlebar { padding-left: 92px; }
@@ -425,7 +427,7 @@ button.pill:hover { box-shadow: var(--lift); }
 #bar[data-fit~="5"] #workspaces, #bar[data-fit~="5"] .help { display: none; }
 /* Keep Claude's percentages after the pool gives way; only the very smallest bar drops them. */
 #bar[data-fit~="5"] #usage .face .meter { display: none; }
-#bar[data-fit~="6"] #usage, #bar[data-fit~="6"] .nav-pill .switch b, #bar[data-fit~="6"] .new-card, #bar[data-fit~="6"] .pill.restart .say { display: none; }
+#bar[data-fit~="6"] .nav-pill .switch b, #bar[data-fit~="6"] .bar-canvas, #bar[data-fit~="6"] .new-card, #bar[data-fit~="6"] .pill.restart .say { display: none; }
 /* the bar's buttons are one height, whatever they hold: text, an icon, a count */
 #bar .pill, .pill.talk-pill { height: 34px; box-sizing: border-box; padding-block: 0; }
 #bar button.pill.help { width: 34px; height: 34px; }
@@ -1069,10 +1071,16 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .question.pr { border-color: var(--inPr); background: color-mix(in srgb, var(--inPr) 7%, transparent); }
 .question.pr h4 a { color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 14px; }
 /* on a review card: what goes onto the PR with the approval, the agent's text as the contributor will read it */
-.pr-held { margin-top: 10px; }
+.pr-held { margin: 10px 0 8px; }
 .pr-held h5 { margin: 0 0 4px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .pr-held-text { padding: 6px 10px; border-radius: 6px; background: var(--card); border: 1px solid color-mix(in srgb, var(--inPr) 25%, transparent); font-size: 13px; }
 .pr-held-text .p-lead { margin: 4px 0; }
+.pr-held-edit { float: right; margin: 0 -4px 4px 10px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.pr-held-edit:hover { color: var(--ink); border-color: color-mix(in srgb, var(--inPr) 50%, transparent); }
+.pr-held-field { display: block; width: 100%; box-sizing: border-box; min-height: 6em; padding: 10px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--inPr) 50%, transparent); background: var(--card); color: var(--ink); font: inherit; font-size: 14.5px; line-height: 1.45; resize: none; }
+.pr-held-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.pr-held-acts .btn.small { margin-top: 0; }
+.pr-held-acts .p-error { margin: 0; }
 .pr-held-asks { margin-top: 6px; font-size: 13px; color: var(--waiting); }
 .checks { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
 .checks li::before { margin-right: 5px; font-weight: 700; }

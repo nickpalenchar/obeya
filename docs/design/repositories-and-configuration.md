@@ -84,7 +84,10 @@ thing to read meanwhile, may be on a card's branch.
 ### Plan docs
 
 A doc in the repository's plan directory (`planDocs`) is a project when its `## Workstreams` section
-has a checklist; each top-level item is a workstream (`**W3:** Title. Details`). A pull request's
+has a checklist; each top-level item is a workstream (`**W3:** Title. Details`). A short code at the
+start of the bold text is its label: `W3`, `WP`, and the codes other docs use, before a colon, dash
+or full stop (`S1:`, `A1 —`, `1G.`). A code before a space (`4A Title`) is a label where at least two
+of the doc's items start with one; alone, it is part of a title (`K8s Cluster`, `2FA einführen`). A pull request's
 number before the text (`**W3:** #27. Title. Details`, as a worker may tick it off) stays part of the
 title instead of becoming all of it, so the tile and the sheet still say what the workstream is
 (issue #12, 2026-10-26). Checked means
@@ -94,17 +97,53 @@ their workstream in the doc as part of their change. A plan card is stored when 
 owner's placement persists; its title, text and state always come from the doc. Each read keeps the
 doc's last state on the project.
 
+#### A workstream's identity
+
+A card belongs to its workstream by the workstream's label, or, for an item without one, by its title
+(lower-case words; a pull request's number a worker puts before it does not count). Reordering the
+doc, adding or dropping other workstreams, or rewording a labelled one leaves every card on its own
+workstream; rewording an unlabelled title makes it another workstream, with a card of its own. Two
+items with the same label are told apart by their titles; two with the same title too, by their
+order. Titles in any script count (`Вход`, `登录`); only an item whose title has no letter or digit
+is known by its place. Where dropping or adding a sibling changes how an item reads (a code before a
+space left alone in the doc is a title again; a label the doc no longer gives twice needs no title
+after it), its card follows it onto its new key: where it is known what the workstream was (the doc
+as last read, or what the card remembered of it), by its label and title together, since a label
+alone may be another item's now. A card nobody worked on that holds such a key gives way to the card
+with the workstream's log.
+
+A card whose workstream the doc no longer lists, while the doc is there, leaves the project once an
+agent worked on it: as a task of its own, with its log, under the workstream's label and title and
+its text as the doc last had them, its log saying why. Finished (live or done, or planned again
+after a part landed), it goes into the archive; at work or stopped, it stands beside the project. A
+stopped card holding a workspace gives the workspace back first. A doc in a plan folder outside the
+repository is written in place, an item moved in two edits, so its card leaves only once the
+workstream stayed away for five minutes; back before that, it keeps its card. A card nobody worked
+on just goes.
+
+Cards stored by an older Obeya may carry a workstream's place in the doc as its key (`#3`), which
+gave their logs and states to other workstreams once the doc dropped or added some. A doc last read
+with such keys moves its cards onto the keys above once: a card an agent worked on goes by the title its
+branch was named after (`obeya/<title>-<id>`, from the card or its log), any other by its place in
+the doc as last read. A title the doc reworded since still finds its workstream by the label the
+doc as last read or its history gave it, and a pull request's number before it does not count. A
+card whose workstream the doc no longer has leaves the project as above, its title and text from the
+doc's history in git (the doc as each of its recent commits left it); the project then lays out afresh in the doc's order,
+with fresh cards for the workstreams left without one.
+
 #### A plan folder outside the repository
 
 For plans kept out of the repository (gitignored, or a folder of their own), the plan directory may
 be an absolute path or one from `~`, set on this machine. Obeya reads and watches the docs there as
 they are, and names each by its absolute path with forward slashes (so a Windows drive does not read
 as a repository id), as the agents do. Workers on this machine get the folder as an extra directory:
-ticking a workstream there takes effect at once and goes into no commit, though the card's work in
-progress still wins until it lands. A doc „Als Projekt planen“ writes there cannot land, so Obeya
-names it at the start (the card's title, `-2` on a clash) and keeps it on the card; it shows as a
-project once written, and the project takes the card's place once approved (the card is done without
-a change). Workers on other machines do not reach the folder.
+ticking a workstream there takes effect at once and goes into no commit, so the box says nothing of
+a landing: the card's work in progress still wins until it lands, and so does a stopped card with
+its branch, which stays stopped, keeps its workspace and holds its project on the canvas (see A
+workstream's state). A doc „Als Projekt planen“ writes there cannot land, so Obeya names it at the
+start (the card's title, `-2` on a clash) and keeps it on the card; it shows as a project once
+written, and the project takes the card's place once approved (the card is done without a change).
+Workers on other machines do not reach the folder.
 
 #### Docs that are no projects
 
@@ -124,10 +163,11 @@ the same in every browser) and new cards go clear of it. Until dragged, it follo
 
 #### A workstream's state
 
-Work in progress (working, waiting, in PR, approved) wins over the doc, so a workstream ticked off on
-its branch still waits for its merge. Then a ticked workstream is `live`; otherwise the stored state
-counts (`done`, `planned`), and without one the doc's. `done` (finished without a change) stays: the
-doc has nothing to say about it.
+Work in progress (working, waiting, in PR, approved) wins over the doc, so a workstream ticked off
+on its branch still waits for its merge. In a plan folder outside the repository so does a stopped
+card (planned with its branch): its worker ticked the box there before the work landed. Then a
+ticked workstream is `live`; otherwise the stored state counts (`done`, `planned`), and without one
+the doc's. `done` (finished without a change) stays: the doc has nothing to say about it.
 
 A stored `live` holds only until the Lesestand has what landed. A card keeps the commit it landed
 with (on main after a direct landing, the merge commit for a pull request, else the Lesestand's
@@ -141,10 +181,14 @@ doc still holds open, what landed (with its pull request and last demo) beside t
 A worker still finishing after the landing keeps its card live until done. A workstream in a pull
 request whose box the main branch ticks off counts as merged even where the PR watcher missed the
 merge (by hand, say, or before the worker reported it): its worker hears so and finishes, and its
-clone returns to the pool. That needs the box in the repository: a box in a plan folder outside it is
-ticked by the worker before the merge, often before the pull request is open, so there only the
-watcher sees the merge (GitHub issue #41, 2026-11-02: approved cards read as merged at once and their
-PRs were never merged).
+clone returns to the pool. That needs the box in the repository: a box in a plan folder outside it
+is ticked by the worker before the merge, often before the pull request is open, so there only the
+watcher sees the merge (GitHub issue #41, 2026-11-02: approved cards read as merged at once and
+their PRs were never merged). Likewise a stopped workstream whose box the main branch ticks off is
+done elsewhere: it shows `live`, its clone returns to the pool („Im Plan-Doc abgehakt: Workspace
+freigegeben.“) and its branch stays there. A box in a plan folder outside the repository leaves a
+stopped card as it is (2026-11-02: such cards read as live and lost their workspace with nothing
+landed).
 
 #### Reading a plan doc
 
@@ -534,6 +578,14 @@ Prompts only agents read stay English, with German examples of what the owner ma
 - **The plan-directory note moves freely, its place stored on the server** (2026-10-21, a colleague):
   pinned above the projects, it jumped with each new one. Rejected: localStorage (a place is layout,
   not a reading state like hiding).
+- **A workstream is known by its label, else its title, never by its place** (2026-11-02, a
+  colleague): keyed by place, a doc that dropped finished workstreams and added new ones gave a new
+  workstream the log and the done state of an old one. A card whose workstream leaves the doc keeps
+  its log as a task of its own instead of disappearing with it. Rejected: treating a single item
+  swapped at the same place as a rename (the very mix-up, once more); asking the owner for each
+  card the repair moves (they would have to know every card's history); a button to take a card
+  out of its project by hand (not wanted, and it read as a copy of the card); for a plan folder
+  outside the repository, leaving at once (a doc saved in two edits would take a card out for good).
 - **A stored `live` holds only until the Lesestand has what landed** (2026-10-06), so a workstream the
   doc keeps open on purpose reopens. Rejected: the worker reporting "only a part" (a second source
   against the doc); a „Wieder öffnen“ button (the problem shows only when someone asks).

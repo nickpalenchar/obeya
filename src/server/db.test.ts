@@ -61,7 +61,8 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     s.update(answered!.id, { demo: JSON.stringify({ kind: 'video', dir: '/d', chapters: [], question: 'Q?', answer: 'Yes' }) });
     s.update(held!.id, { share: JSON.stringify({ slug: 's', state: 'pending', dir: '/d', shown: { title: 'T', text: '', chapters: [] } }) });
     s.setSetting('c', 'work_retro_since:app', '2026-10-01T00:00:00Z');
-    // the schema as released: without the columns later migrations add
+    // the schema as released: without the columns and indexes later migrations add
+    for (const index of ['cards_open', 'cards_plan_docs', 'cards_prototypes', 'cards_waiting', 'cards_shared']) s.db.run(`DROP INDEX ${index}`);
     s.db.run('ALTER TABLE talk DROP COLUMN reply_to');
     s.db.run('ALTER TABLE cards DROP COLUMN app');
     s.db.run('DROP TABLE devices');
@@ -96,6 +97,7 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     s.db.run('DROP INDEX cards_short');
     s.db.run('ALTER TABLE cards DROP COLUMN short');
     s.db.run('ALTER TABLE events DROP COLUMN token');
+    s.db.run('ALTER TABLE talk DROP COLUMN then_place');
     s.db.run(`PRAGMA user_version = ${RELEASED}`);
     s.db.close();
 
@@ -141,6 +143,8 @@ test('the migration gives the cards there are codes of their own, longer where t
     s.db.run('ALTER TABLE cards DROP COLUMN short');
     // later migrations run again after it: undo what they added
     s.db.run('ALTER TABLE events DROP COLUMN token');
+    for (const index of ['cards_open', 'cards_plan_docs', 'cards_prototypes', 'cards_waiting', 'cards_shared']) s.db.run(`DROP INDEX ${index}`);
+    s.db.run('ALTER TABLE talk DROP COLUMN then_place');
     s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.findIndex((m) => m.includes('ADD COLUMN short'))}`);
     s.db.close();
     const after = new Store(path);

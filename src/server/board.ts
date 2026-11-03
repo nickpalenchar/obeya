@@ -14,9 +14,9 @@ import { arrangeWorkstreams, type Bounds, boundsOf, CARD_SIZE, freeSpotNear, GAP
 import type { CardFile } from '../core/files';
 import type { Language } from '../core/locale';
 import { MESSAGES, type Messages, snoozeTerm } from '../core/messages';
-import { type KnownChange, missedChanges, PAGE_CHANGES, pagesVersion } from '../core/page-changes';
+import { type KnownChange, missedChanges, type OutdatedBy, PAGE_CHANGES, pagesVersion, THEME_CHANGED } from '../core/page-changes';
 import { pageTags, untagged } from '../core/page-tags';
-import { allTicked, type OtherDoc, type PlanDoc } from '../core/plan-doc';
+import { allTicked, type OtherDoc, type PlanDoc, parsePlanDoc, withoutReference, type Workstream, workstreamAliases } from '../core/plan-doc';
 import {
   type AnswerFile,
   type CanvasInfo,
@@ -47,6 +47,8 @@ import {
   type SettingProposal,
   type SettingProposalState,
   type PrReviewEntry,
+  type PrWait,
+  type PullRequest,
   type ProjectHistory,
   type Proposal,
   type Superseded,
@@ -74,6 +76,7 @@ import {
 } from '../core/types';
 import type { CardRow, DecisionRow, Friction, FrictionNote, GroupRow, HeldTalk, Mark, NewRow, RowUpdate, Store, TalkWaitRow } from './db';
 import type { Images } from './images';
+import { branchName, CARD_BRANCH } from './workspaces';
 import { clip, messageOf, oneLine } from '../core/text';
 import type { Wish } from '../core/wish';
 
@@ -102,9 +105,25 @@ export interface PrState {
   held?: { score: string; by: string };
   /** A ready PR the repository's settings leave to the people on the forge to merge (`autoMerge` off). */
   manual?: true;
+  /** The commit a branch behind its base, which the repository wants up to date, was last reported for. */
+  behindHead?: string;
   checks?: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
   /** The review as last seen, for the card. */
   review?: PrReviewEntry[];
+  /** What the PR waits for before it is merged, as last polled; gone once it is ready. */
+  waits?: PrWait[];
+  /** `owner/name` of the PR's repository, where that is another than the card's. */
+  repo?: string;
+  /** Merged while the card's other pull requests were not yet: the commit the merge put on the base, where the forge said. */
+  merged?: string | true;
+  /** Closed without a merge: the owner was asked, and it holds up nothing. */
+  closed?: true;
+  /**
+   * On the card's first pull request: the further ones the worker opened for the same work (in
+   * other repositories, or a second in its own), each watched as the first; the card is live once
+   * all are merged. The first is the one in the card's repository, which the landing is about.
+   */
+  more?: PrState[];
 }
 
 /** A card's place in the queue where it waits behind other cards; none otherwise. */
@@ -223,6 +242,8 @@ export interface StoredShare {
   personal?: true;
   /** The random part of the page's address on the personal site (`<token>/<slug>`): drawn once for the card, so its link stays. */
   token?: string;
+  /** The hash of its repository's theme (theme.ts) the published page carries; none where it carries none. */
+  theme?: string;
 }
 
 /**
@@ -256,6 +277,21 @@ export interface StoredReshare {
 const RESHARE_SETTING = 'reshare';
 /** The newest page change when the owner put the notice of outdated pages away: it shows again for pages a newer one leaves outdated. */
 const RESHARE_DISMISSED = 'reshare_dismissed';
+/**
+ * The pages a theme left outdated when the owner put the notice away, by card: the theme each was
+ * published with and the one its repository had then (hashes, null for none). Such a page shows
+ * again once either differs: its repository's theme changed anew, or it was shared again since.
+ */
+const RESHARE_DISMISSED_THEMES = 'reshare_dismissed_themes';
+
+/** A page's theme and its repository's, as `RESHARE_DISMISSED_THEMES` keeps them. */
+type ThemePair = [published: string | null, now: string | null];
+
+/** The current theme's hash of a card's repository (theme.ts): null where it has none, undefined while that is not known (the repository does not run). */
+export type ThemeNow = (r: CardRow) => string | null | undefined;
+
+/** Whether the theme of a stored page's repository (`now`, see `ThemeNow`) differs from the one it was published with; not while it is not at rest. */
+const themeChanged = (s: StoredShare, now: string | null | undefined) => !!s.url && !s.state && now !== undefined && (s.theme ?? null) !== now;
 
 /** The changes since a stored page was published that show on its kinds of page (a video, an artifact, or both on one page); none while it is not at rest. */
 export function missedBy(s: StoredShare): KnownChange[] {
@@ -289,9 +325,9 @@ function earlierDemos(r: CardRow): EarlierDemo[] {
  * the card, or the one it showed, kept with the share, and its files still on disk (demos are
  * deleted to free space; a page whose files are gone stays as it is, with nothing to offer).
  */
-export function reshareable(r: CardRow): KnownChange[] {
+export function reshareable(r: CardRow, theme?: string | null): OutdatedBy[] {
   const s = r.share ? (JSON.parse(r.share) as StoredShare) : null;
-  const missed = s ? missedBy(s) : [];
+  const missed: OutdatedBy[] = s ? [...missedBy(s).map((c) => c.id), ...(themeChanged(s, theme) ? [THEME_CHANGED as OutdatedBy] : [])] : [];
   const demos = s ? sharedDemos(s) : [];
   if (!missed.length || !demos.length || !demos.every((d) => demoThere({ dir: d.dir, kind: d.shown.kind }))) return [];
   return missed;
@@ -305,7 +341,8 @@ export function cardDemos(r: CardRow): StoredDemo[] {
   const all = storedDemos(r);
   const latest = r.demo ? (JSON.parse(r.demo) as StoredDemo) : null;
   const later = (i: number) => [...all.slice(i + 1).map((d) => d.dir), ...(latest ? [latest.dir] : [])];
-  return [...all.filter((d, i) => !later(i).includes(d.dir) && demoThere(d)), ...(latest ? [latest] : [])];
+  // drafts a question brought are not the work's result: no page shows them
+  return [...all.filter((d, i) => !later(i).includes(d.dir) && demoThere(d)), ...(latest ? [latest] : [])].filter((d) => !d.asked);
 }
 
 /** States a worker or the owner's decision is still part of. */
@@ -391,6 +428,8 @@ export class Board {
   private cache: CanvasSnapshot | null = null;
   /** The snapshot's `items`, also while the rest of it is not built (`items`); gone with `cache`. */
   private itemsCache: Item[] | null = null;
+  /** What `toItems` made of each card's row, for as long as the row stays the same; gone with any change but a write to one card (`work`). */
+  private worked: Worked = new Map();
   /** The archive as `archived` built it; gone with `cache`, since it changes with the same writes. */
   private archiveItems: Item[] | null = null;
   /** The canvas's prototypes, and those `withPrototypes` handed out so far; gone with `cache`. */
@@ -495,6 +534,17 @@ export class Board {
    * landing or a card moving on makes dozens of changes in a row.
    */
   changed() {
+    // the demos' files may have come or gone with it
+    this.worked.clear();
+    this.changedRows();
+  }
+
+  /**
+   * Cards' rows changed, and nothing else: what the other cards' rows make stays (their demos' files
+   * are looked at again with the next change of anything else). A landing writes to its card dozens
+   * of times, each read back at once, on a canvas of hundreds of cards with demos.
+   */
+  private changedRows() {
     this.cache = null;
     this.itemsCache = null;
     this.archiveItems = null;
@@ -688,7 +738,7 @@ export class Board {
   work(id: string, fields: RowUpdate) {
     this.own(id);
     this.store.update(id, fields);
-    this.changed();
+    this.changedRows();
   }
 
   /** The cards of the canvas, archived ones too, that were ever shared or are about to be. */
@@ -973,12 +1023,44 @@ export class Board {
    * with the changes each lacks: after the owner put the notice away, only those a newer change
    * left outdated.
    */
-  outdatedRows(shared = this.sharedRows()): { r: CardRow; missed: KnownChange[] }[] {
+  outdatedRows(shared = this.sharedRows()): { r: CardRow; missed: OutdatedBy[] }[] {
     const at = (id: string | null) => PAGE_CHANGES.findIndex((c) => c.id === id);
     const dismissed = at(this.setting(RESHARE_DISMISSED));
+    const themes = this.dismissedThemes();
+    const hidden = (r: CardRow) => {
+      const was = themes[r.id];
+      return !!was && JSON.stringify(was) === JSON.stringify(this.themePair(r));
+    };
     return shared
-      .map((r) => ({ r, missed: reshareable(r) }))
-      .filter(({ missed }) => missed.some((c) => at(c.id) > dismissed));
+      .map((r) => ({ r, missed: this.outdatedBy(r) }))
+      .filter(({ r, missed }) => missed.some((id) => (id === THEME_CHANGED ? !hidden(r) : at(id) > dismissed)));
+  }
+
+  /** What leaves the card's page outdated (`reshareable`), its repository's theme included. */
+  outdatedBy(r: CardRow): OutdatedBy[] {
+    return reshareable(r, this.themeNow(r));
+  }
+
+  /** The current theme of each repository (its hash, null for none), by its id; for the pages it leaves outdated. */
+  private themeOf?: (repo: string) => string | null | undefined;
+
+  showThemes(of: (repo: string) => string | null | undefined) {
+    this.themeOf = of;
+    this.changed();
+  }
+
+  /** The current theme's hash of the card's repository (`ThemeNow`). */
+  private themeNow: ThemeNow = (r) => this.themeOf?.(repoOfRow(r, this.home));
+
+  /** The pages a theme left outdated when the owner put the notice away (`RESHARE_DISMISSED_THEMES`). */
+  private dismissedThemes(): Record<string, ThemePair> {
+    const v = this.setting(RESHARE_DISMISSED_THEMES);
+    return v ? (JSON.parse(v) as Record<string, ThemePair>) : {};
+  }
+
+  /** The theme the card's page was published with, and its repository's now. */
+  private themePair(r: CardRow): ThemePair {
+    return [(JSON.parse(r.share!) as StoredShare).theme ?? null, this.themeNow(r) ?? null];
   }
 
   /**
@@ -989,7 +1071,7 @@ export class Board {
   untaggedRows(shared = this.sharedRows()): CardRow[] {
     return shared.filter((r) => {
       const s = JSON.parse(r.share!) as StoredShare;
-      const vocabulary = this.vocabularyOf?.(r.repo ?? (r.plan_ref ? repoOfRef(r.plan_ref, this.home) : this.home));
+      const vocabulary = this.vocabularyOf?.(repoOfRow(r, this.home));
       if (!s.url || s.state || !vocabulary || !untagged(pageTagsOf(r), vocabulary).length) return false;
       const demos = sharedDemos(s);
       return demos.length > 0 && demos.every((d) => demoThere({ dir: d.dir, kind: d.shown.kind }));
@@ -1007,6 +1089,10 @@ export class Board {
   /** "Ausblenden": the notice of outdated pages goes until a newer change, and the result of a run that finished with it. */
   dismissOutdated() {
     this.setSetting(RESHARE_DISMISSED, pagesVersion());
+    // the pages outdated by a theme now; one no longer is needs no entry
+    const themes: Record<string, ThemePair> = {};
+    for (const r of this.sharedRows()) if (this.outdatedBy(r).includes(THEME_CHANGED)) themes[r.id] = this.themePair(r);
+    this.setSetting(RESHARE_DISMISSED_THEMES, JSON.stringify(themes));
     this.setReshareRun(null);
   }
 
@@ -1139,9 +1225,9 @@ export class Board {
     return this.store.waitingTalk(this.canvas.id);
   }
 
-  /** The step the Koordinator takes once the exchange's looked-up answer is in; `null` once it has decided it. */
-  thenTalk(id: number, then: string | null) {
-    this.store.thenTalk(id, then);
+  /** The step the Koordinator takes once the exchange's looked-up answer is in, and where the owner was then; `null` once it has decided it. */
+  thenTalk(id: number, then: string | null, place?: Place) {
+    this.store.thenTalk(id, then, place);
   }
 
   /** Looked-up answers that are in whose step the Koordinator has not decided yet: after a restart, it takes them up. */
@@ -1399,7 +1485,7 @@ export class Board {
     const projects = rows.filter((r) => r.plan_ref);
     const docs = projects.map((r) => JSON.parse(r.plan!) as PlanDoc);
     const kids = this.store.children(projects.map((r) => r.id));
-    const items = this.withPrototypes(toItems([...rows, ...kids], docs, this.home));
+    const items = this.withPrototypes(toItems([...rows, ...kids], docs, this.home, this.worked, this.themeNow));
     const byId = new Map(items.map((i) => [i.id, i]));
     const kidsOf = Map.groupBy(items.filter((i) => i.parent), (i) => i.parent!);
     return rows.flatMap((r) => {
@@ -1450,8 +1536,7 @@ export class Board {
    * lease outlived what it was for); it was deleted; or it is a workstream no worker is on whose box
    * the plan doc on the default branch ticks off (`ticked`; `merged` while it is in its pull request,
    * which the doc says has been merged), or that the doc there no longer has (`gone`). A box ticked
-   * in a plan folder outside the repository says nothing of a merge: the worker ticks it there before
-   * its pull request is even open.
+   * in a plan folder outside the repository says nothing of a landing (`tickedAhead`).
    */
   leaseEnded(cardId: string, path: string): 'stale' | 'deleted' | 'ticked' | 'merged' | 'gone' | null {
     const row = this.store.card(cardId);
@@ -1466,7 +1551,7 @@ export class Board {
     const hash = row.plan_ref?.indexOf('#') ?? -1;
     if (hash < 0 || row.state === 'working' || row.state === 'waiting' || row.state === 'approved') return null;
     if (row.state === 'inPr' && !row.pr) return null;
-    if (row.state === 'inPr' && OUTSIDE_PATH.test(pathOfRef(row.plan_ref!))) return null;
+    if (row.state === 'inPr' && tickedAhead(row)) return null;
     // the docs are read the way the canvas reads them, which plans again a workstream only a part of which landed
     this.items();
     const doc = this.docs?.find((d) => d.file === row.plan_ref!.slice(0, hash));
@@ -1474,7 +1559,7 @@ export class Board {
     // an open pull request goes on without the doc: its watcher sees it merged or closed; a repository
     // not (yet) on the canvas has no docs read
     if (!w) return row.state === 'inPr' || !this.canvas.repos.some((r) => r.id === repoOfRef(row.plan_ref!, this.home)) ? null : 'gone';
-    if (!w.done) return null;
+    if (!w.done || tickedAhead(row)) return null;
     return row.state === 'inPr' ? 'merged' : 'ticked';
   }
 
@@ -1555,22 +1640,25 @@ export class Board {
       this.docsOf = repos;
     }
     const all = this.docs;
-    const docs = this.openDocs(all);
+    this.follow(all, read);
+    let rows = this.store.cards(this.canvas.id);
+    const docs = this.openDocs(all, rows);
     const open = docs.map((d) => d.file).join('\n');
     if (read || open !== this.open) {
       this.open = open;
       this.keepDocs(all, docs);
       if (read) this.reopen(all);
+      // keeping and reopening docs archives and brings back their cards
+      rows = this.store.cards(this.canvas.id);
     }
-    let rows = this.store.cards(this.canvas.id);
-    let items = toItems(rows, docs, this.home);
+    let items = toItems(rows, docs, this.home, this.worked, this.themeNow);
     if (this.placeNew(docs, items, all, rows)) {
       // projects seen for the first time keep their doc too
       this.keepDocs(all, docs);
       // what reacts to changes hears of them too (the Koordinator reads what builds on what in a project just come)
       this.tell();
       rows = this.store.cards(this.canvas.id);
-      items = toItems(rows, docs, this.home);
+      items = toItems(rows, docs, this.home, this.worked, this.themeNow);
     }
     const manual = this.manualDependencies();
     if (manual.length) {
@@ -1582,7 +1670,7 @@ export class Board {
       });
     }
     items = this.withPrototypes(items);
-    items = this.withElsewhere(items);
+    items = this.withElsewhere(items, rows);
     const inTurn = new Map([...this.turns].flatMap((f) => [...f()]));
     if (inTurn.size) items = items.map((i) => {
       const turn = inTurn.get(i.id);
@@ -1610,12 +1698,15 @@ export class Board {
   }
 
   /** Cards that come from a card on another canvas name it, with that canvas. */
-  private withElsewhere(items: Item[]): Item[] {
+  private withElsewhere(items: Item[], rows: CardRow[]): Item[] {
+    // a card on this canvas is not looked up: the others are, all at once
+    const here = new Set(rows.map((r) => r.id));
+    const ids = [...new Set(items.flatMap((i) => (i.from && !here.has(i.from) ? [i.from] : [])))];
+    const elsewhere = new Map(this.store.elsewhere(ids, this.canvas.id).map((o) => [o.id, o]));
+    if (!elsewhere.size) return items;
     return items.map((i) => {
-      if (!i.from) return i;
-      const from = this.store.card(i.from);
-      if (!from || from.canvas_id === this.canvas.id || from.deleted_at) return i;
-      return { ...i, fromElsewhere: { canvas: from.canvas_id, canvasName: this.store.canvasName(from.canvas_id) ?? from.canvas_id, title: from.title ?? '' } };
+      const from = i.from ? elsewhere.get(i.from) : undefined;
+      return from ? { ...i, fromElsewhere: { canvas: from.canvas, canvasName: from.canvasName ?? from.canvas, title: from.title ?? '' } } : i;
     });
   }
 
@@ -1694,11 +1785,10 @@ export class Board {
    * cards is still at work (in progress, or its worker finishing after the landing). The others'
    * projects have ended.
    */
-  private openDocs(all: PlanDoc[]): PlanDoc[] {
+  private openDocs(all: PlanDoc[], rows: CardRow[]): PlanDoc[] {
     const busy = new Set(
-      this.store
-        .cards(this.canvas.id)
-        .filter((r) => r.plan_ref?.includes('#') && ((r.state && ACTIVE.includes(r.state)) || (r.landed && r.workspace)))
+      rows
+        .filter((r) => r.plan_ref?.includes('#') && ((r.state && ACTIVE.includes(r.state)) || (r.landed && r.workspace) || tickedAhead(r)))
         .map((r) => r.plan_ref!.slice(0, r.plan_ref!.indexOf('#'))),
     );
     const files = new Set(all.map((d) => d.file));
@@ -1847,8 +1937,8 @@ export class Board {
     const untagged = this.untaggedRows(rows).filter((r) => !queued.has(r.id)).length;
     if (!left.length && !untagged && !run) return null;
     // what sharing them again brings, and to how many of them
-    const changes = PAGE_CHANGES.flatMap(({ id }) => {
-      const pages = left.filter(({ missed }) => missed.some((c) => c.id === id)).length;
+    const changes = ([...PAGE_CHANGES.map((c) => c.id), THEME_CHANGED] as OutdatedBy[]).flatMap((id) => {
+      const pages = left.filter(({ missed }) => missed.includes(id)).length;
       return pages ? [{ id, pages }] : [];
     });
     const title = (id: string) => rows.find((r) => r.id === id)?.title ?? '';
@@ -1909,7 +1999,7 @@ export class Board {
     const made = p.items.get(ref.id);
     if (made) return made;
     const row = given ? null : this.store.card(ref.id);
-    const item = given ?? (row && toItems([row], [], this.home)[0]);
+    const item = given ?? (row && toItems([row], [], this.home, undefined, this.themeNow)[0]);
     if (!item) return undefined;
     const prototype = { ...item, ...(ref.archived_at ? { archivedAt: ref.archived_at } : {}), ideaTitle: this.ideaTitle(p, ref.prototype_of!) };
     p.items.set(ref.id, prototype);
@@ -2045,7 +2135,7 @@ export class Board {
 
   /** A card just stored, as the UI sees it. */
   private itemOf(row: CardRow): Item {
-    return toItems([row], [], this.home)[0]!;
+    return toItems([row], [], this.home, undefined, this.themeNow)[0]!;
   }
 
   /** The owner rejects a proposal; it is kept, so the same one does not come back. */
@@ -2402,6 +2492,255 @@ export class Board {
     this.changed();
   }
 
+  /** Every workstream a plan doc has had, from its history in git, the newest first (`readPlanHistory`); none for a doc outside git. */
+  private planHistory?: (ref: string) => Workstream[];
+  /** What `planHistory` said of each doc during one `follow`, which may ask for several cards. */
+  private pastOf = new Map<string, Workstream[]>();
+
+  /** Who reads a plan doc's history: a card whose workstream left the doc gets its title from there. */
+  readPlanHistory(fn: (ref: string) => Workstream[]) {
+    this.planHistory = fn;
+  }
+
+  /** What the doc's history says, read once per `follow`. */
+  private past(file: string): Workstream[] {
+    return this.pastOf.get(file) ?? this.pastOf.set(file, this.planHistory?.(file) ?? []).get(file)!;
+  }
+
+  /** Cards whose workstream left its doc, by when that was seen, that wait to leave their project (`follow`). */
+  private missing = new Map<string, number>();
+  /** Looks at the waiting cards again once the first of them may leave. */
+  private waking?: ReturnType<typeof setTimeout>;
+
+  /**
+   * Keeps each workstream card with its own workstream. A card whose workstream the doc gives
+   * another key now (a sibling dropped or added, `workstreamAliases`) moves onto it. A card whose
+   * workstream the doc no longer lists, while the doc is there, leaves the project once an agent
+   * worked on it, with its log, as a card of its own (`leave`); one nobody worked on just goes from
+   * view. It remembers what the workstream was right away, and leaves only once it holds no
+   * workspace it is not at work in, and, for a doc in a plan folder outside the repository, which
+   * is written in place, once the workstream stayed away for `LEAVE_AFTER_MS`. With `read` (the docs
+   * were read again), a project read before workstreams had keys of their own (`#n`, their place in
+   * the doc) moves its cards onto those keys first (`rekey`). Between reads, only waiting cards
+   * bring it here.
+   */
+  private follow(all: PlanDoc[], read: boolean) {
+    if (!read && !this.missing.size) return;
+    this.pastOf.clear();
+    const byFile = new Map(all.map((d) => [d.file, d]));
+    const projects = this.store.projects(this.canvas.id).filter((p) => byFile.has(p.plan_ref!));
+    // the doc as last read, with its whole text: only parsed where a card needs it
+    const lastOf = new Map<string, PlanDoc | null>();
+    const last = (p: CardRow) => (lastOf.has(p.id) ? lastOf.get(p.id)! : lastOf.set(p.id, p.plan ? (JSON.parse(p.plan) as PlanDoc) : null).get(p.id)!);
+    if (read) for (const p of projects) if (last(p)) this.rekey(p, last(p)!, byFile.get(p.plan_ref!)!);
+    const kidsOf = Map.groupBy(this.store.children(projects.map((p) => p.id)), (k) => k.parent_id!);
+    const waiting = new Set<string>();
+    const now = Date.now();
+    for (const p of projects) {
+      const doc = byFile.get(p.plan_ref!)!;
+      const kids = kidsOf.get(p.id) ?? [];
+      const keys = new Set(doc.workstreams.map((w) => w.key));
+      const holderOf = new Map(kids.flatMap((k) => (keys.has(keyOfRef(k.plan_ref) ?? '') ? [[keyOfRef(k.plan_ref)!, k] as const] : [])));
+      for (const k of kids) {
+        const key = keyOfRef(k.plan_ref);
+        if (key === null || keys.has(key)) continue;
+        // what the workstream was: in the doc as last read, else as the card remembered it
+        const known = last(p)?.workstreams.find((x) => x.key === key);
+        const w = sameWorkstream(key, doc, known ?? (k.title ? { title: k.title } : undefined));
+        const holder = w && holderOf.get(w.key);
+        // a card nobody worked on gives way to the one with the workstream's log
+        if (w && (!holder || (!worked(holder) && worked(k)))) {
+          if (holder) {
+            this.store.replan(holder.id, `${p.plan_ref}#\u0000${holder.id}`, p.id);
+            this.store.update(holder.id, { deleted_at: new Date().toISOString() });
+          }
+          this.store.replan(k.id, `${doc.file}#${w.key}`, p.id);
+          holderOf.set(w.key, k);
+          this.missing.delete(k.id);
+          continue;
+        }
+        if (!worked(k)) continue;
+        if (known) this.remember(k, known);
+        const since = this.missing.get(k.id) ?? now;
+        // a stopped card gives its workspace back first, as a workstream no longer in the doc does (`leaseEnded`);
+        // a doc written in place may lack an item only while it is being edited
+        if ((k.workspace && !atWork(k)) || (outsideRef(doc.file) && now - since < LEAVE_AFTER_MS)) {
+          waiting.add(k.id);
+          this.missing.set(k.id, since);
+          continue;
+        }
+        this.leave(k, p, this.identity(k, doc.file, last(p), false), this.t.idea.leftGone(doc.title));
+      }
+    }
+    for (const id of this.missing.keys()) if (!waiting.has(id)) this.missing.delete(id);
+    clearTimeout(this.waking);
+    const next = Math.min(...[...this.missing.values()].map((t) => t + LEAVE_AFTER_MS - now).filter((ms) => ms > 0));
+    if (Number.isFinite(next)) {
+      this.waking = setTimeout(() => this.changed(), next + 50);
+      this.waking.unref?.();
+    }
+  }
+
+  /** The card keeps what its workstream was (`w`), for when it leaves the project after the doc is read again. */
+  private remember(row: CardRow, w: Pick<Workstream, 'label' | 'title' | 'body'>) {
+    const title = w.label ? `${w.label} ${w.title}` : w.title;
+    if (row.title !== title || row.body !== w.body) this.store.update(row.id, { title, body: w.body });
+  }
+
+  /**
+   * Moves the project's cards from the keys an older Obeya gave its workstreams (their place in
+   * the doc, `#n`) onto the keys they have now. A card an agent worked on goes by the title its
+   * branch was named after, since the doc may have changed under its old key, so that its log stays
+   * with its own workstream; one whose workstream the doc no longer has leaves the project, and the
+   * project lays out afresh in the doc's order, with fresh cards for the workstreams without one.
+   * Otherwise the cards keep their places.
+   */
+  private rekey(project: CardRow, before: PlanDoc, doc: PlanDoc) {
+    const again = parsePlanDoc(before.file, before.markdown);
+    if ('reason' in again || again.workstreams.length !== before.workstreams.length) return;
+    const renamed = new Map(before.workstreams.flatMap((w, i) => (w.key !== again.workstreams[i]!.key ? [[w.key, again.workstreams[i]!.key] as const] : [])));
+    if (!renamed.size) return;
+    const kids = this.store.children([project.id]);
+    const keys = new Set(doc.workstreams.map((w) => w.key));
+    // positional keys of a doc read before this one, whose cards are out of view now
+    const positional = (k: string) => renamed.has(k) || (/^#\d+$/.test(k) && !before.workstreams.some((w) => w.key === k));
+    const moving = kids.filter((k) => positional(keyOfRef(k.plan_ref) ?? ''));
+    if (!moving.length) return;
+    const claimed = new Set(kids.filter((k) => !moving.includes(k)).flatMap((k) => keyOfRef(k.plan_ref) ?? []));
+    const to = new Map<string, string>();
+    const leaving: CardRow[] = [];
+    const started = new Map(moving.map((k) => [k.id, this.startedAs(k)]));
+    // first the cards an agent worked on, the most recent first, by the workstream they were started on
+    const order = [...moving].sort((a, b) => Number(!started.get(a.id)) - Number(!started.get(b.id)) || b.updated_at.localeCompare(a.updated_at));
+    for (const k of order) {
+      const slug = started.get(k.id);
+      const key = slug ? this.startedOn(slug, doc, claimed, again) : renamed.get(keyOfRef(k.plan_ref)!);
+      if (key && keys.has(key) && !claimed.has(key)) {
+        to.set(k.id, key);
+        claimed.add(key);
+      } else if (worked(k)) leaving.push(k);
+    }
+    const ref = (key: string) => `${doc.file}#${key}`;
+    this.store.db.transaction(() => {
+      // out of each other's way first: two cards may swap keys
+      for (const k of moving) this.store.replan(k.id, `${project.plan_ref}#\u0000${k.id}`, project.id);
+      for (const k of moving) {
+        const key = to.get(k.id);
+        if (key) this.store.replan(k.id, ref(key), project.id);
+        // nobody worked on it: it goes, and the workstream gets a card of its own; its reference stays
+        // one of no card, so that nothing reads it as a card of the owner's they deleted
+        else if (!leaving.includes(k)) this.store.update(k.id, { deleted_at: new Date().toISOString() });
+      }
+      for (const k of leaving) {
+        const w = this.identity(k, doc.file, before, true);
+        if ((atWork(k) || !k.workspace) && !outsideRef(doc.file)) this.leave(k, project, w, this.t.idea.leftOther(doc.title));
+        // a stopped card gives its workspace back first, and a doc outside the repository may lack an item
+        // only for a moment: it leaves later (`follow`), with what it remembers
+        else {
+          this.store.replan(k.id, `${project.plan_ref}#~${k.id.slice(0, 6)}`, project.id);
+          this.remember(k, w);
+        }
+      }
+      // cards left, others get fresh ones: the project lays out afresh in the doc's order, which the mix-up had broken anyway
+      if (leaving.length) {
+        const rows = new Map(this.store.children([project.id]).flatMap((k) => (keyOfRef(k.plan_ref) ? [[keyOfRef(k.plan_ref)!, k] as const] : [])));
+        const at = placeWorkstreams(doc.workstreams.map((w) => ({ done: w.done || finished(rows.get(w.key)?.state ?? 'planned') })));
+        doc.workstreams.forEach((w, i) => {
+          const row = rows.get(w.key);
+          if (row) this.store.update(row.id, at[i]!);
+          else this.store.insert([{ canvas_id: this.canvas.id, kind: 'task', parent_id: project.id, plan_ref: ref(w.key), ...at[i]! }]);
+        });
+      }
+      // what the Koordinator read of which workstream builds on which goes with the cards
+      const deps = project.deps ? (JSON.parse(project.deps) as StoredDeps) : null;
+      if (deps?.on) {
+        const keyOf = new Map(moving.flatMap((k) => (to.has(k.id) ? [[keyOfRef(k.plan_ref)!, to.get(k.id)!] as const] : [])));
+        const on = Object.fromEntries(
+          Object.entries(deps.on).flatMap(([k, by]) => {
+            const key = keyOf.get(k) ?? (positional(k) ? undefined : k);
+            return key ? [[key, by.flatMap((b) => keyOf.get(b) ?? (positional(b) ? [] : [b]))]] : [];
+          }),
+        );
+        this.store.update(project.id, { deps: JSON.stringify({ ...deps, on } satisfies StoredDeps) });
+      }
+    })();
+  }
+
+  /**
+   * The key of the doc's workstream an agent started on under the title its branch was named after
+   * (`slug`), among those no card has yet (`claimed`): by that title, or, where the doc reworded it
+   * since, by the label the doc as Obeya last kept it (`stored`, read anew) or the doc's history gave
+   * that title.
+   */
+  private startedOn(slug: string, doc: PlanDoc, claimed: Set<string>, stored: PlanDoc): string | undefined {
+    const free = doc.workstreams.filter((w) => !claimed.has(w.key));
+    const byTitle = free.find((w) => named(w, slug));
+    if (byTitle) return byTitle.key;
+    const label =
+      stored.workstreams.find((w) => w.label && named(w, slug))?.label ??
+      this.past(doc.file).find((w) => w.label && named(w, slug))?.label;
+    const same = label ? free.filter((w) => w.label === label) : [];
+    return same.length === 1 && doc.workstreams.filter((w) => w.label === label).length === 1 ? same[0]!.key : undefined;
+  }
+
+  /** The title of the card the agent last started on, as its branch has it (`branchName`); none for a card never started. */
+  private startedAs(row: CardRow): string | null {
+    const short = row.id.slice(0, 6);
+    const at = new RegExp(`${CARD_BRANCH}([a-z0-9-]+)-${short}`);
+    const slug = at.exec(row.branch ?? '')?.[1] ?? at.exec(this.store.branchMention(row.id) ?? '')?.[1] ?? null;
+    // a title without a Latin letter or digit names its branch `card`, which tells no workstream apart
+    return slug === 'card' ? null : slug;
+  }
+
+  /**
+   * The workstream a card worked on, from the doc as last read (`before`), what the card remembered
+   * of it (`remember`) or the doc's history: by its key, or, for a card whose key was its place in
+   * the doc (`positional`), by the title its branch was named after.
+   */
+  private identity(row: CardRow, file: string, before: PlanDoc | null, positional: boolean): Pick<Workstream, 'label' | 'title' | 'body'> {
+    const key = keyOfRef(row.plan_ref) ?? '';
+    const slug = this.startedAs(row);
+    const past = () => this.past(file);
+    // what the card remembered when its workstream left the doc (`remember`)
+    const kept = () => (!positional && row.title ? { title: row.title, body: row.body ?? '' } : undefined);
+    const byKey = () => (positional ? undefined : (before?.workstreams.find((w) => w.key === key) ?? kept() ?? past().find((w) => w.key === key)));
+    const bySlug = () => (slug ? (before?.workstreams.find((w) => named(w, slug)) ?? past().find((w) => named(w, slug))) : undefined);
+    const byPlace = () => (positional && !slug ? before?.workstreams.find((w) => w.key === key) : undefined);
+    return byKey() ?? bySlug() ?? byPlace() ?? { title: slug ? slug.replace(/-/g, ' ') : key, body: '' };
+  }
+
+  /**
+   * The card leaves its project as a card of its own, its log saying so (`why`), with the title and
+   * text of the workstream it worked on (`w`). Finished, it goes into the archive; otherwise it
+   * stands beside the project.
+   */
+  private leave(row: CardRow, project: CardRow, w: Pick<Workstream, 'label' | 'title' | 'body'>, why: string) {
+    // a workstream planned again after part of it landed is done now that the doc asks no more of it
+    const state = row.state === 'planned' && row.shipped ? 'live' : (row.state ?? 'planned');
+    const done = finished(state) && !atWork(row);
+    const at = done ? { x: row.x, y: row.y } : this.besideProject(project);
+    this.store.replan(row.id, null, null);
+    this.store.update(row.id, {
+      title: w.label ? `${w.label} ${w.title}` : w.title,
+      body: w.body,
+      state,
+      repo: repoOfRef(project.plan_ref!, this.home),
+      group_id: project.group_id,
+      ...at,
+      ...(done ? { archived_at: new Date().toISOString() } : {}),
+    });
+    this.log(row.id, 'state', 'obeya', why);
+  }
+
+  /** A free spot for a card at the right of the project, near its top. */
+  private besideProject(project: CardRow): { x: number; y: number } {
+    const items = toItems(this.store.cards(this.canvas.id), this.docs ?? [], this.home);
+    const p = items.find((i) => i.id === project.id);
+    if (!p) return { x: project.x, y: project.y };
+    const box = boundsOf(p, items);
+    return freeSpotNear({ x: box.x + box.w + GAP, y: box.y }, CARD_SIZE.task, items.filter((i) => !i.parent).map((i) => boundsOf(i, items)));
+  }
+
   /**
    * Stores a row for every project and workstream seen for the first time. A doc whose work was
    * done before Obeya first saw it (among `all`, not `docs`) gets its rows too, placed after the
@@ -2477,7 +2816,7 @@ export class Board {
    * aside by as much as it outgrows the idea: the cards below it down, those beside it to the right.
    */
   private takePlace(projectId: string, ideaId: string, docs: PlanDoc[]) {
-    const items = toItems(this.store.cards(this.canvas.id), docs, this.home);
+    const items = toItems(this.store.cards(this.canvas.id), docs, this.home, undefined, this.themeNow);
     const project = items.find((i) => i.id === projectId);
     const idea = items.find((i) => i.id === ideaId);
     if (!project || !idea) return;
@@ -2521,6 +2860,9 @@ export function repoOfRef(ref: string, home: string): string {
   return m ? m[1]! : home;
 }
 
+/** The repository a card belongs to, by its id: the one it names, else its plan doc's, else the home repository. */
+export const repoOfRow = (r: CardRow, home: string): string => r.repo ?? (r.plan_ref ? repoOfRef(r.plan_ref, home) : home);
+
 /** A plan reference's path, without the repository before it. */
 export function pathOfRef(ref: string): string {
   return ref.replace(REPO_PREFIX, '');
@@ -2529,6 +2871,16 @@ export function pathOfRef(ref: string): string {
 const REPO_PREFIX = /^(?![A-Za-z]:\/)([\w.-]+):/;
 /** A plan reference's path in a plan folder outside the repository: absolute, `/…` or `C:/…`. */
 const OUTSIDE_PATH = /^(\/|[A-Za-z]:\/)/;
+
+/**
+ * A workstream card with work not landed yet that a box in a plan folder outside the repository says
+ * nothing of: the worker ticks it there at once, in no commit, so it may be ticked while the card is
+ * in its pull request (before it is even open) or stopped with its branch.
+ */
+function tickedAhead(r: Pick<CardRow, 'plan_ref' | 'state' | 'branch'>): boolean {
+  if (!r.plan_ref || !OUTSIDE_PATH.test(pathOfRef(r.plan_ref))) return false;
+  return r.state === 'inPr' || (r.state === 'planned' && !!r.branch);
+}
 
 /** The canvas's prototypes for one change of the board: which cards they are, the items made of them so far, their ideas' titles. */
 type Prototypes = {
@@ -2541,7 +2893,8 @@ type Prototypes = {
 type PrototypeRef = Pick<CardRow, 'id' | 'prototype_of' | 'archived_at'>;
 
 /** Visible items: projects first, their workstreams in doc order, then manual cards. */
-export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] {
+export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?: Worked, themeNow?: ThemeNow): Item[] {
+  const work = (r: CardRow) => workOf(r, worked, themeNow);
   const docByFile = new Map(docs.map((d) => [d.file, d]));
   // a project's group covers its workstreams
   const groupOf = new Map(rows.flatMap((r) => (r.kind === 'project' && r.group_id ? [[r.id, r.group_id]] : [])));
@@ -2607,8 +2960,9 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
     const w = doc.workstreams[order];
     if (!w || !r.parent_id) continue;
     const derived = w.done ? 'live' : w.inReview ? 'inPr' : 'planned';
-    // work in progress wins over the doc: a ticked-off workstream may still wait for its merge
-    const state = r.state && ACTIVE.includes(r.state) ? r.state : derived === 'live' ? 'live' : (r.state ?? derived);
+    // work in progress wins over the doc: a ticked-off workstream may still wait for its merge, and so
+    // does a stopped one whose box a plan folder outside the repository ticked
+    const state = r.state && (ACTIVE.includes(r.state) || tickedAhead(r)) ? r.state : derived === 'live' ? 'live' : (r.state ?? derived);
     // what landed of a workstream planned again, also while a new run does the rest; once that lands, the card is live
     const shipped = (state === 'planned' || ACTIVE.includes(state)) && r.shipped ? (JSON.parse(r.shipped) as Shipped) : null;
     const buildsOn = (depsOf.get(r.parent_id)?.on?.[key] ?? []).flatMap((k) => idOfRef.get(`${doc.file}#${k}`) ?? []);
@@ -2647,6 +3001,37 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
   return [...projects, ...ordered, ...manual];
 }
 
+/** How long a workstream stays away from a doc in a plan folder outside the repository before its card leaves the project: such a doc is written in place, an item moved in two edits. */
+export const LEAVE_AFTER_MS = 5 * 60_000;
+
+/** Whether a plan reference is to a doc in a plan folder outside the repository. */
+const outsideRef = (ref: string) => OUTSIDE_PATH.test(pathOfRef(ref));
+
+/**
+ * The doc's workstream that a card keyed `key` had under another key: the doc dropped or added a
+ * sibling, which changes whether a code is read as a label or a label needs its title. Where it is
+ * known what the workstream was (`was`), the one with its label and title (a label alone may be
+ * another's now); else the only one that would have had `key`.
+ */
+function sameWorkstream(key: string, doc: PlanDoc, was?: Pick<Workstream, 'label' | 'title'>): Workstream | undefined {
+  const its = was ? workstreamAliases(was, true) : [];
+  const same = doc.workstreams.filter((w) => (was ? workstreamAliases(w).some((k) => its.includes(k)) : workstreamAliases(w).includes(key)));
+  return same.length === 1 ? same[0] : undefined;
+}
+
+/** The workstream key of a plan reference (`<doc>#<key>`); null for a project's or a card's without one. */
+const keyOfRef = (ref: string | null): string | null => (ref?.includes('#') ? ref.slice(ref.indexOf('#') + 1) : null);
+
+/** Whether an agent worked on the card: it was started, or its work landed or ended. */
+const worked = (r: CardRow) => !!(r.session_id || r.branch || r.shipped || r.landed || (r.state && r.state !== 'planned'));
+
+/** Whether an agent is at work on the card: in progress, or finishing after the landing. */
+const atWork = (r: CardRow) => !!((r.state && ACTIVE.includes(r.state)) || (r.landed && r.workspace));
+
+/** Whether a branch named after a title (`branchName`, its `slug`) was named after the workstream's, with or without its label before it. */
+const named = (w: Pick<Workstream, 'label' | 'title'>, slug: string) =>
+  [w.title, withoutReference(w.title), ...(w.label ? [`${w.label} ${w.title}`] : [])].some((t) => branchName(t, '000000').slice(CARD_BRANCH.length, -7) === slug);
+
 /** Where a card goes below the card with bounds `b`: the `n`th of those there, each beside the one before. */
 const below = (b: Bounds, n = 0) => ({ x: b.x + 35 + n * (CARD_SIZE.task[0] + GAP), y: b.y + b.h + 60 });
 
@@ -2661,8 +3046,39 @@ function newRepoOf(r: CardRow): Pick<Item, 'newRepo'> {
   return { newRepo };
 }
 
+/** What `toItems` made of cards' rows: the fields a worker adds, by card, with the row they came from. */
+type Worked = Map<string, { row: CardRow; work: Partial<Item> }>;
+
+/** The fields a worker adds to the card, as `worked` holds them while its row is the same. */
+function workOf(r: CardRow, worked?: Worked, themeNow?: ThemeNow): Partial<Item> {
+  const had = worked?.get(r.id);
+  if (had && sameRow(had.row, r)) return had.work;
+  const made = work(r, themeNow);
+  worked?.set(r.id, { row: r, work: made });
+  return made;
+}
+
+const sameRow = (a: CardRow, b: CardRow) => {
+  for (const k in b) if (a[k as keyof CardRow] !== b[k as keyof CardRow]) return false;
+  return true;
+};
+
+/** A pull request of the card as the card shows it. */
+const pullRequest = (pr: PrState): PullRequest => ({
+  url: pr.url!,
+  number: pr.number!,
+  ...(pr.repo ? { repo: pr.repo } : {}),
+  ...(pr.merged ? { merged: true } : {}),
+  ...(pr.closed ? { closed: true } : {}),
+  checks: pr.checks ?? [],
+  conflict: !!pr.conflictHead,
+  ...(pr.readyHead && (pr.mergeError || pr.held || pr.manual) ? { ready: true, ...(pr.mergeError ? { mergeError: pr.mergeError } : {}), ...(pr.held ? { held: pr.held } : {}), ...(pr.manual ? { manual: true } : {}) } : {}),
+  ...(pr.waits?.length && !pr.merged && !pr.closed ? { waits: pr.waits } : {}),
+  ...(pr.review?.length ? { review: pr.review } : {}),
+});
+
 /** The fields a worker adds to a card. */
-function work(r: CardRow): Partial<Item> {
+function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
   const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string; noChange?: boolean; lands?: Item['lands']; answering?: boolean; answered?: boolean }) : {};
   const demo = r.demo ? shownDemo(JSON.parse(r.demo) as StoredDemo) : undefined;
   const earlier = demo ? earlierDemos(r) : [];
@@ -2671,14 +3087,15 @@ function work(r: CardRow): Partial<Item> {
   const scope = r.scope ? (JSON.parse(r.scope) as { files: string[] }).files : undefined;
   const pr = r.pr ? (JSON.parse(r.pr) as PrState) : undefined;
   const contribution = contributionOf(r);
-  const share = shareOf(r);
+  const share = shareOf(r, themeNow);
   const notOnApproval = r.share ? (JSON.parse(r.share) as StoredShare).notOnApproval : undefined;
   const tags = demo && !r.prototype_of ? pageTagsOf(r) : {};
   const landed = r.landed ? (JSON.parse(r.landed) as { followUp?: boolean; needsClone?: boolean; resolve?: object }) : null;
   return {
     ...(scope?.length ? { scope } : {}),
     ...(r.queue && (r.state ?? 'planned') === 'planned' ? { queue: JSON.parse(r.queue) as Item['queue'] } : {}),
-    ...(pr?.url ? { pr: { url: pr.url, number: pr.number!, checks: pr.checks ?? [], conflict: !!pr.conflictHead, ...(pr.readyHead && (pr.mergeError || pr.held || pr.manual) ? { ready: true, ...(pr.mergeError ? { mergeError: pr.mergeError } : {}), ...(pr.held ? { held: pr.held } : {}), ...(pr.manual ? { manual: true } : {}) } : {}), ...(pr.review?.length ? { review: pr.review } : {}) } } : {}),
+    ...(pr?.url ? { pr: pullRequest(pr) } : {}),
+    ...(pr?.more?.some((m) => m.url) ? { morePrs: pr.more.filter((m) => m.url).map(pullRequest) } : {}),
     ...(contribution ? { contribution: { url: contribution.url, number: contribution.number, author: contribution.author, title: contribution.title, canModify: contribution.canModify, ...(contribution.results ? { results: contribution.results } : {}), ...(contribution.findings ? { findings: contribution.findings } : {}), ...(contribution.requested ? { requested: contribution.requested } : {}), ...(contribution.held ? { held: { body: contribution.held.body, commits: contribution.held.commits, asks: contribution.held.asks } } : {}), ...(contribution.clash ? { clash: contribution.clash } : {}) } } : {}),
     ...(r.status_line ? { statusLine: r.status_line } : {}),
     ...(detail.question && r.need === 'question' ? { question: detail.question } : {}),
@@ -2712,22 +3129,25 @@ function work(r: CardRow): Partial<Item> {
 }
 
 /** The card's shared page as the UI sees it: none when it is not shared and not about to be. */
-function shareOf(r: CardRow): Item['share'] {
+function shareOf(r: CardRow, themeNow?: ThemeNow): Item['share'] {
   const s = r.share ? (JSON.parse(r.share) as StoredShare) : null;
   if (!s || (!s.state && !s.url)) return undefined;
-  const latest = r.demo ? (JSON.parse(r.demo) as StoredDemo) : undefined;
+  // asked of a page at rest alone, so the cards never shared ask nothing
+  const theme = s.url && !s.state ? themeNow?.(r) : undefined;
+  // the newest demo of a handover: drafts shown with a question since are not what the page lacks
+  const latest = r.demo ? [...storedDemos(r), JSON.parse(r.demo) as StoredDemo].findLast((d) => !d.asked) : undefined;
   const shared = s.url ? sharedDemos(s) : [];
   // the card's demos on the page, by their handovers
   const on = cardDemos(r).flatMap((d) => (d.handover !== undefined && shared.some((x) => sameDemo(x, d)) ? [d.handover] : []));
   const stale = !!s.url && !!latest && !shared.some((x) => sameDemo(x, latest));
-  const outdated = reshareable(r);
+  const outdated = reshareable(r, theme);
   return {
     state: s.refresh ? 'shared' : (s.state ?? 'shared'),
     ...(s.url ? { url: s.url } : {}),
     ...(on.length ? { on } : {}),
     ...(stale ? { stale: true } : {}),
     // shown with each version on the page; the latest, not on it, brings the changes with „Auf der Seite ersetzen“ or „Zur Seite dazunehmen“
-    ...(outdated.length ? { outdated: outdated.map((c) => c.id) } : {}),
+    ...(outdated.length ? { outdated } : {}),
     ...(s.personal && s.token ? { unlisted: true as const } : {}),
   };
 }

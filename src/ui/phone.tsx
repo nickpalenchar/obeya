@@ -342,6 +342,8 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   const obeyaRef = useRef(obeyaId);
   obeyaRef.current = obeyaId;
   const setObeyaCanvas = (id: string) => {
+    // at once, for the address of the conversation opened next
+    obeyaRef.current = id;
     setObeyaCanvasState(id);
     try {
       localStorage.setItem(OBEYA_CANVAS, id);

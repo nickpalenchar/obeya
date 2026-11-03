@@ -5,7 +5,7 @@ import type { SetupId, SetupItem } from '../../plugin/skills/demo/lib/setup.ts';
 import type { CardFile } from './files';
 import type { Language } from './locale';
 import { MESSAGES } from './messages';
-import type { PageChangeId } from './page-changes';
+import type { OutdatedBy } from './page-changes';
 import type { NotAProject } from './plan-doc';
 import type { Wish } from './wish';
 
@@ -195,7 +195,7 @@ export function openQuestions(i: Pick<Item, 'archivedAt' | 'state' | 'need' | 'q
  */
 export const needsYou = (i: Item) =>
   !i.snoozed &&
-  ((i.state === 'waiting' && !answering(i) && !i.landing) || (i.state === 'proposal' && !i.proposal?.revising) || !!i.superseded || (i.state === 'inPr' && !!i.pr?.ready) || (!!i.idea && i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking));
+  ((i.state === 'waiting' && !answering(i) && !i.landing) || (i.state === 'proposal' && !i.proposal?.revising) || !!i.superseded || (i.state === 'inPr' && [i.pr, ...(i.morePrs ?? [])].some((p) => p?.ready && !p.merged && !p.closed)) || (!!i.idea && i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking));
 
 /**
  * What a worker can wait for another card to reach: `done`, its work on main (or the card closed
@@ -391,6 +391,11 @@ export interface Item {
   queue?: Queue;
   /** The pull request, once the worker opened it after approval; on a review card, the one it reviews. */
   pr?: PullRequest;
+  /**
+   * Further pull requests the worker opened for the card's work, in other repositories (or a second
+   * one in its own): the card is live once all of them and `pr` are merged.
+   */
+  morePrs?: PullRequest[];
   /** A review card: the pull request of someone outside that the card reviews and, once approved, merges. */
   contribution?: Contribution;
   /**
@@ -683,6 +688,14 @@ export interface NextStep {
 export interface PullRequest {
   url: string;
   number: number;
+  /** `owner/name` of its repository, where that is another than the card's. */
+  repo?: string;
+  /** Merged already, while the card waits for its other pull requests. */
+  merged?: boolean;
+  /** Closed without a merge. */
+  closed?: boolean;
+  /** What it waits for before it is merged, as last polled (`PrWait`); none once it is ready. */
+  waits?: PrWait[];
   /** Checks on the PR's latest commit, as last seen. */
   checks: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
   conflict: boolean;
@@ -699,6 +712,16 @@ export interface PullRequest {
   /** The review as last seen, oldest first (`reviewOf` in the server's forge). */
   review?: PrReviewEntry[];
 }
+
+/**
+ * What a pull request waits for before it can be merged, in the order it is in the way: a conflict,
+ * a branch behind its base that the repository wants up to date, a draft, branch protection (an
+ * approval, a required check), the forge not having worked out mergeability yet, checks failed or
+ * running, review threads open, a reviewer's standing request for changes, a review of an older
+ * commit than its newest, an answer to the
+ * author's request for another look, and the worker at work on something passed to it.
+ */
+export type PrWait = 'conflict' | 'behind' | 'draft' | 'protection' | 'forge' | 'checksFailed' | 'checks' | 'threads' | 'changes' | 'review' | 'answer' | 'agent';
 
 /**
  * The pull request a review card reviews: opened by someone outside (the contributor), reviewed by
@@ -868,6 +891,11 @@ export interface Demo {
   answer?: string;
   /** The handover event it came with: a later handover may keep the demo, and its question stays with the first. */
   handover?: number;
+  /**
+   * It came with the worker's question (`handover` is then that question's event): drafts or variants
+   * to choose between, not the result of the work, so a handover does not keep it as its demo.
+   */
+  asked?: true;
   /** When that handover was. */
   at?: string;
   /** The page it is shared on, for colleagues who have never seen Obeya: written by the worker at handover, or later from its summary. */
@@ -930,7 +958,7 @@ export interface Share {
   /** The card's latest demo is not on the page. */
   stale?: boolean;
   /** The page shows the card's demo, but pages changed since it was published ("Erneut teilen"): those changes, oldest first. */
-  outdated?: PageChangeId[];  /** The page is on the owner’s personal demo site, unlisted (behind a random part of its address). */
+  outdated?: OutdatedBy[];  /** The page is on the owner’s personal demo site, unlisted (behind a random part of its address). */
   unlisted?: true;
 }
 
@@ -1195,7 +1223,7 @@ export interface Reshare {
   /** Shared pages on a site with a vocabulary that lack tags in a dimension (none chosen, or a value the vocabulary no longer has), not queued. */
   untagged?: number;
   /** What sharing them again brings: each change they lack, oldest first, with how many of them lack it. */
-  changes?: { id: PageChangeId; pages: number }[];
+  changes?: { id: OutdatedBy; pages: number }[];
   run?: {
     total: number;
     /** Shared again. */
@@ -1458,7 +1486,7 @@ export type CardAction =
   /** `findings`: on a review card, what the owner decided for its findings, by their numbers; with them the text may be empty. */
   | { action: 'message'; text: string; spoken?: boolean; images?: string[]; replyTo?: number; spot?: SpotInput; findings?: Record<string, ChangeRoute> }
   /** `picks`: the options of the question the owner picked; with them the text, their own words, may be empty. */
-  | { action: 'answer'; text: string; spoken?: boolean; images?: string[]; replyTo?: number; picks?: string[] }
+  | { action: 'answer'; text: string; spoken?: boolean; images?: string[]; replyTo?: number; picks?: string[]; spot?: SpotInput }
   /**
    * The owner has finished watching the demo video: the comments on places in it that Obeya held back
    * go to the worker. `now`: they sent them themselves ("Jetzt senden"), so they go without a moment's wait.
@@ -1475,6 +1503,8 @@ export type CardAction =
   | { action: 'keepMain' }
   /** A review card whose worker's own changes are held (`HeldChanges`): Obeya pushes them and posts their text, without merging („Nur pushen“). */
   | { action: 'pushChanges' }
+  /** The same card: the owner's own wording of the text that goes onto the PR with the approval, in place of the held one. */
+  | { action: 'editHeld'; body: string }
   /** `direct`: onto the default branch at once, without a pull request, where the repository allows it (`RepoRef.direct`). */
   | { action: 'approve'; direct?: boolean }
   /** In a folder without git, on a card waiting for approval: what it changed there is put back as it was before („Änderungen verwerfen“). */

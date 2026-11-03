@@ -88,6 +88,8 @@ export interface SharedRead {
   claude?: Record<string, ClaudeFile>;
   /** The repository's own Codex configuration on the default branch, by file (`CODEX_PATHS`); none where it has none. */
   codex?: Record<string, ClaudeFile>;
+  /** The git tree of `.obeya/` on the default branch, which its theme is read from (theme.ts); none where it has none, or the repository is a folder without git. */
+  obeyaTree?: string;
 }
 
 /**
@@ -162,11 +164,12 @@ export function readSharedFiles(dir: string): SharedRead {
 
 /** `readShared` at `commit` as git steps, with the repository's Claude Code and Codex configuration beside it. */
 export function* readingShared(commit: string): GitSteps<SharedRead> {
-  const [text, listed] = yield [
+  const [text, listed, tree] = yield [
     ['cat-file', 'blob', `${commit}:${REPO_SETTINGS_FILE}`],
     ['ls-tree', '-r', '-z', commit, '--', ...CLAUDE_PATHS, ...CODEX_PATHS],
+    ['rev-parse', '--verify', '-q', `${commit}:.obeya`],
   ];
-  const read: SharedRead = text != null ? parseShared(text) : { problems: [] };
+  const read: SharedRead = { ...(text != null ? parseShared(text) : { problems: [] }), ...(tree ? { obeyaTree: tree } : {}) };
   // `<mode> <type> <object>\t<path>`: a blob's text is read (trimmed, for reading: its object tells
   // contents apart), a submodule's commit stands for what it holds
   const entries = (listed ?? '')

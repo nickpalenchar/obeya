@@ -4,6 +4,7 @@ import type { AgentIdentity } from '../core/types';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { AnswerFile, AnswerRef, CardEvent, DeviceView, CardKind, CardState, Mock, Need, Preference, PreferenceState, ProposedSetting, RepoCommands, SettingProposal, SettingProposalState, Spot, Talk, TalkAfter, TalkMoved, TalkQuote, TalkRef, TalkWait } from '../core/types';
+import type { Place } from '../core/layout';
 import type { Wish } from '../core/wish';
 
 export interface CardRow {
@@ -468,6 +469,14 @@ export const MIGRATIONS = [
    CREATE UNIQUE INDEX cards_short ON cards (short);`,
   // an error of a session that signed in with a token rather than this machine's account
   'ALTER TABLE events ADD COLUMN token INTEGER;',
+  // the cards each change of a canvas reads, without going through its archive
+  `CREATE INDEX cards_open ON cards (canvas_id) WHERE deleted_at IS NULL AND archived_at IS NULL;
+   CREATE INDEX cards_plan_docs ON cards (canvas_id) WHERE deleted_at IS NULL AND plan_docs IS NOT NULL;
+   CREATE INDEX cards_prototypes ON cards (canvas_id, created_at) WHERE deleted_at IS NULL AND prototype_of IS NOT NULL;
+   CREATE INDEX cards_waiting ON cards (canvas_id) WHERE waiting_since IS NOT NULL;
+   CREATE INDEX cards_shared ON cards (canvas_id) WHERE deleted_at IS NULL AND share IS NOT NULL;`,
+  // where the owner was on the canvas when they asked for a step that needed looking up first (JSON `Place`): its new cards go there
+  'ALTER TABLE talk ADD COLUMN then_place TEXT;',
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, agent, token';
@@ -639,6 +648,17 @@ export class Store {
     return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND from_id = $f AND proposal IS NOT NULL ORDER BY created_at, rowid').all({ c: canvasId, f: fromId }) as CardRow[];
   }
 
+  /** Of the given cards, those on another canvas than `canvasId` and not deleted: with their canvas, its name and their title. */
+  elsewhere(ids: string[], canvasId: string): { id: string; canvas: string; canvasName: string | null; title: string | null }[] {
+    if (!ids.length) return [];
+    return this.db
+      .query(
+        `SELECT c.id, c.canvas_id AS canvas, v.name AS canvasName, c.title FROM cards c LEFT JOIN canvases v ON v.id = c.canvas_id
+         WHERE c.id IN (SELECT value FROM json_each($ids)) AND c.canvas_id != $c AND c.deleted_at IS NULL`,
+      )
+      .all({ ids: JSON.stringify(ids), c: canvasId }) as { id: string; canvas: string; canvasName: string | null; title: string | null }[];
+  }
+
   card(id: string): CardRow | null {
     return (this.db.query('SELECT * FROM cards WHERE id = $id').get({ id }) as CardRow | null) ?? null;
   }
@@ -701,6 +721,19 @@ export class Store {
     if (!keys.length) return;
     const set = keys.map((k) => `${k} = $${k}`).join(', ');
     this.db.query(`UPDATE cards SET ${set}, updated_at = $now WHERE id = $id`).run({ ...fields, id, now: now() });
+  }
+
+  /** Puts the card on another workstream (`planRef`, in project `parentId`), or takes it out of its project (both null). */
+  replan(id: string, planRef: string | null, parentId: string | null) {
+    this.db.query('UPDATE cards SET plan_ref = $ref, parent_id = $parent, updated_at = $now WHERE id = $id').run({ id, ref: planRef, parent: parentId, now: now() });
+  }
+
+  /** The last line of the card's log that names a branch of its own (`obeya/<slug>-<id>…`). */
+  branchMention(cardId: string): string | null {
+    const row = this.db
+      .query("SELECT text FROM events WHERE card_id = $id AND text LIKE '%obeya/%' || $short || '%' ORDER BY id DESC LIMIT 1")
+      .get({ id: cardId, short: cardId.slice(0, 6) }) as { text: string } | null;
+    return row?.text ?? null;
   }
 
   // ---------------------------------------------------------------- groups
@@ -1033,9 +1066,12 @@ export class Store {
     return (this.db.query('SELECT * FROM talk WHERE canvas_id = $c AND waits IS NOT NULL ORDER BY id').all({ c: canvasId }) as TalkRow[]).map((r) => ({ ...toTalk(r), waiting: JSON.parse(r.waits!) as TalkWaitRow[] }));
   }
 
-  /** The step the Koordinator takes once the exchange's looked-up answer is in; `null` once it has decided it. */
-  thenTalk(id: number, then: string | null) {
-    this.db.query('UPDATE talk SET then_step = $then WHERE id = $id').run({ id, then });
+  /**
+   * The step the Koordinator takes once the exchange's looked-up answer is in, and where the owner
+   * was on the canvas when they asked for it; `null` once it has decided it.
+   */
+  thenTalk(id: number, then: string | null, place?: Place) {
+    this.db.query('UPDATE talk SET then_step = $then, then_place = $place WHERE id = $id').run({ id, then, place: then !== null && place ? JSON.stringify(place) : null });
   }
 
   /** Looked-up answers that are in, oldest first, whose step the Koordinator has not decided yet. */
@@ -1134,9 +1170,9 @@ export class Store {
   }
 
   /** One exchange, with the card its question is about. */
-  exchange(id: number): (Talk & { about?: string }) | null {
+  exchange(id: number): (Talk & { about?: string; thenPlace?: Place }) | null {
     const r = this.db.query('SELECT * FROM talk WHERE id = $id').get({ id }) as TalkRow | null;
-    return r ? { ...withContinues(this.db, r), ...(r.about ? { about: r.about } : {}) } : null;
+    return r ? { ...withContinues(this.db, r), ...(r.about ? { about: r.about } : {}), ...(r.then_place ? { thenPlace: JSON.parse(r.then_place) as Place } : {}) } : null;
   }
 
   /** Questions being looked up, oldest first. */
@@ -1413,6 +1449,7 @@ interface TalkRow {
   moved: string | null;
   then_step: string | null;
   after_answer: number | null;
+  then_place: string | null;
 }
 
 const toTalk = (r: TalkRow): Talk => ({

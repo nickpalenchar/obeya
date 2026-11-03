@@ -83,6 +83,8 @@ const de = {
     heldMoved: (head: string) => `Nicht gepusht: Der PR steht seit der Übergabe auf einem anderen Stand (${head}). Der Agent setzt seine Commits darauf und prüft das Neue.`,
     /** Pushed, but the forge refused the text that goes with it. */
     postFailed: (reason: string) => `Gepusht, aber der Text dazu ließ sich nicht posten: ${reason}`,
+    /** The owner rewrote the text that goes onto the PR with the approval of the worker's own changes. */
+    heldEdited: (n: number) => `Text für PR #${n} bearbeitet.`,
     /** Approving a review card: Obeya merges the PR. */
     approvedMerge: (n: number) => `Freigegeben. Obeya mergt PR #${n}.`,
     mergedContribution: (n: number) => `PR #${n} gemergt. Live.`,
@@ -232,7 +234,7 @@ const de = {
     /** On the accepted proposal it withdrew or replaced: who did and why. */
     superseded: (by?: string, why?: string) =>
       by ? `Der vorschlagende Agent hat diese Karte ersetzt durch „${by}“${why ? `: ${why}` : '.'}` : `Der vorschlagende Agent hat diese Karte zurückgezogen${why ? `: ${why}` : '.'}`,
-    prOpened: (n: number) => `Pull Request #${n} geöffnet.`,
+    prOpened: (pr: string) => `Pull Request ${pr} geöffnet.`,
     landing: 'Landet auf main',
     waitsForRestart: 'Wartet auf den Neustart von Obeya mit der neuen Version',
     needsClone: 'Braucht für die Antwort einen vollen Klon',
@@ -262,6 +264,9 @@ const de = {
     readyManual: 'Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. In diesem Repository mergt Obeya nicht selbst: bitte selbst mergen.',
     mergeFailed: (reason: string) => `Obeya konnte nicht mergen: ${reason}`,
     unreadable: (reason: string) => `Obeya kann den Pull Request nicht lesen: ${reason}`,
+    behind: 'Der Branch ist hinter dem Zielbranch, und das Repository mergt nur einen aktuellen. Der Agent bringt ihn auf Stand.',
+    mergedOne: (pr: string, left: (string | null)[]) =>
+      `Pull Request ${pr} gemergt. Live, sobald auch ${left.map((l) => (l ? `Pull Request ${l}` : 'der Pull Request dieses Repositorys')).join(' und ')} gemergt ist.`,
   },
   idea: {
     buildAfterReply: 'So bauen, sobald die Antwort da ist; fragt der Agent noch etwas, wird nicht gebaut.',
@@ -316,6 +321,9 @@ const de = {
     taskBecameProject: 'Das Projekt steht jetzt an der Stelle der Aufgabe; die Aufgabe liegt im Archiv.',
     /** A workstream whose part landed while its plan doc keeps it open. */
     partLanded: 'Teil gelandet, im Plan-Doc weiter offen.',
+    /** A workstream card that left its project: the doc no longer lists it, or its log belongs to another workstream. */
+    leftGone: (project: string) => `Hat das Projekt „${project}“ verlassen: Das Plan-Doc führt diesen Workstream nicht mehr.`,
+    leftOther: (project: string) => `Hat das Projekt „${project}“ verlassen: Dieser Verlauf gehört zu einem Workstream, den das Plan-Doc nicht mehr führt.`,
     /** How the brief and the prototype button are called on the card, for the idea's agent. */
     briefName: 'Stand der Idee',
     prototypeButton: 'Prototyp bauen lassen',
@@ -590,6 +598,7 @@ const en: Messages = {
     pushRefused: (reason: string) => `Not pushed: ${reason}`,
     heldMoved: (head: string) => `Not pushed: the PR is at another commit than at the handover (${head}). The agent puts its commits on top and reviews what is new.`,
     postFailed: (reason: string) => `Pushed, but the text with it could not be posted: ${reason}`,
+    heldEdited: (n: number) => `Edited the text for PR #${n}.`,
     approvedMerge: (n: number) => `Approved. Obeya merges PR #${n}.`,
     mergedContribution: (n: number) => `PR #${n} merged. Live.`,
     unreviewedHead: (head: string) => `Not merged: the PR is at another commit than at the handover (${head}). The agent reviews it.`,
@@ -712,7 +721,7 @@ const en: Messages = {
       by ? `Replaces the proposal “${title}” by “${by}”${why ? `: ${why}` : '.'}` : `Withdraws the proposal “${title}”${why ? `: ${why}` : '.'}`,
     superseded: (by?: string, why?: string) =>
       by ? `The agent that proposed this card replaced it by “${by}”${why ? `: ${why}` : '.'}` : `The agent that proposed this card withdrew it${why ? `: ${why}` : '.'}`,
-    prOpened: (n: number) => `Pull request #${n} opened.`,
+    prOpened: (pr: string) => `Pull request ${pr} opened.`,
     landing: 'Landing on main',
     waitsForRestart: 'Waits for Obeya to restart with the new version',
     needsClone: 'Needs a full clone to answer',
@@ -741,6 +750,9 @@ const en: Messages = {
     readyManual: 'Ready to merge: checks green, all comments resolved, the review is through. In this repository Obeya does not merge by itself: please merge it yourself.',
     mergeFailed: (reason: string) => `Obeya could not merge: ${reason}`,
     unreadable: (reason: string) => `Obeya cannot read the pull request: ${reason}`,
+    behind: 'The branch is behind the base branch, and the repository merges only an up-to-date one. The agent brings it up to date.',
+    mergedOne: (pr: string, left: (string | null)[]) =>
+      `Pull request ${pr} merged. Live once ${left.map((l) => (l ? `pull request ${l}` : 'the pull request of this repository')).join(' and ')} ${left.length > 1 ? 'are' : 'is'} merged too.`,
   },
   idea: {
     buildAfterReply: 'Build it once the reply is there; if the agent still asks something, it is not built.',
@@ -792,6 +804,8 @@ const en: Messages = {
     becameProject: 'The project now stands in the idea’s place; the idea is in the archive.',
     taskBecameProject: 'The project now stands in the task’s place; the task is in the archive.',
     partLanded: 'Part landed; the plan doc keeps it open.',
+    leftGone: (project: string) => `Left the project “${project}”: the plan doc no longer lists this workstream.`,
+    leftOther: (project: string) => `Left the project “${project}”: this history belongs to a workstream the plan doc no longer lists.`,
     briefName: 'Where the idea stands',
     prototypeButton: 'Have a prototype built',
     splitOffButton: 'Split off a task',

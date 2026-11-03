@@ -453,6 +453,13 @@ immediate kill instead of waiting for their normal exit; Windows uses a best-eff
 termination. On Windows, where a detached process opens a console window for every program it
 starts, the Python sidecars ignore Ctrl-C instead, and the agents stay in the console.
 
+On Windows every program Obeya starts runs without a window (git above all, many times a minute;
+the narration voice's installer and samples too), except one meant to be seen (Explorer, a terminal
+for a login). An Obeya without a console of its own (a scratch Obeya, one started without a
+terminal) would otherwise give each a window: with Windows Terminal as the default terminal, one
+flashes up per call and takes the focus from what the owner is typing in, several a second while
+workers are busy.
+
 ### Decisions
 
 - **Other devices over the owner's private network, paired by a QR code** (2026-10-16, plan „Obeya
@@ -514,6 +521,9 @@ starts, the Python sidecars ignore Ctrl-C instead, and the agents stay in the co
   changes (the event comes after a commit made just before the start); a cap on git processes
   running at once (a fetch or clone taking minutes would hold a place, and the trust check of an
   agent start would queue behind it).
+- **Programs run without a window on Windows by default, not by an option at each call**
+  (2026-11-01): one call forgotten brings the flashing windows back. A program meant to be seen asks
+  for its window.
 - **What reacts to a change on the canvas hears of it once the code that changed it is through, once
   for all it changed** (2026-10-31): a landing or a card moving on changes the canvas dozens of
   times in a row, and each reaction asks for the canvas as the page sees it, which took a few
@@ -524,7 +534,14 @@ starts, the Python sidecars ignore Ctrl-C instead, and the agents stay in the co
   without the whole archive. Which cards are prototypes (an idea lists its own, archived ones too)
   is read once per change, and each is made into a card when one first needs it, once per change
   too, not again for every card looked up: a pass of sharing looks up every shared card, hundreds of
-  them, and stood still for half a second doing so. The owner's settings file, asked for the
+  them, and stood still for half a second doing so. A write to one card (2026-11-02) makes only
+  that card's row into a card anew: what the other rows made (their demos and pages, with a look at
+  the demos' files) is kept while those rows stay the same, until anything else changes, when the
+  files are looked at again (a demo deleted by hand shows as gone then); and the reads each change
+  makes find their cards through indexes rather than going through the archive. A run of thirty
+  landings took a third of a second of CPU on a laptop and a second in CI, now a fifth of that.
+  Rejected: patching only the written card into the canvas's cards (what other cards show depends
+  on it: an idea's prototypes, the waits, a card's place in a queue). The owner's settings file, asked for the
   language with every text the server writes, is read again only once it changed. Rejected: reacting to each change at once and
   only making the view cheaper (the reactions still build it once per change).
 - **A page's freezes are found by a worker's heartbeat, not by its own timer running late**
