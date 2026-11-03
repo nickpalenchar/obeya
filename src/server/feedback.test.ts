@@ -120,6 +120,8 @@ test('a workstream’s response carries its project; it follows the card to anot
   store.ensureCanvas('d', 'D');
   store.moveCard(w.id, 'd', { x: 0, y: 0 });
   expect(store.feedback({ cardId: w.id })[0]).toMatchObject({ id: f.id, canvasId: 'd', project: { title: 'A' } });
+  // the dashboard reads every canvas's responses, from any canvas
+  expect(board.allFeedback().map((x) => [x.id, x.canvasId])).toEqual([[f.id, 'd']]);
 });
 
 test('a response is checked before it is kept', () => {

@@ -3,7 +3,8 @@
 // with them), and the settings saved on their own (models, voice, demos, language). The server's
 // own settings come from its command line and show read-only.
 
-import { type CSSProperties, Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react';
+import { type CSSProperties, Fragment, type ReactNode, useContext, useEffect, useId, useRef, useState } from 'react';
+import { OpenPerformance } from './performance';
 import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type CodexModel, type AgentsView, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type FeedbackPromptView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
 import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
@@ -842,6 +843,7 @@ function UsageBlock({ on }: { on: boolean }) {
 /** Whether approving work asks for feedback on it: saved on its own, and every open page follows at once. */
 function FeedbackBlock({ on }: { on: boolean }) {
   const [view, setView] = useState<FeedbackPromptView | null>(null);
+  const openPerformance = useContext(OpenPerformance);
   const [status, setStatus] = useState('');
   useEffect(() => {
     if (on) api.feedbackPrompt().then(setView, console.error);
@@ -864,6 +866,11 @@ function FeedbackBlock({ on }: { on: boolean }) {
           <input type="checkbox" checked={view.on} onChange={(e) => choose(e.target.checked)} />
           {l.label}
         </label>
+        {openPerformance && (
+          <button className="btn small cfg-perf" title={t.performance.openHint} onClick={openPerformance}>
+            {t.performance.open}
+          </button>
+        )}
       </Field>
       {status && <p className="hint c-status">{status}</p>}
     </>

@@ -548,6 +548,8 @@ export function serve(
           return view;
         }),
       },
+      // every response the owner gave on agents' work, on every canvas: the performance dashboard groups them
+      '/api/feedback': { GET: () => handle(() => canvases.all()[0]?.board.allFeedback() ?? []) },
       // the model and effort of each group of agents, read whenever one starts
       '/api/agents': {
         GET: needs(config, (c) => agentsView(c.home)),

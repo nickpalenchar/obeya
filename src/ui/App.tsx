@@ -20,6 +20,7 @@ import { useBarFit } from './barFit';
 import { UsagePill } from './usage';
 import { ConfigDialog, Problem, showCanvasesSection, showDemosSection, showDevicesSection, showRepoClones } from './config';
 import { PhoneDialog } from './access';
+import { OpenPerformance, PerformanceDialog } from './performance';
 import { Setup } from './setup';
 import { Phone, phoneView } from './phone';
 import { KoordinatorSheet } from './koordinator';
@@ -371,6 +372,12 @@ function Canvas({
   const [helpOn, setHelpOn] = useState(false);
   // „Telefon verbinden“, from the section „Von anderen Geräten“ of the configuration
   const [phoneOn, setPhoneOn] = useState(false);
+  // the performance dashboard, over the page as the configuration is; opened from there or from a rated card
+  const [perfOn, setPerfOn] = useState(false);
+  const openPerformance = useCallback(() => {
+    setCOn(false);
+    setPerfOn(true);
+  }, []);
   const wishOn = useWish().open;
   // the bar's `?` button stays until the owner opened the legend with the key; the legend's foot says so
   const [helpKnown, setHelpKnown] = useState(() => known(HELP_KEY_KNOWN));
@@ -792,6 +799,20 @@ function Canvas({
     const project = i.archivedAt ? i.parent : undefined;
     if (i.archivedAt && !project) setAOn(true);
     await openAgain({ card: i.id, project }, quick);
+  }
+  /** Opens the card a code names in place of the card open now, as a link to it does; an archived one from its row in the archive or its project's sheet. */
+  async function openNamed(code: string) {
+    const i = await namedBy(code);
+    if (!i) return;
+    if (i.kind === 'project') return openProject(i);
+    const f = focusRef.current;
+    if (f?.type === 'card') {
+      if (f.id === i.id) return;
+      await closeCard({ keepUntitled: true, onward: true });
+    }
+    const project = i.archivedAt ? i.parent : undefined;
+    if (i.archivedAt && !project) setAOn(true);
+    await openAgain({ card: i.id, project }, false);
   }
   /** Back or Forward: what the address no longer names closes, what it names opens. */
   async function followAddress() {
@@ -1606,6 +1627,14 @@ function Canvas({
       }
       return;
     }
+    // so does the performance dashboard
+    if (perfOn) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setPerfOn(false);
+      }
+      return;
+    }
     // so does „Telefon verbinden“
     if (phoneOn) {
       if (e.key === 'Escape') setPhoneOn(false);
@@ -1723,6 +1752,7 @@ function Canvas({
 
   return (
     <HoldToTalk.Provider value={holdToTalk}>
+    <OpenPerformance.Provider value={openPerformance}>
     <KoordinatorAgent.Provider value={snapshot.koordinatorAgent}>
       <div
         className={[cam.s < FAR && 'z-far', resizing && 'resizing'].filter(Boolean).join(' ') || undefined}
@@ -2042,8 +2072,10 @@ function Canvas({
           {ratePrompt.prompt}
           {ackLine}
         </div>
+        <PerformanceDialog on={perfOn} onClose={() => setPerfOn(false)} canvases={canvases} here={snapshot.canvas.id} onOpenCard={(code) => void openNamed(code).catch(console.error)} />
       </div>
     </KoordinatorAgent.Provider>
+    </OpenPerformance.Provider>
     </HoldToTalk.Provider>
   );
 }

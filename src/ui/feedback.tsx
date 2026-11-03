@@ -3,11 +3,12 @@
 // owner can skip it; the card itself keeps asking until it is answered, and shows the answer after.
 // Saving goes its own way: approval and landing never wait for it, nor fail with it.
 
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import type { FeedbackAnswer, Item } from '../core/types';
 import { api } from './api';
 import { dropDraft, rateDraft, updateDraft, useDraft } from './draft';
 import { plain } from './markdown';
+import { OpenPerformance } from './performance';
 import { failText, t } from './strings';
 
 /** Stars and the comment for the card's approved work; `prompt`: the one after the approval, with its title and „Überspringen“. */
@@ -21,6 +22,7 @@ export function Rate({ item, prompt, onClose }: { item: Item; prompt?: boolean; 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [thanked, setThanked] = useState(false);
+  const compare = useContext(OpenPerformance);
   useEffect(() => setSaved(rate.answer), [rate.handover, rate.answer?.rating, rate.answer?.comment]);
   const rating = saved?.rating ?? 0;
   const give = async (answer: FeedbackAnswer) => {
@@ -109,6 +111,11 @@ export function Rate({ item, prompt, onClose }: { item: Item; prompt?: boolean; 
       )}
       {error && <p className="p-error">{error}</p>}
       {thanked && !error && !prompt && <p className="hint">{t.feedback.thanks}</p>}
+      {!prompt && rating > 0 && compare && (
+        <button type="button" className="link rate-compare" title={t.performance.openHint} onClick={compare}>
+          {t.performance.open}
+        </button>
+      )}
     </div>
   );
 }

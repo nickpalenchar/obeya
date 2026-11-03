@@ -100,6 +100,7 @@
 //     ],
 //     "groups": [{ "name": "Abrechnung", "cards": ["A", "B", "P"] }],
 //     "friction": [{ "card": "A", "what": "…", "cost": "…", "fix": "…", "ago": "1h" }],
+//     "feedback": [{ "card": "C", "rating": 4, "comment": "…", "configs": [{ "harness": "claude", "model": "claude-opus-5-5", "effort": "high" }], "ago": "2d" }],
 //     "settingProposals": [{ "field": "run", "value": "bun run dev", "basis": "…", "cards": ["A", "B"] }],
 //     "talk": [{ "said": "…", "reply": "…", "ago": "2h", "card": "A", "answer": "…" }]
 //   }
@@ -155,7 +156,10 @@
 // the project whose sheet the words were written in, straight to its project agent, with an empty `reply`). `friction` is what the Arbeitsrückschau noted on a card's
 // runs (`card` a key), read by its next retrospective; `settingProposals` are values for a
 // repository's settings it proposed (`field`: checks, setup, softPaths or run; `cards` keys;
-// `repo` defaults to the canvas's home repository); both need code that has them.
+// `repo` defaults to the canvas's home repository); both need code that has them. `feedback` are the
+// owner's responses on cards' approved work (`card` a key), about the card's latest handover (a
+// `review` event, or none), crediting `configs` as the work ran (none: nothing recorded; two or
+// more: mixed); `title` and `project` (a title) stand for the card's as they were; needs code that has them.
 // Obeya proposes a card that fills in the settings of a repository without any („Obeya für …
 // einrichten“); staging dismisses it on every canvas, unless `"setupProposals": true` keeps it.
 
@@ -275,6 +279,7 @@ interface Stage {
   preferences?: { key?: string; text: string; state?: string; card?: string; quote?: string; review?: boolean; replaces?: string; target?: string }[];
   groups?: { name: string; cards: string[] }[];
   friction?: { card: string; what: string; cost: string; fix: string; ago?: string; repo?: string }[];
+  feedback?: { card: string; rating?: number; comment?: string; configs?: { harness: string | null; model: string | null; effort: string | null }[]; ago?: string; title?: string; project?: string }[];
   settingProposals?: { field: string; value: string | string[]; basis: string; cards: string[]; repo?: string }[];
   talk?: {
     said: string;
@@ -826,6 +831,32 @@ for (const [i, f] of (stage.friction ?? []).entries())
     cost: f.cost,
     fix: f.fix,
   });
+for (const [i, f] of (stage.feedback ?? []).entries()) {
+  const id = ids[f.card] ?? fail(`feedback ${i}: card ${f.card} does not exist`);
+  const row = db.query('SELECT canvas_id, title, repo, parent_id FROM cards WHERE id = $id').get({ id }) as { canvas_id: string; title: string | null; repo: string | null; parent_id: string | null };
+  const handover = (db.query(`SELECT max(id) AS h FROM events WHERE card_id = $id AND kind = 'review'`).get({ id }) as { h: number | null }).h ?? i;
+  const configs = f.configs ?? [];
+  const attribution = !configs.length ? 'missing' : configs.length > 1 ? 'mixed' : 'single';
+  const credited = attribution === 'single' ? configs[0] : undefined;
+  const project = f.project ? { id: row.parent_id ?? `project-${f.project}`, title: f.project } : undefined;
+  const answer = { ...(f.rating !== undefined ? { rating: f.rating } : {}), ...(f.comment ? { comment: f.comment } : {}) };
+  db.query(
+    `INSERT INTO feedback (card_id, canvas_id, handover, context, attribution, configs, harness, model, effort, answer, created_at)
+     VALUES ($card, $c, $handover, $context, $attribution, $configs, $harness, $model, $effort, $answer, $at)`,
+  ).run({
+    card: id,
+    c: row.canvas_id,
+    handover,
+    context: JSON.stringify({ title: f.title ?? row.title ?? '', repo: row.repo ?? (db.query(`SELECT value FROM settings WHERE canvas_id = $c AND key = 'home_repo'`).get({ c: row.canvas_id }) as { value: string } | null)?.value ?? row.canvas_id, ...(project ? { project } : {}) }),
+    attribution,
+    configs: JSON.stringify(configs),
+    harness: credited?.harness ?? null,
+    model: credited?.model ?? null,
+    effort: credited?.effort ?? null,
+    answer: JSON.stringify(answer),
+    at: ago(f.ago ?? '0s'),
+  });
+}
 for (const [i, p] of (stage.settingProposals ?? []).entries())
   db.query('INSERT INTO setting_proposals (canvas_id, repo, field, value, basis, cards, created_at) VALUES ($c, $repo, $field, $value, $basis, $cards, $at)').run({
     c: canvas,

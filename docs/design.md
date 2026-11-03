@@ -37,7 +37,7 @@ touches, and keep those current in the same change.
   while the agent replies.
 - [Card lifecycle](design/card-lifecycle.md) — a card's states from proposal to done: proposals
   (later starts, taking back, reworking by words), at work, waiting for approval (the handover
-  report), approval and landing, live and done, archive, how projects end.
+  report), approval and landing (feedback after it, comparing ratings), live and done, archive, how projects end.
 - [Communication](design/communication.md) — how workers and Obeya exchange messages: a worker's
   tools, turns that end without a handover, pausing an agent or a canvas's agents, snoozing a card, waiting without
   blocking, refused and confirmed tool calls, notes and replies, questions go to the owner.

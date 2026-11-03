@@ -2316,3 +2316,68 @@ button.link:hover { text-decoration: underline; }
 .rate-pop { pointer-events: auto; animation: ack-in .25s; }
 .rate.prompt { margin: 0; width: min(560px, calc(100vw - var(--left, 0px) - var(--side, 0px) - 32px)); background: var(--card); box-shadow: var(--lift); border-color: transparent; }
 @media (pointer: coarse) { .star { font-size: 28px; padding: 0 5px; } }
+
+/* The performance dashboard: over the page as the configuration is, a table of the owner's ratings by model and effort */
+#perf { position: fixed; inset: 0; z-index: 55; background: var(--dim); display: flex; padding: 28px; animation: fade .15s ease-out; }
+.perf-box { flex: 1; min-width: 0; background: var(--panel); border-radius: 3px; box-shadow: var(--lift); position: relative; display: flex; }
+.perf-main { flex: 1; overflow-y: auto; padding: 26px 66px 32px 40px; }
+.perf-main > * { max-width: 980px; }
+.perf-table td:nth-child(4), .perf-table thead th:nth-child(4) { width: 45%; }
+.perf-head { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+.perf-head h2 { margin: 0; font-size: 26px; }
+.perf-head .hint { margin: 0; }
+.perf-about { margin: 6px 0 18px; line-height: 1.45; }
+.perf-bar { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.perf-filters { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.perf-choice { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.perf-choice select { font: inherit; font-size: 13px; color: var(--ink); padding: 5px 26px 5px 8px; border: 1px solid var(--line); border-radius: 2px; background: var(--card); max-width: 260px; }
+.perf-clear { font-size: 13px; padding-bottom: 9px; }
+.perf-views { display: flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.perf-views button { font: inherit; font-size: 13px; padding: 5px 12px; border: 0; background: var(--card); color: var(--ink); cursor: pointer; }
+.perf-views button + button { border-left: 1px solid var(--line); }
+.perf-views button.on { background: var(--chip); font-weight: 600; }
+.perf-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.perf-table th, .perf-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.perf-table thead th { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.perf-table td:last-child, .perf-table thead th:last-child { padding-left: 18px; }
+.perf-table .num { text-align: right; font-variant-numeric: tabular-nums; width: 1%; white-space: nowrap; }
+.perf-table tr.perf-group th { font-weight: 600; background: color-mix(in srgb, var(--chip) 70%, transparent); padding-top: 6px; padding-bottom: 6px; }
+.perf-table tbody th[scope="row"] { font-weight: 400; }
+.perf-row.few td, .perf-row.few .perf-expand { color: var(--muted); }
+.perf-expand { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 2px 0; font: inherit; color: var(--ink); cursor: pointer; text-align: left; }
+.perf-expand:hover { text-decoration: underline; text-underline-offset: 3px; }
+.perf-caret { width: 10px; color: var(--muted); font-size: 11px; }
+.perf-model { font: 13px var(--mono); }
+.perf-special { font-style: italic; }
+.perf-tag { display: inline-block; margin-left: 8px; padding: 0 7px; border: 1px solid var(--muted); border-radius: 9px; font-size: 11px; color: var(--muted); line-height: 16px; vertical-align: 1px; }
+.perf-spread { display: flex; width: 100%; min-width: 160px; height: 14px; border-radius: 2px; overflow: hidden; background: var(--line); }
+.perf-spread > span { display: block; height: 100%; }
+.perf-row.few .perf-spread { opacity: .6; }
+.perf-r1 { --r: color-mix(in srgb, var(--error) 85%, var(--panel)); } .perf-r2 { --r: color-mix(in srgb, var(--waiting) 70%, var(--panel)); }
+.perf-r3 { --r: color-mix(in srgb, var(--planned) 70%, var(--panel)); } .perf-r4 { --r: color-mix(in srgb, var(--approved) 55%, var(--panel)); } .perf-r5 { --r: var(--approved); }
+.perf-spread > span { background: var(--r); }
+.perf-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+.perf-key::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--r); }
+.perf-dots { position: relative; display: block; min-width: 160px; height: 28px; margin: 0 14px; }
+.perf-dots .perf-axis { position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed var(--line); }
+.perf-dots i { position: absolute; z-index: 1; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: var(--working); opacity: .75; }
+.perf-dots b { position: absolute; top: 1px; bottom: 1px; width: 2px; margin-left: -1px; background: var(--ink); opacity: .55; }
+.perf-row.few .perf-dots i { background: var(--muted); }
+.perf-scale { position: relative; display: block; height: 1.2em; margin: 0 14px; font-weight: 400; }
+.perf-scale span { position: absolute; transform: translateX(-50%); }
+.perf-detail > td { background: color-mix(in srgb, var(--chip) 35%, transparent); padding: 4px 8px 10px 28px; }
+.perf-responses { list-style: none; margin: 0; padding: 0; }
+.perf-responses li { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.perf-responses li:last-child { border-bottom: 0; }
+.perf-r-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.perf-r-ctx, .perf-r-config { font-size: 12.5px; }
+.perf-r-comment { margin: 2px 0 0; font-size: 13.5px; color: var(--ink); white-space: pre-wrap; }
+.perf-stars { color: var(--waiting); letter-spacing: 1px; white-space: nowrap; font-size: 15px; }
+.perf-stars .off { color: var(--line); }
+.perf-few-note { margin: 0 0 6px; }
+.perf-empty { text-align: center; padding: 48px 10px; }
+.perf-empty h3 { font-family: var(--serif); font-weight: 500; font-size: 20px; margin: 0 0 6px; }
+.perf-empty .btn { margin-top: 8px; }
+.rate-compare { margin-top: 6px; font-size: 13px; }
+#config .cfg-perf { margin-top: 10px; }
+@media (max-width: 700px) { #perf { padding: 10px; } .perf-main { padding: 20px 56px 24px 18px; } .perf-spread, .perf-dots { min-width: 100px; } }

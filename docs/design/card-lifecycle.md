@@ -166,6 +166,30 @@ and prototypes are not asked about. „Feedback nach der Freigabe“ in Konfigur
 the asking off and on for every open page at once; turned off, no card asks or shows a rating, and
 the responses given stay.
 
+#### Comparing ratings
+
+„Bewertungen vergleichen“ (beside „Feedback nach der Freigabe“ in Konfiguration → Allgemein, and
+under the stars of every rated card) opens „Agentenleistung“ over the page, as the configuration
+is: every response on every canvas (`/api/feedback`), grouped by whom it credits (see Models and
+effort in Agents and workspaces). Each harness heads its rows, one per model and effort, the model
+as the session resolved it and an unknown field named unknown; work by several configurations
+(„Mehrere Konfigurationen“) and work nothing was recorded of („Nicht erfasst“) have rows of their
+own under „Keinem Modell allein zugeordnet“, never counted for a model. Rows are ordered by harness,
+model and effort, never by score. Each says how many ratings it rests on, their average and
+comments; a row with fewer than five ratings is greyed and tagged „wenige“. The main view shows
+each row's ratings split by stars as one bar („Verteilung“); „Jede Bewertung“ draws each rating as a
+dot on the scale from 1 to 5 with the median as a line, the view chosen kept per browser. With
+fewer than five ratings in all (after the filters), there is no table and no average, only the
+responses so far, each with whom it credits. The head counts responses, ratings and those credited
+to no one model. Filters: canvas, repository and project (each only where there is more than one to
+choose, a project as soon as there is one), and the period (all, the last 90 or 30 days, by when a
+response was last given). A click on a row lists its responses, the latest first: the card's title
+as it was (a link to the card: on this canvas it closes the dialog and opens the card, archived
+ones from the archive; on another, its address), project, repository, canvas where they differ,
+date, stars and comment, and for mixed work the configurations that did it. Closed and opened
+again, the dialog keeps its filters and open row. A response with only a comment counts as a
+response, not a rating. The phone view has no dashboard.
+
 ### Live and done
 
 Merged (or landed on `main`) → `live`. The demo stays on the card. The worker hears that its work is
@@ -214,6 +238,14 @@ Every project's sheet holds its conversation with its project agent (see Asking 
 sheet), lists its decisions and links the idea or task its plan doc came from (see Deciding).
 
 ### Decisions
+
+- **The dashboard compares without ranking** (owner, 2026-11-03): ratings are the owner's judgement
+  of single tasks, whose difficulty and kind count too, so rows keep a fixed order, always show how
+  many ratings they rest on, and below five ratings in all give no averages. The owner chose the
+  table with each row's spread of stars as the main view and the dots of each rating as the second.
+  Rejected: sorting by average (it reads as a ranking the numbers cannot carry); a trend over time
+  (meaningless until months of ratings); recommending a model from the ratings, which is for
+  [Choosing an agent for a task](../plan/agent-choice.md) to take up.
 
 - **Feedback is five stars and an optional comment, asked after the approval and never in its way**
   (owner, 2026-11-03): five steps give comparisons between models enough range, the comment says

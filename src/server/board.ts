@@ -732,6 +732,11 @@ export class Board {
     return this.store.feedback({ cardId });
   }
 
+  /** Every response the owner gave, on every canvas (they share the store), the earliest first: what the performance dashboard reads. */
+  allFeedback(): Feedback[] {
+    return this.store.feedback();
+  }
+
   /**
    * The owner's response on the card's work at a handover (its latest, unless `handover` names an
    * earlier one), crediting the sessions that ran on the card up to that handover, as they ran. Given

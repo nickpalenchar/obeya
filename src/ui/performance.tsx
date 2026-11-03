@@ -1,0 +1,357 @@
+// The performance dashboard: the owner's responses on agents' work, on every canvas, grouped by the
+// harness, model and effort that did it. The main view is a table with each row's spread of stars;
+// the other draws each rating as a dot. Every row says how many ratings it rests on and is ordered by
+// what it is, not how well it did; with too few ratings in all, the responses stand alone, without
+// averages. A row opens to its responses, each linking back to its card.
+
+import { createContext, Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { FEW, filterChoices, filterFeedback, performance, type PerformanceFilter, type PerformanceRow, stars } from '../core/performance';
+import type { CanvasInfo, Feedback, WorkConfig } from '../core/types';
+import { cardPath } from './address';
+import { api } from './api';
+import { plain } from './markdown';
+import { failText, t } from './strings';
+
+/** Opens the dashboard, where the page offers it (the canvas, not the phone view). */
+export const OpenPerformance = createContext<(() => void) | null>(null);
+
+type Period = 'all' | '30' | '90';
+type View = 'stars' | 'dots';
+const VIEW_KEY = 'obeya.performance.view';
+
+const DAY = 86_400_000;
+
+interface Props {
+  on: boolean;
+  onClose: () => void;
+  canvases: CanvasInfo[];
+  /** The canvas the page shows: its cards open in place, another canvas's at their address. */
+  here: string;
+  onOpenCard: (code: string) => void;
+}
+
+export function PerformanceDialog({ on, onClose, canvases, here, onOpenCard }: Props) {
+  const p = t.performance;
+  const [all, setAll] = useState<Feedback[] | null>(null);
+  const [error, setError] = useState('');
+  const [filter, setFilter] = useState<PerformanceFilter>({});
+  const [period, setPeriod] = useState<Period>('all');
+  const [view, setViewState] = useState<View>(() => (localStorage.getItem(VIEW_KEY) === 'dots' ? 'dots' : 'stars'));
+  const setView = (v: View) => {
+    localStorage.setItem(VIEW_KEY, v);
+    setViewState(v);
+  };
+  const [open, setOpen] = useState<string | null>(null);
+  const close = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!on) return;
+    setError('');
+    api.allFeedback().then(setAll, (e) => setError(failText(e)));
+    requestAnimationFrame(() => close.current?.focus());
+  }, [on]);
+  const since = period === 'all' ? undefined : new Date(Date.now() - Number(period) * DAY).toISOString();
+  const shown = useMemo(() => filterFeedback(all ?? [], { ...filter, ...(since ? { since } : {}) }), [all, filter, since?.slice(0, 10)]);
+  const perf = useMemo(() => performance(shown), [shown]);
+  const choices = useMemo(() => filterChoices(all ?? []), [all]);
+  if (!on) return null;
+  const canvasName = (id: string) => canvases.find((c) => c.id === id)?.name ?? id;
+  const link = (f: Feedback) => {
+    const code = f.short ?? f.cardId;
+    return (
+      <a
+        className="link card-link"
+        href={cardPath(f.canvasId, code)}
+        onClick={(e) => {
+          if (f.canvasId !== here || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+          e.preventDefault();
+          onClose();
+          onOpenCard(code);
+        }}
+      >
+        {plain(f.title) || code}
+      </a>
+    );
+  };
+  const filtered = !!(filter.canvas || filter.repo || filter.project || period !== 'all');
+  const comparable = perf.ratings >= FEW;
+
+  let body;
+  if (error) body = <p className="p-error">{error}</p>;
+  else if (!all) body = <p className="hint">{p.loading}</p>;
+  else if (!all.length)
+    body = (
+      <div className="perf-empty">
+        <h3>{p.none}</h3>
+        <p className="hint">{p.noneHint}</p>
+      </div>
+    );
+  else if (!shown.length)
+    body = (
+      <div className="perf-empty">
+        <h3>{p.noMatch}</h3>
+        <button className="btn small" onClick={() => (setFilter({}), setPeriod('all'))}>
+          {p.clear}
+        </button>
+      </div>
+    );
+  else if (!comparable)
+    body = (
+      <>
+        <p className="hint perf-few-note">{p.tooFew(perf.ratings, FEW)}</p>
+        <Responses list={[...shown].reverse()} link={link} canvasName={canvasName} withConfig />
+      </>
+    );
+  else {
+    let head = '';
+    body = (
+      <>
+        <table className="perf-table">
+          <thead>
+            <tr>
+              <th scope="col">{p.cols.config}</th>
+              <th scope="col" className="num">
+                {p.cols.ratings}
+              </th>
+              <th scope="col" className="num">
+                {p.cols.mean}
+              </th>
+              <th scope="col">{view === 'stars' ? p.cols.spread : <DotScale />}</th>
+              <th scope="col" className="num">
+                {p.cols.comments}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {perf.rows.map((r) => {
+              const group = r.kind === 'config' ? harnessName(r.config!.harness) : p.uncreditedHead;
+              const heading = group !== head;
+              head = group;
+              const expanded = open === r.key;
+              return (
+                <Fragment key={r.key}>
+                  {heading && (
+                    <tr className="perf-group">
+                      <th scope="rowgroup" colSpan={5}>
+                        {group}
+                      </th>
+                    </tr>
+                  )}
+                  <tr className={`perf-row${r.few ? ' few' : ''}${r.kind !== 'config' ? ' special' : ''}${expanded ? ' open' : ''}`}>
+                    <th scope="row">
+                      <button className="perf-expand" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : r.key)}>
+                        <span className="perf-caret" aria-hidden>
+                          {expanded ? '▾' : '▸'}
+                        </span>
+                        <RowName r={r} />
+                      </button>
+                      {r.few && (
+                        <span className="perf-tag" title={p.fewHint(FEW)}>
+                          {p.few}
+                        </span>
+                      )}
+                    </th>
+                    <td className="num">{r.ratings.length}</td>
+                    <td className="num">{r.mean === null ? '–' : r.mean.toFixed(1)}</td>
+                    <td>{view === 'stars' ? <Spread r={r} /> : <Dots r={r} />}</td>
+                    <td className="num">{r.comments}</td>
+                  </tr>
+                  {expanded && (
+                    <tr className="perf-detail">
+                      <td colSpan={5}>
+                        <Responses list={r.responses} link={link} canvasName={canvasName} withConfig={r.kind === 'mixed'} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+        {view === 'stars' ? (
+          <p className="perf-legend">
+            {[1, 2, 3, 4, 5].map((s) => (
+              <span key={s} className={`perf-key perf-r${s}`}>
+                {t.feedback.stars[s - 1]}
+              </span>
+            ))}
+            <span>{p.fewHint(FEW)}</span>
+          </p>
+        ) : (
+          <p className="perf-legend">
+            <span>{p.dotsHint}</span>
+            <span>{p.fewHint(FEW)}</span>
+          </p>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div id="perf" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="perf-box" role="dialog" aria-modal="true" aria-labelledby="perf-title">
+        <button ref={close} className="cfg-close" title={t.close} aria-label={t.close} onClick={onClose}>
+          ✕
+        </button>
+        <div className="perf-main">
+          <header className="perf-head">
+            <h2 id="perf-title">{p.title}</h2>
+            {all && all.length > 0 && <p className="hint">{p.summary(perf.responses, perf.ratings, perf.uncredited)}</p>}
+          </header>
+          <p className="hint perf-about">{p.about}</p>
+          {all && all.length > 0 && (
+            <div className="perf-bar">
+              <div className="perf-filters">
+                {choices.canvases.length > 1 && (
+                  <Choice label={p.filters.canvas} value={filter.canvas} options={choices.canvases.map((id) => ({ id, name: canvasName(id) }))} onChange={(canvas) => setFilter({ ...filter, canvas })} />
+                )}
+                {choices.repos.length > 1 && <Choice label={p.filters.repo} value={filter.repo} options={choices.repos.map((id) => ({ id, name: id }))} onChange={(repo) => setFilter({ ...filter, repo })} />}
+                {choices.projects.length > 0 && (
+                  <Choice label={p.filters.project} value={filter.project} options={choices.projects.map(({ id, title }) => ({ id, name: plain(title) }))} onChange={(project) => setFilter({ ...filter, project })} />
+                )}
+                <label className="perf-choice">
+                  <span>{p.filters.period}</span>
+                  <select value={period} onChange={(e) => setPeriod(e.target.value as Period)}>
+                    <option value="all">{p.periods.all}</option>
+                    <option value="90">{p.periods.days(90)}</option>
+                    <option value="30">{p.periods.days(30)}</option>
+                  </select>
+                </label>
+                {filtered && (
+                  <button className="link perf-clear" onClick={() => (setFilter({}), setPeriod('all'))}>
+                    {p.clear}
+                  </button>
+                )}
+              </div>
+              {comparable && shown.length > 0 && (
+                <div className="perf-views" role="group" aria-label={p.views.label}>
+                  {(['stars', 'dots'] as const).map((v) => (
+                    <button key={v} className={view === v ? 'on' : undefined} aria-pressed={view === v} onClick={() => setView(v)}>
+                      {p.views[v]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {body}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Choice({ label, value, options, onChange }: { label: string; value?: string; options: { id: string; name: string }[]; onChange: (v: string | undefined) => void }) {
+  return (
+    <label className="perf-choice">
+      <span>{label}</span>
+      <select value={value ?? ''} onChange={(e) => onChange(e.target.value || undefined)}>
+        <option value="">{t.performance.filters.any}</option>
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+const harnessName = (h: WorkConfig['harness']) => (h === 'claude' ? 'Claude Code' : h === 'codex' ? 'Codex' : t.performance.unknownHarness);
+
+/** A configuration as one line: its model and effort, each named unknown where it is. */
+function configText(c: WorkConfig, withHarness = false) {
+  const p = t.performance;
+  return [withHarness ? harnessName(c.harness) : '', c.model ?? p.unknownModel, c.effort ?? p.unknownEffort].filter(Boolean).join(' · ');
+}
+
+function RowName({ r }: { r: PerformanceRow }) {
+  const p = t.performance;
+  if (r.kind === 'mixed') return <span className="perf-special">{p.mixed}</span>;
+  if (r.kind === 'missing') return <span className="perf-special">{p.missing}</span>;
+  const c = r.config!;
+  return (
+    <span>
+      <span className={c.model ? 'perf-model' : 'perf-special'}>{c.model ?? p.unknownModel}</span> · {c.effort ?? p.unknownEffort}
+    </span>
+  );
+}
+
+/** The row's ratings split by stars, as one bar. */
+function Spread({ r }: { r: PerformanceRow }) {
+  const n = r.ratings.length;
+  const label = t.performance.spreadLabel(r.counts);
+  if (!n) return <span className="hint">{t.performance.noRatings}</span>;
+  return (
+    <span className="perf-spread" role="img" aria-label={label} title={label}>
+      {r.counts.map((k, s) => (k ? <span key={s} className={`perf-r${s + 1}`} style={{ width: `${(k / n) * 100}%` }} /> : null))}
+    </span>
+  );
+}
+
+/** Each of the row's ratings as a dot on the scale from 1 to 5 stars, the median as a line. */
+function Dots({ r }: { r: PerformanceRow }) {
+  const label = t.performance.dotsLabel(r.ratings, r.median);
+  if (!r.ratings.length) return <span className="hint">{t.performance.noRatings}</span>;
+  const seen = [0, 0, 0, 0, 0];
+  const at = (v: number) => `${((v - 1) / 4) * 100}%`;
+  return (
+    <span className="perf-dots" role="img" aria-label={label} title={label}>
+      <span className="perf-axis" />
+      {r.ratings.map((v, k) => {
+        // the dots of one rating stand in columns of three around its point, each of them seen
+        const m = seen[v - 1]!++;
+        const cols = Math.ceil(r.counts[v - 1]! / 3);
+        const dx = (Math.floor(m / 3) - (cols - 1) / 2) * 7;
+        const dy = ((m % 3) - (Math.min(3, r.counts[v - 1]!) - 1) / 2) * 7;
+        return <i key={k} style={{ left: `calc(${at(v)} + ${dx}px)`, top: `calc(50% + ${dy}px)` }} />;
+      })}
+      {r.median !== null && <b style={{ left: at(r.median) }} />}
+    </span>
+  );
+}
+
+function DotScale() {
+  return (
+    <span className="perf-scale" aria-label={t.performance.cols.each}>
+      {[1, 2, 3, 4, 5].map((s) => (
+        <span key={s} style={{ left: `${((s - 1) / 4) * 100}%` }}>
+          {s}★
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function StarText({ rating }: { rating: number | undefined }) {
+  const s = stars(rating);
+  if (s === null) return <span className="hint">{t.performance.noRating}</span>;
+  return (
+    <span className="perf-stars" role="img" aria-label={t.feedback.star(s, t.feedback.stars[s - 1]!)}>
+      {'★'.repeat(s)}
+      <span className="off">{'★'.repeat(5 - s)}</span>
+    </span>
+  );
+}
+
+/** Responses, each with its card (a link back to it), project, repository, when, the rating and the comment. */
+function Responses({ list, link, canvasName, withConfig }: { list: Feedback[]; link: (f: Feedback) => React.ReactNode; canvasName: (id: string) => string; withConfig?: boolean }) {
+  const p = t.performance;
+  const several = new Set(list.map((f) => f.canvasId)).size > 1;
+  return (
+    <ul className="perf-responses">
+      {list.map((f) => (
+        <li key={f.id}>
+          <div className="perf-r-main">
+            {link(f)}
+            <span className="hint perf-r-ctx">
+              {[f.project ? plain(f.project.title) : '', f.repo ?? '', several ? canvasName(f.canvasId) : '', p.when(new Date(f.updatedAt ?? f.at))].filter(Boolean).join(' · ')}
+            </span>
+            {withConfig && <span className="hint perf-r-config">{f.attribution === 'missing' || !f.configs.length ? p.missing : f.configs.map((c) => configText(c, true)).join(' + ')}</span>}
+            {f.answer.comment && <p className="perf-r-comment">{t.feedback.quoted(f.answer.comment)}</p>}
+          </div>
+          <StarText rating={f.answer.rating} />
+        </li>
+      ))}
+    </ul>
+  );
+}

@@ -171,6 +171,8 @@ export const api = {
   usageMeter: () => call<UsageMeterView>('GET', '/api/usage-meter'),
   saveUsageMeter: (on: boolean) => call<UsageMeterView>('PUT', '/api/usage-meter', { on }),
   feedbackPrompt: () => call<FeedbackPromptView>('GET', '/api/feedback-prompt'),
+  /** Every response the owner gave on agents' work, on every canvas. */
+  allFeedback: () => call<Feedback[]>('GET', '/api/feedback'),
   saveFeedbackPrompt: (on: boolean) => call<FeedbackPromptView>('PUT', '/api/feedback-prompt', { on }),
   /** The model and effort of each group of agents. */
   agents: () => call<AgentsView>('GET', '/api/agents'),
