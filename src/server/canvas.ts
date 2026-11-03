@@ -2479,7 +2479,10 @@ export class CanvasRuntime {
     const { canvas: _, place: __, repo: ___, ...rest } = c;
     if (rest.do === 'newIdea') return there.run(rest);
     const { from, ...card } = rest;
-    return from ? there.followUp(card, from) : there.run(card);
+    if (!from) return there.run(card);
+    const id = there.followUp(card, from);
+    this.board.log(from, 'state', 'obeya', this.board.t.voice.madeFollowUp(c.title), { made: { card: id, title: c.title, canvas: there.id } });
+    return id;
   }
 
   /** A card the Koordinator of another canvas makes here for the owner, following up on a card of its own. */
@@ -2523,6 +2526,8 @@ export class CanvasRuntime {
           ...at,
         });
         this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
+        // the card it follows up on shows it in its conversation
+        if (c.from) this.board.log(c.from, 'state', 'obeya', this.board.t.voice.madeFollowUp(card.title), { made: { card: card.id, title: card.title } });
         // one for later waits until then; a time that passed in the undo window starts it now
         if (c.until && Date.parse(c.until) > Date.now()) this.snooze(card.id, c.until);
         else if (c.start || c.until) this.koordinator.request(card.id);

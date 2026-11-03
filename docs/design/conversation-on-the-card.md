@@ -21,7 +21,17 @@ came, below the agent's steps up to there. What Obeya reads to look a question u
 there by voice, or passed on by its agent) is not the agent's work: it stays out of the agent's
 „Verlauf“ and its bubble at work, and folds under the answer Obeya looked up; while Obeya still
 looks, under its reply that it does, where that reply stands. On a Question card Obeya's agent is
-the card's own, so its reading is the card's agent at work. A note the worker
+the card's own, so its reading is the card's agent at work.
+
+A follow-up card Obeya makes of the card (asked for in words on it, passed on by its agent, or a
+review's follow-up task) is an action of Obeya's in its conversation, set apart from what is said:
+another colour and the small print's face, a dashed frame, „Obeya · Folgekarte angelegt“ above the
+new card's cover in small, as the canvas shows it now (its state, its question). A click opens that
+card by its address, in place, a modifier click in a tab of its own. One that went onto another
+canvas opens there; one gone from the canvas (archived, deleted) shows the title it had, not a link.
+The action is logged once the card exists, after the undo window, so a command taken back leaves
+none; until the agent's next message it waits with Obeya's reply to what the agent passed on, and
+goes under that message with it. A note the worker
 answered without `reply` counts as answered by its next words, unless a reply follows before the
 owner says more. Once no agent works on the card and no question is open, steps after the last
 message stand where they happened, the agent's last words among them as its message. A card that was
@@ -403,6 +413,12 @@ image.
 - **The last demo stays while the worker works again** (2026-10-08); **a demo report's question
   stays on its handover** (2026-10-09). Rejected: hiding the demo on feedback; moving the question
   to the newest handover, orange as if open.
+- **A follow-up card is an action with its cover** (owner, 2026-11-03): Obeya's confirmation alone
+  read as one more message, and the card it made had to be found on the canvas. The cover is the
+  card's live face, not a copy from the moment it was made, so it shows how far the follow-up got.
+  Rejected: a state line with the title as a link, which reads as dialogue's small print and shows
+  nothing of the card. Proposals an agent makes are not actions: they are its steps until the owner
+  accepts them.
 - **Agent words kept long** (2026-10-09). Rejected: a 600-character cut.
 - **Replies to one message** (2026-10-09; sheet 2026-10-15), the quote part of the draft.
 - **Quoting marked text into the field** (owner, 2026-10-22): the owner often answers single

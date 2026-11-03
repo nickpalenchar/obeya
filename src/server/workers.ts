@@ -938,6 +938,7 @@ export class Workers {
     const body = clip(task, 19000);
     const card = this.o.board.create({ title: clip(title, 200), body: body.includes(c.url) ? body : `${body}\n\n${t.findingTask(c.number, c.url)}`, from: cardId });
     this.o.board.log(card.id, 'state', 'obeya', t.findingTaskMade(c.number));
+    this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.voice.madeFollowUp(card.title), { made: { card: card.id, title: card.title } });
     const findings = c.findings!.map((f): Finding => {
       if (!named.includes(f.id)) return f;
       const { decided: _, ...rest } = f;

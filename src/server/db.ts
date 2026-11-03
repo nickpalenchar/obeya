@@ -477,10 +477,12 @@ export const MIGRATIONS = [
    CREATE INDEX cards_shared ON cards (canvas_id) WHERE deleted_at IS NULL AND share IS NOT NULL;`,
   // where the owner was on the canvas when they asked for a step that needed looking up first (JSON `Place`): its new cards go there
   'ALTER TABLE talk ADD COLUMN then_place TEXT;',
+  // a line that Obeya made a follow-up card of the card: that card (JSON `CardEvent['made']`)
+  'ALTER TABLE events ADD COLUMN made TEXT;',
 ];
 
-const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, agent, token';
-type EventRow = Omit<CardEvent, 'images' | 'mocks' | 'replyTo' | 'spot' | 'answer' | 'picks' | 'unread' | 'readAfter' | 'wish' | 'reply' | 'forwarded' | 'agent' | 'token'> & {
+const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, agent, token, made';
+type EventRow = Omit<CardEvent, 'images' | 'mocks' | 'replyTo' | 'spot' | 'answer' | 'picks' | 'unread' | 'readAfter' | 'wish' | 'reply' | 'forwarded' | 'agent' | 'token' | 'made'> & {
   agent: string | null;
   code: CardEvent['code'] | null;
   images: string | null;
@@ -495,8 +497,9 @@ type EventRow = Omit<CardEvent, 'images' | 'mocks' | 'replyTo' | 'spot' | 'answe
   reply: number | null;
   forwarded: number | null;
   token: number | null;
+  made: string | null;
 };
-const eventOf = ({ code, images, mocks, replyTo, spot, answer, picks, unread, readAfter, wish, reply, forwarded, agent, token, ...e }: EventRow): CardEvent => ({
+const eventOf = ({ code, images, mocks, replyTo, spot, answer, picks, unread, readAfter, wish, reply, forwarded, agent, token, made, ...e }: EventRow): CardEvent => ({
   ...e,
   ...(agent ? { agent: JSON.parse(agent) as AgentIdentity } : {}),
   ...(code ? { code } : {}),
@@ -512,6 +515,7 @@ const eventOf = ({ code, images, mocks, replyTo, spot, answer, picks, unread, re
   ...(reply ? { reply: true as const } : {}),
   ...(forwarded ? { forwarded: true as const } : {}),
   ...(token ? { token: true as const } : {}),
+  ...(made ? { made: JSON.parse(made) as NonNullable<CardEvent['made']> } : {}),
 });
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -790,7 +794,7 @@ export class Store {
     const agent = 'agent' in e ? e.agent : (e.author !== 'owner' && e.author !== 'obeya' ? currentAgent() : undefined);
     const { id } = this.db
       .query(
-        'INSERT INTO events (card_id, at, kind, author, text, code, images, mocks, reply_to, spot, answer, picks, unread, wish, reply, forwarded, agent, token) VALUES ($cardId, $at, $kind, $author, $text, $code, $images, $mocks, $replyTo, $spot, $answer, $picks, $unread, $wish, $reply, $forwarded, $agent, $token) RETURNING id',
+        'INSERT INTO events (card_id, at, kind, author, text, code, images, mocks, reply_to, spot, answer, picks, unread, wish, reply, forwarded, agent, token, made) VALUES ($cardId, $at, $kind, $author, $text, $code, $images, $mocks, $replyTo, $spot, $answer, $picks, $unread, $wish, $reply, $forwarded, $agent, $token, $made) RETURNING id',
       )
       .get({
         ...e,
@@ -807,6 +811,7 @@ export class Store {
         reply: e.reply ? 1 : null,
         forwarded: e.forwarded ? 1 : null,
         token: e.token ? 1 : null,
+        made: e.made ? JSON.stringify(e.made) : null,
         at,
       }) as { id: number };
     return { ...e, ...(agent ? { agent } : {}), id, at };

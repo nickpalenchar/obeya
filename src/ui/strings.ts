@@ -398,6 +398,10 @@ const de = {
     backgroundFor: (s: number) => `seit ${s < 60 ? `${s} s` : s < 3600 ? `${Math.floor(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`}`,
     question: 'Frage',
     handover: 'Übergabe',
+    // an action of Obeya's in the conversation: it made a follow-up card of this one, whose cover stands under it (or its title, where it is gone or on another canvas)
+    madeFollowUp: 'Folgekarte angelegt',
+    madeElsewhere: 'auf einem anderen Canvas',
+    madeGone: 'nicht mehr auf dem Canvas',
     // how a question in the conversation ended that the owner picked nothing for: settled by their words, asked again further down (a link there), or left open when the card went on
     settled: 'Durch deine Nachricht erledigt.',
     again: 'Weiter unten erneut gefragt.',
@@ -2428,6 +2432,9 @@ const en: Strings = {
     backgroundFor: (s: number) => `for ${s < 60 ? `${s} s` : s < 3600 ? `${Math.floor(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min`}`,
     question: 'Question',
     handover: 'Handover',
+    madeFollowUp: 'Created a follow-up card',
+    madeElsewhere: 'on another canvas',
+    madeGone: 'no longer on the canvas',
     settled: 'Settled by your message.',
     again: 'Asked again below.',
     left: 'Left open.',

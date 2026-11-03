@@ -1005,6 +1005,24 @@ span.cl-name { color: inherit; cursor: default; }
 .talk .steps .step-say, .talk .steps .step-closing { color: var(--ink); }
 .talk .steps :is(.step-say, .step-closing) :is(.p-lead, .p-list, .p-table table) { margin: 0; font-size: 12.5px; }
 .talk .steps .step-state { color: var(--idea); }
+/* an action of Obeya's (a follow-up card it made), set apart from what is said: no card stock, a dashed
+   frame, the small print's condensed face; the card's cover inside it, compact, opens the card */
+.talk .msg.action { background: var(--chip); box-shadow: none; border: 1px dashed color-mix(in srgb, var(--muted) 55%, transparent);
+  font-family: var(--cond); padding: 7px 10px 10px; align-self: flex-start; }
+.talk .msg.action.fresh { box-shadow: inset 3px 0 0 var(--waiting); }
+.talk .msg.action > .who { display: flex; align-items: center; gap: 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-size: 10.5px; }
+.talk .msg.action > .who .t { text-transform: none; letter-spacing: 0; }
+.talk .msg.action .action-mark { flex: none; }
+.msg.action .cover { position: relative; display: flex; flex-direction: column; width: 280px; max-width: 100%; margin-top: 7px; padding: 10px 12px 9px;
+  color: var(--ink); text-decoration: none; }
+.msg.action .cover .kind { font-size: 11px; }
+.msg.action .cover .ttl { font-size: 15px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.msg.action .cover .meta { font-size: 12.5px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
+.msg.action .cover .state { position: static; margin-top: 6px; font-size: 11.5px; }
+.msg.action .cover .badge { display: none; }
+.msg.action .cover.gone { cursor: default; box-shadow: none; opacity: .7; }
+.msg.action .cover.gone:hover { transform: none; }
+.msg.action .cover:is(.gone, .elsewhere)::before { background: var(--line); }
 .talk .note { font-size: 12px; color: var(--muted); font-style: italic; align-self: center; text-align: center; }
 .talk .note.ev-error { color: var(--error); font-style: normal; }
 .reauthenticate { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 10px; }

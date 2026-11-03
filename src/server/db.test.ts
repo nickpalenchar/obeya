@@ -98,6 +98,7 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     s.db.run('ALTER TABLE cards DROP COLUMN short');
     s.db.run('ALTER TABLE events DROP COLUMN token');
     s.db.run('ALTER TABLE talk DROP COLUMN then_place');
+    s.db.run('ALTER TABLE events DROP COLUMN made');
     s.db.run(`PRAGMA user_version = ${RELEASED}`);
     s.db.close();
 
@@ -145,6 +146,7 @@ test('the migration gives the cards there are codes of their own, longer where t
     s.db.run('ALTER TABLE events DROP COLUMN token');
     for (const index of ['cards_open', 'cards_plan_docs', 'cards_prototypes', 'cards_waiting', 'cards_shared']) s.db.run(`DROP INDEX ${index}`);
     s.db.run('ALTER TABLE talk DROP COLUMN then_place');
+    s.db.run('ALTER TABLE events DROP COLUMN made');
     s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.findIndex((m) => m.includes('ADD COLUMN short'))}`);
     s.db.close();
     const after = new Store(path);

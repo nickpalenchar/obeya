@@ -246,5 +246,7 @@ describe('the Koordinator across canvases', () => {
     const from = docs.board.create({ title: 'Plan the shop', x: 0, y: 0 });
     const follow = docs.run({ do: 'newCard', title: 'Payment', body: 'Payment.', start: false, canvas: 'shop', from: from.id }) as string;
     expect(shop.board.item(follow)).toMatchObject({ from: from.id, fromElsewhere: { canvas: 'docs', canvasName: 'Docs', title: 'Plan the shop' } });
+    // the card it follows up on shows it in its conversation, with the canvas it went onto
+    expect(docs.board.events(from.id).at(-1)).toMatchObject({ kind: 'state', author: 'obeya', made: { card: follow, title: 'Payment', canvas: 'shop' } });
   });
 });

@@ -42,6 +42,8 @@ const de = {
     held: (when: string) => `Das Nutzungslimit ist erreicht. Ich lese das ${when} von selbst.`,
     undone: 'Zurückgenommen.',
     created: 'Per Sprache angelegt.',
+    /** On the card a follow-up comes from, once Obeya made it. */
+    madeFollowUp: (title: string) => `Folgekarte „${title}“ angelegt.`,
     /** On the task Obeya merged others into: which, by their titles. */
     merged: (titles: string[]) => `Zusammengeführt mit ${titles.map((t) => `„${t}“`).join(', ')}.`,
   },
@@ -566,6 +568,7 @@ const en: Messages = {
     held: (when: string) => `The usage limit is reached. I will read this by myself ${when}.`,
     undone: 'Taken back.',
     created: 'Created by voice.',
+    madeFollowUp: (title: string) => `Created the follow-up card “${title}”.`,
     merged: (titles: string[]) => `Merged with ${titles.map((t) => `“${t}”`).join(', ')}.`,
   },
   failure: {

@@ -1041,6 +1041,11 @@ export interface CardEvent {
    */
   forwarded?: true;
   /**
+   * Obeya made a follow-up card of this one: the card it made, with its title then (`canvas`, when it
+   * went onto another canvas). The conversation shows it as an action, with the card's cover.
+   */
+  made?: { card: string; title: string; canvas?: string };
+  /**
    * An error of a session that signed in to Claude with a token (Obeya's `claude-token` or
    * `CLAUDE_CODE_OAUTH_TOKEN`; on another machine, without one, that machine's own login), not with
    * this machine's account: signing in again here does not renew it, a new token does.

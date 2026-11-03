@@ -7,7 +7,7 @@ import { agentListens, answering, askable, type BackgroundTask, buildableOn, typ
 import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answerText, toggle } from './answer';
-import { ApiError, api, cardAt, type Field, holdRestart, onCardEvent, onCardEventGone, onReconnect } from './api';
+import { ApiError, api, canvasOf, cardAt, type Field, holdRestart, onCardEvent, onCardEventGone, onReconnect } from './api';
 import { cardPath } from './address';
 import { Naming } from './cardLink';
 import { useCopy } from './copy';
@@ -17,7 +17,7 @@ import { know, known } from './known';
 import { Branch } from './diff';
 import { ResultFiles } from './files';
 import { DiscardChanges, FolderBox, FolderLine, useFolderDiff } from './folder';
-import { landedRef, PauseMark, PlayMark, shownTitle } from './parts';
+import { CardFace, cardClass, landedRef, PauseMark, PlayMark, shownTitle } from './parts';
 import { asksAhead, holdsNotes } from '../core/queue';
 import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitText, type Behind } from './queue';
 import { dimensions, shownTags } from '../core/page-tags';
@@ -1531,6 +1531,8 @@ function Fold({ children, lines }: { children: ReactNode; lines?: number }) {
 function Line({ turn, snoozed, explained, ...rest }: { turn: Turn; snoozed?: Item; explained?: boolean; demoQuestion?: Demo; quoted?: CardEvent; fresh?: boolean; onReply?: (e: CardEvent) => void; onDelete?: () => void }) {
   return snoozed ? (
     <SnoozeLine item={snoozed} e={turn.e} at={time(turn.e.at)} />
+  ) : turn.e.made ? (
+    <Made e={turn.e} fresh={rest.fresh} />
   ) : turn.line ? (
     <div className={`note ev-${turn.e.kind}`} title={turn.e.code ? turn.e.text : undefined}>
       {time(turn.e.at)} · <Linked text={eventText(turn.e)} />
@@ -1538,6 +1540,55 @@ function Line({ turn, snoozed, explained, ...rest }: { turn: Turn; snoozed?: Ite
     </div>
   ) : (
     <Message turn={turn} {...rest} />
+  );
+}
+
+/**
+ * An action of Obeya's in the conversation, set apart from what is said: the follow-up card it made
+ * of this one, as a compact cover that opens it by its address (in place, as a card named in a text
+ * does). A card on another canvas opens there; one gone from the canvas shows its title, not a link.
+ */
+function Made({ e, fresh }: { e: CardEvent; fresh?: boolean }) {
+  const cards = useContext(Cards);
+  const made = e.made!;
+  const card = made.canvas ? undefined : cards.items.find((i) => i.id === made.card);
+  const who = (
+    <>
+      <svg className="action-mark" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+        <rect x="1.5" y="3.5" width="10" height="9" rx="1" fill="none" stroke="currentColor" strokeWidth="1.4" />
+        <path d="M13.5 1v5M11 3.5h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      </svg>
+      {t.author.obeya} · {t.talk.madeFollowUp}
+    </>
+  );
+  const bare = (note: string) => (
+    <>
+      <div className="ttl">{plain(made.title)}</div>
+      <div className="meta">{note}</div>
+    </>
+  );
+  return (
+    <Msg by="obeya" className={['action', fresh && 'fresh'].filter(Boolean).join(' ')} who={who} at={e.at} ev={e.id}>
+      {card && !card.archivedAt ? (
+        <a
+          className={`${cardClass(card)} cover`}
+          href={cardPath(canvasOf(card.id), card)}
+          onClick={(m) => {
+            if (m.button || m.metaKey || m.ctrlKey || m.shiftKey || m.altKey) return;
+            m.preventDefault();
+            cards.open(card);
+          }}
+        >
+          <CardFace item={card} />
+        </a>
+      ) : made.canvas ? (
+        <a className="card cover elsewhere" href={cardPath(made.canvas, made.card)}>
+          {bare(t.talk.madeElsewhere)}
+        </a>
+      ) : (
+        <div className="card cover gone">{bare(t.talk.madeGone)}</div>
+      )}
+    </Msg>
   );
 }
 

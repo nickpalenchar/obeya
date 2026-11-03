@@ -472,6 +472,8 @@ describe('a review card', () => {
     expect(task).toMatchObject({ title: 'Re-login button: when and where', state: 'planned', from: id });
     expect(task.body).toBe(`The button shows on the wrong messages, and twice on a failed start. See src/ui/login.tsx.\n\nAus dem Review von PR #5: ${URL_}`);
     expect(board.events(task.id).at(-1)!.text).toBe('Als Folgeaufgabe aus dem Review von PR #5 angelegt.');
+    // the review card's conversation shows the task it made, as an action
+    expect(board.events(id).findLast((e) => e.made)).toMatchObject({ text: 'Folgekarte „Re-login button: when and where“ angelegt.', made: { card: task.id, title: 'Re-login button: when and where' } });
     // it goes to the Koordinator at once, to wait in the queue for the PR's merge
     expect(followed).toEqual([[task.id, id]]);
     // a finding settled already makes none

@@ -70,6 +70,8 @@ const toAgent = (e: CardEvent) => (e.kind === 'hint' || e.kind === 'answer' || e
 
 const place = (e: CardEvent, prev: CardEvent | undefined): 'owner' | 'agent' | 'aside' | 'line' | 'step' | 'after' => {
   if (toAgent(e)) return 'owner';
+  // a follow-up card Obeya made stands as an action, under the agent's message as Obeya's reply does
+  if (e.made) return 'aside';
   switch (e.kind) {
     case 'closing':
       return 'after';

@@ -225,6 +225,28 @@ test("Obeya's reply to what the worker passed on stands under the worker's messa
   expect(talkTurns([asked, read, looking, more, reply]).shown.map((x) => x.e)).toEqual([asked, read, looking, more, reply]);
 });
 
+test('a follow-up card Obeya made stands as an action: under the worker\'s message with Obeya\'s reply, or where it came', () => {
+  const asked = ev('hint', 'owner', 'Mach eine Folgekarte für den Excel-Export.');
+  const passing = ev('activity', 'worker', 'to_obeya');
+  const confirm = { ...ev('say', 'koordinator', 'Lege die Folgekarte „Excel-Export“ an.'), forwarded: true as const };
+  const made = { ...ev('state', 'obeya', 'Folgekarte „Excel-Export“ angelegt.'), made: { card: 'k2', title: 'Excel-Export' } };
+  const reply = ev('talk', 'worker', 'Obeya legt sie an.');
+  // made before the worker's message, it waits with Obeya's reply and goes under that message
+  expect(talkTurns([asked, passing, confirm, made], { working: true }).passedOn.map((x) => x.e)).toEqual([confirm, made]);
+  expect(talkTurns([asked, passing, confirm, made, reply], { over: true }).shown).toEqual([
+    { e: asked, steps: [] },
+    { e: reply, steps: [passing] },
+    { e: confirm, steps: [] },
+    { e: made, steps: [] },
+  ]);
+  // made after it (the undo window), it stands where it came
+  expect(talkTurns([asked, passing, confirm, reply, made], { over: true }).shown.map((x) => x.e)).toEqual([asked, reply, confirm, made]);
+  // asked on a card no agent works on: the confirmation folds away, the action stands
+  const said = ev('say', 'owner', 'Leg eine Folgekarte an.');
+  const ok = ev('say', 'koordinator', 'Lege sie an.');
+  expect(talkTurns([said, ok, made], { over: true }).shown.map((x) => x.e)).toContain(made);
+});
+
 test("what Obeya reads to look up a question on a card the worker works on folds under its answer, not into the worker's work", () => {
   const asked = ev('hint', 'owner', 'Verlinkt der Commit die Demo?');
   const passing = ev('activity', 'worker', 'to_obeya');

@@ -617,16 +617,17 @@ export class Board {
    * demo video they are about; `picks`: the options an answer picked; `answer`: a looked-up answer's
    * exchange and files; `at` keeps a message's time when a thread is copied onto its Question card;
    * `wish`: on a reply of Obeya's, what a draft for its makers starts from; `forwarded`: Obeya's
-   * reply to what the card's agent passed on; `token`: an error of a session signed in with a token.
+   * reply to what the card's agent passed on; `token`: an error of a session signed in with a token;
+   * `made`: the follow-up card Obeya made of this one.
    */
   log(
     cardId: string,
     kind: CardEvent['kind'],
     author: CardEvent['author'],
     text: string,
-    extra: Partial<Pick<CardEvent, 'code' | 'images' | 'mocks' | 'replyTo' | 'spot' | 'answer' | 'picks' | 'at' | 'wish' | 'reply' | 'forwarded' | 'agent' | 'token'>> & { unread?: boolean } = {},
+    extra: Partial<Pick<CardEvent, 'code' | 'images' | 'mocks' | 'replyTo' | 'spot' | 'answer' | 'picks' | 'at' | 'wish' | 'reply' | 'forwarded' | 'agent' | 'token' | 'made'>> & { unread?: boolean } = {},
   ): CardEvent {
-    const { code, images, mocks, replyTo, spot, answer, picks, at, unread, wish, reply, forwarded, agent, token } = extra;
+    const { code, images, mocks, replyTo, spot, answer, picks, at, unread, wish, reply, forwarded, agent, token, made } = extra;
     const e = this.store.addEvent({
       cardId,
       kind,
@@ -646,6 +647,7 @@ export class Board {
       ...(forwarded ? { forwarded } : {}),
       ...('agent' in extra ? { agent } : {}),
       ...(token ? { token } : {}),
+      ...(made ? { made } : {}),
     });
     for (const fn of this.eventListeners) fn(e);
     return e;

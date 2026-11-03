@@ -1311,6 +1311,16 @@ describe('where a spoken new card lands', () => {
     const there = titled('There');
     expect([there.x, there.y]).toEqual([-1400 - w / 2, 600 - h / 2]);
   });
+
+  test('a follow-up below the card it follows, which shows it in its conversation as an action', async () => {
+    const from = canvas.board.create({ title: 'Export', x: 2000, y: 1000 });
+    const id = (await canvas.run({ do: 'newCard', title: 'Excel export', body: 'Also as Excel.', start: false, from: from.id })) as string;
+    expect(canvas.board.item(id)).toMatchObject({ title: 'Excel export', from: from.id });
+    expect(canvas.board.events(from.id).at(-1)).toMatchObject({ kind: 'state', author: 'obeya', made: { card: id, title: 'Excel export' } });
+    // a card that follows up on none leaves no such line anywhere
+    await canvas.run({ do: 'newCard', title: 'Alone', body: '', start: false });
+    expect(canvas.board.events(from.id).filter((e) => e.made)).toHaveLength(1);
+  });
 });
 
 describe('groups by voice', () => {
