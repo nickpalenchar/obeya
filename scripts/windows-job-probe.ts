@@ -22,6 +22,8 @@ import { assign, createJob, inAnyJob, inJob, launchInJob } from './windows-job-p
 const read = (file: string) => { try { return readFileSync(file, 'utf8').trim(); } catch { return ''; } };
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const until = async (check: () => boolean, ms = 60_000) => { const end = Date.now() + ms; while (!check() && Date.now() < end) await Bun.sleep(100); return check(); };
+// a file a just-ended process held can stay locked a moment longer
+const remove = (dir: string) => { try { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 }); } catch (error) { console.error(`left ${dir}: ${error}`); } };
 const taskkill = (pid: number) => spawnSync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
 const python = process.env.OBEYA_PYTHON ?? 'python';
 
@@ -117,7 +119,7 @@ async function codexCase(kind: string) {
     driver.kill();
     canary.kill();
     await Bun.sleep(500);
-    rmSync(dir, { recursive: true, force: true });
+    remove(dir);
   }
 }
 
@@ -166,7 +168,7 @@ async function escapes() {
     for (const pid of Object.values(pids)) if (pid && alive(pid)) taskkill(pid);
     canary.kill();
     await Bun.sleep(500);
-    rmSync(dir, { recursive: true, force: true });
+    remove(dir);
   }
 }
 
