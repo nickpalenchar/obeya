@@ -1,34 +1,19 @@
-/** The fork's extensions are registered here. Core imports only this registry. */
-import type { ComponentType } from 'react';
-import type { ZodType } from 'zod';
-import type { Item } from '../core/types';
-import type { Language } from '../core/locale';
+/** The one list of enabled fork extensions. Their client and server implementations are loaded
+ * separately, so server code never enters the browser bundle. */
+export const enabled: readonly string[] = [];
 
-export interface Extension {
-  /** Routes go through the same host and access checks as core routes. */
-  routes?: Record<string, Partial<Record<'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', (request: Request) => Response | Promise<Response>>>>;
-  event?: (event: { type: 'landed' | 'workerStarted'; canvas: string; card: string }) => void | Promise<void>;
-  slots?: {
-    topBar?: ComponentType;
-    cardActions?: ComponentType<{ item: Item }>;
-    detail?: ComponentType<{ item: Item }>;
-  };
-  strings?: Record<Language, Record<string, unknown>>;
-  settings?: Record<string, ZodType>;
-}
-
-/** Add an extension here; no runtime discovery or configuration is required. */
-export const extensions: readonly Extension[] = [];
-
-/** Files that call the registry, for Lander's outgoing-diff check. */
+/** Files that call the seam, for Lander's outgoing-diff check. */
 export const SEAM_FILES = [
   'src/extensions/index.ts',
-  'src/adapters/schema.ts',
+  'src/extensions/client.ts',
+  'src/extensions/server.ts',
   'src/adapters/index.ts',
+  'src/adapters/schema.ts',
   'src/server/config.ts',
   'src/server/server.ts',
   'src/server/workers.ts',
   'src/ui/App.tsx',
+  'src/ui/config.tsx',
   'src/ui/detail.tsx',
   'src/ui/strings.ts',
 ] as const;

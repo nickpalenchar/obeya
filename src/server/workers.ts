@@ -1,7 +1,7 @@
 // Workers: one agent session per card, in a leased clone. Obeya is the mailbox between the
 // worker and the owner; every exchange lands in the card's conversation.
 
-import { extensions } from '../extensions';
+import { extensionSettings, serverExtensions as extensions } from '../extensions/server';
 import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
@@ -3218,7 +3218,7 @@ export class Workers {
   private extensionEvent(type: 'landed' | 'workerStarted', card: string) {
     for (const extension of extensions) {
       try {
-        const result = extension.event?.({ type, canvas: this.o.board.canvas.id, card });
+        const result = extension.event?.({ type, canvas: this.o.board.canvas.id, card, settings: extensionSettings(this.o.adapter) });
         if (result) void result.catch((error) => console.error('Extension event failed:', error));
       } catch (error) { console.error('Extension event failed:', error); }
     }

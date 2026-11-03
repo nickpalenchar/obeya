@@ -2,7 +2,7 @@
 // effect, set once before the first render (`setLanguage`); choosing another language loads the
 // page again. Dates and numbers follow the language, in the browser's own variant of it.
 
-import { extensions } from '../extensions';
+import { clientExtensions as extensions } from '../extensions/client';
 import { ApiError } from './api';
 import type { DiffFile } from '../core/diff';
 import { type Language, languageOf } from '../core/locale';

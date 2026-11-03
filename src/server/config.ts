@@ -1,4 +1,4 @@
-import { extensions } from '../extensions';
+import { serverExtensions as extensions } from '../extensions/server';
 // Obeya's configuration: the canvases it serves, saved in `canvases.json` under its home. The owner
 // reads and edits it in its sheet, the Koordinator on their word. A saved change applies while
 // Obeya runs (`Canvases.apply`, see Live configuration in

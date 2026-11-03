@@ -1,4 +1,4 @@
-import { extensions } from '../extensions';
+import { clientExtensions as extensions } from '../extensions/client';
 // The canvas: camera, drag, unfold-in-place and the plan sheet.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';

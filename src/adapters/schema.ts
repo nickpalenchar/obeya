@@ -5,7 +5,7 @@
 // of the settings work.
 
 import { z } from 'zod';
-import { extensions } from '../extensions';
+import { serverExtensions as extensions } from '../extensions/server';
 import { LANGUAGES } from '../core/locale';
 import type { SharedSettings } from '../core/types';
 

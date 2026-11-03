@@ -1,7 +1,7 @@
 // HTTP and WebSocket for the UI: one API per canvas under /api/c/<canvas>/.
 
 import type { ServerWebSocket } from 'bun';
-import { extensions } from '../extensions';
+import { extensionSettings, serverExtensions as extensions } from '../extensions/server';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -425,6 +425,17 @@ export function serve(
     return { ...h, ...(h.token ? { undoMs: c.commander.delayMs } : {}) };
   };
 
+  const extensionRoutes: Record<string, Record<string, (req: Request) => Response | Promise<Response>>> = {};
+  const extensionContext = {
+    settings: (canvas: string, repo: string) => {
+      const found = canvases.all().find((c) => c.id === canvas)?.repos.find((r) => r.ref.id === repo);
+      return found ? extensionSettings(found.adapter) : undefined;
+    },
+  };
+  for (const extension of extensions) for (const [path, methods] of Object.entries(extension.routes ?? {})) {
+    if (extensionRoutes[path]) throw new Error(`duplicate extension route: ${path}`);
+    extensionRoutes[path] = Object.fromEntries(Object.entries(methods).map(([method, handler]) => [method, (req: Request) => handler(req, extensionContext)]));
+  }
   const options = {
     port,
     hostname: '127.0.0.1',
@@ -432,7 +443,7 @@ export function serve(
     idleTimeout: 120,
     development: development && { hmr: true, console: true },
     routes: guarded({
-      ...Object.assign({}, ...extensions.map((e) => e.routes ?? {})),
+      ...extensionRoutes,
       '/': index,
       // a canvas, and a card open on it (`/c/<canvas>/card/<code>`): the page reads the address
       '/c/*': index,

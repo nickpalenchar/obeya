@@ -1,4 +1,4 @@
-import { extensions } from '../extensions';
+import { serverExtensions as extensions } from '../extensions/server';
 import { defaultBranchCommit } from '../server/read-tree';
 import { onGitHub } from '../server/repo';
 import { type ClaudeFile, isNested, SHARED_FIELDS, type NESTED_SETTINGS, type NestedSetting, type RepoSettings, type RepoValues, type SharedSettings } from '../core/types';
@@ -62,7 +62,12 @@ export function repoValues(repo: RepoInfo, clones = false, shared: SharedSetting
     const v = (shared[k] as Record<string, unknown> | undefined)?.[f];
     return v !== undefined ? { value: v as T, source: 'repository' as const } : { value: none, source: 'default' as const };
   };
+  const extra = Object.fromEntries(extensions.flatMap((e) => Object.keys(e.settings ?? {})).flatMap((key) => {
+    const v = (shared as Record<string, unknown>)[key];
+    return v === undefined ? [] : [[key, { value: v, source: 'repository' as const }]];
+  }));
   return {
+    ...extra,
     branch: { value: detected, source: 'detected' },
     land: value(a.land, 'land'),
     direct: value(!!a.direct, 'direct'),

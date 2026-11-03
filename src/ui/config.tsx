@@ -2331,7 +2331,7 @@ function headerLines(text: string): Record<string, string> | undefined {
 }
 
 /** The repository's `.obeya/settings.json` as the dialog shows it: what the file holds now (`values` from the repository) with this machine's settings in front, but the main branch. */
-function sharedPreview(repo: RepoConfig, values: RepoValues): Record<string, unknown> {
+export function sharedPreview(repo: RepoConfig, values: RepoValues): Record<string, unknown> {
   const file: Record<string, unknown> = {};
   for (const k of SHARED_FIELDS) {
     if (isNested(k)) {
@@ -2339,9 +2339,11 @@ function sharedPreview(repo: RepoConfig, values: RepoValues): Record<string, unk
       if (fields.length) file[k] = Object.fromEntries(fields.map(([f, v]) => [f, v.value]));
     } else if (values[k].source === 'repository') file[k] = values[k].value;
   }
+  const extras = Object.entries(values as unknown as Record<string, SettingValue<unknown>>).filter(([k, v]) => k !== 'branch' && !(SHARED_FIELDS as readonly string[]).includes(k) && v?.source === 'repository');
+  for (const [key, value] of extras) file[key] = value.value;
   const { branch: _, ...mine } = repo.settings ?? {};
   const merged = layerSettings<Record<string, unknown>>(file, mine as Record<string, unknown>) ?? {};
-  return Object.fromEntries(SHARED_FIELDS.filter((k) => merged[k] !== undefined).map((k) => [k, merged[k]]));
+  return Object.fromEntries(Object.entries(merged).filter(([, v]) => v !== undefined));
 }
 
 /**
