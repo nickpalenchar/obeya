@@ -214,6 +214,16 @@ test("a call that needs permission goes to the owner with Claude Code's reason; 
   expect(asked).toHaveLength(1);
 });
 
+test("the owner is asked with Claude Code's suggestions, and the session takes the permission updates an answer brings", async () => {
+  const signal = new AbortController().signal;
+  const asked: unknown[] = [];
+  const suggestions = [{ type: 'addRules', behavior: 'allow', destination: 'localSettings', rules: [{ toolName: 'Bash', ruleContent: 'bun run:*' }] }];
+  const permissions = [{ type: 'addRules' as const, rules: [{ toolName: 'Bash', ruleContent: 'bun run:*' }], behavior: 'allow' as const, destination: 'session' as const }];
+  const ask = async (r: unknown) => (asked.push(r), { allow: true as const, permissions });
+  expect(await askOwner(ask, 'Bash', { command: 'bun run lint' }, { signal, suggestions })).toEqual({ behavior: 'allow', updatedInput: { command: 'bun run lint' }, updatedPermissions: permissions });
+  expect(asked).toEqual([{ name: 'Bash', input: { command: 'bun run lint' }, suggestions }]);
+});
+
 test('a message sent while a turn ends is still to come; one the turn took mid-way is not', async () => {
   const inbox = new Inbox();
   const sent = inbox[Symbol.asyncIterator]();
@@ -302,37 +312,6 @@ test("a Codex agent in a repository whose Claude Code configuration is held star
   expect(fake.last.spec.claudeHeld).toBeUndefined();
 });
 
-test("allowed for good, Claude's session takes the rules of its suggestions at once; the owner is offered them", async () => {
-  const signal = new AbortController().signal;
-  const asked: unknown[] = [];
-  const suggestions = [{ type: 'addRules', behavior: 'allow', destination: 'localSettings', rules: [{ toolName: 'Bash', ruleContent: 'bun run:*' }] }];
-  const always = async (r: unknown) => (asked.push(r), { allow: true as const, always: true as const });
-  expect(await askOwner(always, 'Bash', { command: 'bun run lint' }, { signal, suggestions })).toEqual({
-    behavior: 'allow',
-    updatedInput: { command: 'bun run lint' },
-    updatedPermissions: [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'bun run:*' }], behavior: 'allow', destination: 'session' }],
-  });
-  expect(asked).toEqual([{ name: 'Bash', input: { command: 'bun run lint' }, always: ['Bash(bun run:*)'] }]);
-  // allowed once, nothing for the session
-  expect(await askOwner(async () => ({ allow: true as const }), 'Bash', { command: 'bun run lint' }, { signal, suggestions })).toEqual({ behavior: 'allow', updatedInput: { command: 'bun run lint' } });
-});
-
-test('a Codex command no rule covers is asked with the rule that would, also while the list is held; none for what no rule could cover', async () => {
-  const seen: { spec: Parameters<FakeRuntime['start']>[0] }[] = [];
-  const base = { start: (spec: Parameters<FakeRuntime['start']>[0]) => { seen.push({ spec }); return undefined as never; } };
-  const asked: unknown[] = [];
-  const wrapped = withTrustedAllow(base as never, () => ['bun test *']);
-  const ask = async (over: Record<string, unknown>, input: Record<string, unknown>) => {
-    wrapped.start({ cwd: '/repo', system: '', tools: [], onEvent: () => {}, setting: { harness: 'codex' }, askOwner: async (r: unknown) => (asked.push(r), { allow: false as const, message: 'no' }), ...over } as never, '', []);
-    return seen.at(-1)!.spec.askOwner!({ name: 'Bash', input }, new AbortController().signal);
-  };
-  await ask({}, { command: "/bin/zsh -lc 'bun run lint'", proposedExecpolicyAmendment: ['bun', 'run', 'lint'] });
-  await ask({ claudeHeld: true }, { command: "/bin/zsh -lc 'bun test x'" });
-  await ask({}, { command: "/bin/zsh -lc 'ls | wc -l'" });
-  await ask({}, { command: "/bin/zsh -lc 'bun run lint'", grantRoot: '/' });
-  expect(asked.map((r) => (r as { always?: string[] }).always)).toEqual([['Bash(bun run lint *)'], ['Bash(bun test *)'], undefined, undefined]);
-});
-
 test('a Codex agent is not asked for a command the owner-confirmed allow list covers, nor for its network, and only for that', async () => {
   const seen: { spec: Parameters<FakeRuntime['start']>[0] }[] = [];
   const base = { start: (spec: Parameters<FakeRuntime['start']>[0]) => { seen.push({ spec }); return undefined as never; } };
@@ -374,11 +353,11 @@ test('a Codex agent is not asked for a command the owner-confirmed allow list co
     expect((await answer({ dirs: [home] }, 'Bash', { command: nvm })).allow).toBe(false);
   } finally { rmSync(home, { recursive: true, force: true }); }
   expect(asked).toHaveLength(12);
-  const untrusted = spec({ untrusted: true });
-  wrapped.start(untrusted, '', []);
-  expect(seen.at(-1)!.spec).toBe(untrusted);
-  // held, the list covers nothing
-  expect((await answer({ claudeHeld: true }, 'Bash', { command: "/bin/zsh -lc 'bun run typecheck'" })).allow).toBe(false);
+  for (const over of [{ untrusted: true }, { claudeHeld: true }]) {
+    const held = spec(over);
+    wrapped.start(held, '', []);
+    expect(seen.at(-1)!.spec).toBe(held);
+  }
   const claude = spec({ setting: { harness: 'claude' } });
   wrapped.start(claude, '', []);
   expect(seen.at(-1)!.spec).toBe(claude);

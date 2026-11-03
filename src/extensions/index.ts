@@ -1,15 +1,17 @@
 /** The one list of enabled fork extensions. Their client and server implementations are loaded
  * separately, so server code never enters the browser bundle. */
-export const enabled: readonly string[] = [];
+export const enabled: readonly string[] = ['always-allow'];
 
-/** Files that call the seam, for Lander's outgoing-diff check. */
+/** Files that call the seam or carry its plumbing (canvas.ts, runtime.ts, config.tsx), for Lander's outgoing-diff check. */
 export const SEAM_FILES = [
   'src/extensions/index.ts',
   'src/extensions/client.ts',
   'src/extensions/server.ts',
   'src/adapters/index.ts',
   'src/adapters/schema.ts',
+  'src/server/canvas.ts',
   'src/server/config.ts',
+  'src/server/runtime.ts',
   'src/server/server.ts',
   'src/server/workers.ts',
   'src/ui/App.tsx',

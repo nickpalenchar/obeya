@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
-import { claudeAlwaysRules, codexAlwaysRules, codexRulesAgain, ruleValue, shownRule, withAllowed } from './always-allow';
-import { codexRules, plainCommands } from './allow-rules';
+import { claudeAlwaysRules, codexAlwaysRules, codexRulesAgain, ruleValue, shownRule, withAllowed } from './rules';
+import { codexRules, plainCommands } from '../../server/allow-rules';
 
 test('the rules are added to the allow list, what else the file holds kept; none new, nothing to write', () => {
   const before = JSON.stringify({ model: 'opus', permissions: { allow: ['Bash(bun test *)'], deny: ['Bash(rm *)'] } });

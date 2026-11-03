@@ -1,8 +1,8 @@
 // Workers: one agent session per card, in a leased clone. Obeya is the mailbox between the
 // worker and the owner; every exchange lands in the card's conversation.
 
-import { extensionSettings, serverExtensions as extensions } from '../extensions/server';
-import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk';
+import { extensionSettings, type PermissionContext, type PermissionOption, serverExtensions as extensions } from '../extensions/server';
+import type { PermissionMode, PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
@@ -38,7 +38,6 @@ import { defaultBranchCommit } from './read-tree';
 import type { CardRow } from './db';
 import { type Forge, parsePrUrl, sameRepo } from './forge';
 import { clip, messageOf } from '../core/text';
-import { shownRule } from './always-allow';
 import { holdsNotes } from '../core/queue';
 
 export interface WorkerOptions {
@@ -117,11 +116,11 @@ export interface WorkerOptions {
   /** The `Bash` rules of the allow list the owner confirmed for the repository `cwd` lies in: what a Codex worker's `obeya_run` runs without asking. None when left out. */
   allowRules?: (cwd: string) => string[];
   /**
-   * „Immer erlauben“: adds `rules` to the allow list of the repository `cwd` lies in, for everyone,
-   * as trusted; settles with the branch it was committed on (`on`; none in a folder without git),
-   * or null where the list had them already. Without it, permission questions offer no such option.
+   * Makes a change to the repository `cwd` lies in as its owner (`PermissionPicked.asOwner` of an
+   * extension): the agents' configuration trusted before stays trusted with it. Without it,
+   * extensions change no repository.
    */
-  allowAlways?: (cwd: string, rules: string[]) => Promise<{ on?: string } | null>;
+  asOwner?: <T>(cwd: string, change: (repo: { path: string; folder: boolean }) => Promise<T>) => Promise<T>;
   /** The agent harnesses that can work on this machine (Claude Code; Codex where it is signed in), for the allow list a setup card drafts; Claude Code alone when left out. */
   harnesses?: () => string[];
   /** The directory demos go into on this machine (the demo settings'); `~/demos` when left out. */
@@ -411,8 +410,8 @@ interface Live {
 interface AskedPermission {
   name: string;
   input: Record<string, unknown>;
-  /** The rules „Immer erlauben“ adds to the repository's allow list; none where the question has no such option. */
-  always?: string[];
+  /** The options extensions added to the question: which extension (its place in the registry), its words and its data. */
+  extra?: { extension: number; label: Record<Language, string>; data?: unknown }[];
 }
 
 /** A restart that waits for workers to finish their turns: why, and when it goes ahead at the latest. */
@@ -1229,17 +1228,17 @@ export class Workers {
   private answerPermission(card: Item, asked: AskedPermission, text: string, images: string[], spoken: boolean, replyTo?: number) {
     const [first = '', ...rest] = text.split('\n\n');
     const is = (option: (t: Messages) => string) => LANGUAGES.some((l) => option(MESSAGES[l]).toLowerCase() === first.trim().toLowerCase());
-    const always = !!asked.always?.length && is((t) => t.worker.allowAlways(asked.always!.map(shownRule)));
-    const allowed = always || is((t) => t.worker.allow);
+    const extra = asked.extra?.find((o) => LANGUAGES.some((l) => o.label[l]?.toLowerCase() === first.trim().toLowerCase()));
+    const allowed = !!extra || is((t) => t.worker.allow);
     const words = (allowed || is((t) => t.worker.deny) ? rest.join('\n\n') : text).trim();
     this.backToWork(card.id);
     this.o.board.log(card.id, 'answer', 'owner', text, { images, replyTo });
-    if (always) this.allowForGood(card.id, asked.always!);
+    const permissions = extra ? this.permissionPicked(card.id, extra) : undefined;
     if (words) this.o.onOwnerInput?.(card, 'answer', words, { question: card.question?.text ?? '' });
     const said = words ? `${spoken ? ` (${SPOKEN})` : ''}:\n\n${this.words(card.id, words, images, replyTo)}` : images.length ? `, with screenshots:${imageNote(images)}` : '.';
     const live = this.live.get(card.id);
     if (live?.permission) {
-      live.permission(allowed ? { allow: true, ...(always ? { always: true as const } : {}) } : { allow: false, message: `Not run: the owner did not allow it${said}` });
+      live.permission(allowed ? { allow: true, ...(permissions?.length ? { permissions } : {}) } : { allow: false, message: `Not run: the owner did not allow it${said}` });
       // the call's result can carry no words, the next message can
       if (allowed && (words || images.length)) live.session.send(`The owner allowed it${said}`, images);
       else if (images.length) live.session.send('The screenshots of the owner’s answer.', images);
@@ -1256,23 +1255,6 @@ export class Workers {
       images,
       true,
     );
-  }
-
-  /**
-   * „Immer erlauben“: the rules go into the allow list of the card's repository (`allowAlways`),
-   * and the card's conversation says where they went, or why they did not.
-   */
-  private allowForGood(cardId: string, rules: string[]) {
-    const workspace = this.o.board.row(cardId).workspace;
-    const t = this.o.board.t;
-    const shown = rules.map(shownRule);
-    if (!workspace || !this.o.allowAlways) return;
-    void Promise.resolve()
-      .then(() => this.o.allowAlways!(workspace, rules))
-      .then(
-        (done) => this.o.board.log(cardId, 'activity', 'obeya', done ? t.worker.allowedAlways(shown, done.on) : t.worker.alreadyAllowed(shown)),
-        (e: unknown) => this.o.board.log(cardId, 'activity', 'obeya', t.worker.allowAlwaysFailed(shown, messageOf(e))),
-      );
   }
 
   /**
@@ -3215,6 +3197,49 @@ export class Workers {
     return language ? { ...this.o.env, DEMO_LANGUAGE: language } : this.o.env;
   }
 
+  /** Where a permission question of the card's worker comes from, for the extensions' options on it. */
+  private permissionContext(cardId: string): PermissionContext | null {
+    const row = this.o.board.row(cardId);
+    if (!row.workspace) return null;
+    let harness: PermissionContext['harness'] = 'claude';
+    try {
+      if ((row.agent_setting ? (JSON.parse(row.agent_setting) as AgentSetting) : null)?.harness === 'codex') harness = 'codex';
+    } catch {}
+    return { harness, cwd: row.workspace, landsOnMain: !!this.folder || this.o.adapter.land === 'main', language: this.o.board.language(), settings: extensionSettings(this.o.adapter) };
+  }
+
+  /** The options extensions add to a permission question, each with the extension's place in the registry. */
+  private permissionOptions(cardId: string, request: PermissionRequest): (PermissionOption & { extension: number })[] {
+    const context = this.permissionContext(cardId);
+    if (!context) return [];
+    return extensions.flatMap((extension, i) => {
+      try {
+        return (extension.permission?.options(request, context) ?? []).map((o) => ({ ...o, extension: i }));
+      } catch (error) {
+        console.error('Extension permission options failed:', error);
+        return [];
+      }
+    });
+  }
+
+  /** The owner picked an extension's option of a permission question: the extension acts on it; the permission updates for the asking session, if any. */
+  private permissionPicked(cardId: string, picked: NonNullable<AskedPermission['extra']>[number]): PermissionUpdate[] | undefined {
+    const extension = extensions[picked.extension]?.permission;
+    const context = this.permissionContext(cardId);
+    if (!extension || !context) return undefined;
+    const asOwner = this.o.asOwner;
+    try {
+      return extension.picked(picked.data, {
+        ...context,
+        log: (text) => this.o.board.log(cardId, 'activity', 'obeya', text),
+        asOwner: (change) => (asOwner ? asOwner(context.cwd, change) : Promise.reject(new Error('Obeya changes no repository here'))),
+      })?.permissions;
+    } catch (error) {
+      console.error('Extension permission choice failed:', error);
+      return undefined;
+    }
+  }
+
   private extensionEvent(type: 'landed' | 'workerStarted', card: string) {
     for (const extension of extensions) {
       try {
@@ -4776,15 +4801,17 @@ export class Workers {
   }
 
   private askNow(cardId: string, live: Live, request: PermissionRequest, signal: AbortSignal): Promise<PermissionAnswer> {
-    // where work lands through pull requests, nothing goes onto main by itself
-    const always = this.o.allowAlways && (this.folder || this.o.adapter.land === 'main') && request.always?.length ? request.always : undefined;
-    const asked: AskedPermission = { name: request.name, input: request.input, ...(always ? { always } : {}) };
+    const asked: AskedPermission = { name: request.name, input: request.input };
     if (this.granted.get(cardId)?.delete(permissionKey(asked))) return Promise.resolve({ allow: true });
     if (this.live.get(cardId) !== live || signal.aborted) return Promise.resolve({ allow: false, message: 'This session has ended. Stop working and end your turn.' });
     const t = this.o.board.t;
+    const language = this.o.board.language();
+    const extra = this.permissionOptions(cardId, request);
+    if (extra.length) asked.extra = extra.map(({ extension, label, data }) => ({ extension, label, ...(data !== undefined ? { data } : {}) }));
+    const notes = extra.flatMap((o) => (o.note?.[language] ? [o.note[language]] : []));
     const q: Question = {
-      text: t.worker.permission(permissionWhat(request.name, request.input, t), request.reason && clip(request.reason, 600), always && t.worker.allowAlwaysWhere),
-      options: [t.worker.allow, ...(always ? [t.worker.allowAlways(always.map(shownRule))] : []), t.worker.deny],
+      text: [t.worker.permission(permissionWhat(request.name, request.input, t), request.reason && clip(request.reason, 600)), ...notes].join('\n\n'),
+      options: [t.worker.allow, ...extra.map((o) => o.label[language]), t.worker.deny],
     };
     this.o.board.log(cardId, 'question', 'worker', formatQuestion(q, this.o.board.language()));
     this.wokenForOwner(cardId);

@@ -8,6 +8,7 @@ import { serverExtensions, type ServerExtension } from '../server';
 import { clientExtensions, type ClientExtension } from '../client';
 
 const events: { type: string; canvas: string; card: string }[] = [];
+const picked: unknown[] = [];
 (serverExtensions as ServerExtension[]).splice(0);
 (clientExtensions as ClientExtension[]).splice(0);
 (clientExtensions as ClientExtension[]).push({
@@ -17,6 +18,14 @@ const events: { type: string; canvas: string; card: string }[] = [];
   settings: { example: z.string().optional() },
   routes: { '/api/extension-example': { GET: (_request, context) => Response.json({ settings: context.settings('canvas', 'repo') }) } },
   event: (event) => { events.push(event); },
+  permission: {
+    options: (request, context) => request.name === 'Bash' && context.landsOnMain ? [{ label: { en: 'Example', de: 'Beispiel' }, note: { en: 'Example note', de: 'Beispielnotiz' }, data: { rule: request.input.command } }] : [],
+    picked: (data, context) => {
+      picked.push([data, context.harness, context.settings]);
+      context.log('Example picked');
+      return { permissions: [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }] };
+    },
+  },
 });
 const { checkShared } = await import('../../adapters/schema');
 const { generic } = await import('../../adapters/generic');
@@ -62,6 +71,16 @@ try {
   const card = fixture.manual();
   await fixture.workers.start(card.id);
   assert.deepEqual(events, [{ type: 'workerStarted', canvas: 'c', card: card.id, settings: { example: 'worker value' } }]);
+  // a permission question carries the extension's option; picked, the call runs with its updates
+  const permitted = fixture.runtime.last.spec.askOwner!({ name: 'Bash', input: { command: 'make' } }, new AbortController().signal);
+  await fixture.flush();
+  const question = fixture.board.item(card.id)!.question!;
+  assert.deepEqual(question.options, ['Erlauben', 'Beispiel', 'Ablehnen']);
+  assert.ok(question.text.endsWith('\n\nBeispielnotiz'));
+  fixture.workers.answer(card.id, 'Example');
+  assert.deepEqual(await permitted, { allow: true, permissions: [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }] });
+  assert.deepEqual(picked, [[{ rule: 'make' }, 'claude', { example: 'worker value' }]]);
+  assert.equal(fixture.board.events(card.id).at(-1)!.text, 'Example picked');
   const workspace = fixture.board.row(card.id).workspace!;
   writeFileSync(join(workspace, 'example.txt'), 'example');
   git(workspace, 'add', 'example.txt');

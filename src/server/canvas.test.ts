@@ -9,7 +9,6 @@ import { Canvases, CanvasRuntime, startCanvases } from './canvas';
 import { Store } from './db';
 import { readShared } from '../adapters';
 import { commandsOf } from './trust';
-import { codexRules } from './allow-rules';
 import { artifact, FakeRuntime, gitRepo, heard, identify, noForge, until } from './testing';
 import { git, HERE } from './workspaces';
 import { type SkillPlace, Skills } from './skills';
@@ -730,45 +729,6 @@ describe("a repository's settings for everyone (.obeya/settings.json)", () => {
     expect(spec).toMatchObject({ claudeHeld: true, setting: { harness: 'codex' } });
     expect(spec.untrusted).toBeUndefined();
     expect(spec.system).not.toContain("The repository's CLAUDE.md:");
-  });
-
-  test('„Immer erlauben“ commits the rule into the allow list on main, trusted, and a Codex worker goes by it at once', async () => {
-    fresh();
-    const allow = { permissions: { allow: ['Bash(bun test *)'] } };
-    const shop = gitRepo(join(dir, 'shop'), {
-      'README.md': 'Shop\n',
-      '.obeya/settings.json': JSON.stringify({ land: 'main' }),
-      '.claude/settings.json': `${JSON.stringify(allow, null, 2)}\n`,
-      '.codex/rules/obeya.rules': codexRules(JSON.stringify(allow), '`bun scripts/codex-rules.ts`').file,
-    });
-    const store = new Store(':memory:');
-    store.trustCommands(shop, commandsOf(readShared(shop)));
-    const workers = new FakeRuntime();
-    canvas.shutdown();
-    canvas = new CanvasRuntime({ repos: [{ path: shop }] }, { store, home: dir, runtime, workerRuntime: workers, forge: noForge, agents: (role) => ({ ...AGENT_DEFAULTS[role], ...(role === 'worker' ? { harness: 'codex' as const } : {}) }) });
-    const card = canvas.board.create({ title: 'Karte', x: 0, y: 0 });
-    const r = canvas.repos[0]!;
-    await r.workers.start(card.id);
-    await until(() => workers.sessions.length > 0);
-    const lint = { command: "/bin/zsh -lc 'bun run lint --fix'" };
-    const answer = workers.last.permission('Bash', lint);
-    await until(() => canvas.board.item(card.id)!.state === 'waiting');
-    const q = canvas.board.item(card.id)!.question!;
-    expect(q.options).toEqual(['Erlauben', 'Immer erlauben: bun run *', 'Ablehnen']);
-    expect(q.text).toContain('.claude/settings.json auf main');
-    r.workers.answer(card.id, 'Immer erlauben: bun run *');
-    expect(await answer).toEqual({ allow: true, always: true });
-    await until(() => canvas.board.events(card.id).some((e) => e.text.startsWith('In die Erlaubnisliste')));
-    expect(canvas.board.events(card.id).at(-1)!.text).toBe('In die Erlaubnisliste aufgenommen und auf main committet: bun run *');
-    // on main for everyone, the Codex rules made again from the list, and trusted as the owner's
-    const main = readShared(shop);
-    expect(JSON.parse(main.claude!['.claude/settings.json']!.text)).toEqual({ permissions: { allow: ['Bash(bun test *)', 'Bash(bun run *)'] } });
-    expect(main.codex!['.codex/rules/obeya.rules']!.text).toContain('prefix_rule(pattern=["bun","run"], decision="allow")');
-    expect(git(shop, 'log', '-1', '--format=%s')).toBe('Allow for agents: Bash(bun run *)');
-    expect(git(shop, 'status', '--porcelain')).toBe('');
-    expect(store.trustedCommands(shop)).toEqual(commandsOf(main));
-    // the next such command is not asked
-    expect(await workers.last.permission('Bash', { command: "/bin/zsh -lc 'bun run build'" })).toEqual({ allow: true });
   });
 
   test("a repository's agents go by its own Claude Code configuration, not by the home repository's whose workspaces hold its own", async () => {

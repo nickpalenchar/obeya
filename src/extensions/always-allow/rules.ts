@@ -1,9 +1,9 @@
-// „Immer erlauben“ (design: Refused and confirmed tool calls): the rule the owner allowed for good
-// goes into the repository's allow list, the `permissions.allow` of its `.claude/settings.json`
-// that Claude Code and Obeya's Codex workers both read, and into `.codex/rules/obeya.rules` where
-// the repository has that generated from the list.
+// The rules „Immer erlauben“ (Always allow) offers and how they go into the repository's allow list,
+// the `permissions.allow` of its `.claude/settings.json` that Claude Code and Obeya's Codex workers
+// both read, and into `.codex/rules/obeya.rules` where the repository has that generated from the
+// list.
 
-import { codexRules } from './allow-rules';
+import { codexRules } from '../../server/allow-rules';
 
 export const ALLOW_FILE = '.claude/settings.json';
 export const CODEX_RULES_FILE = '.codex/rules/obeya.rules';
@@ -87,4 +87,20 @@ export function claudeAlwaysRules(suggestions: unknown): string[] {
 export function ruleValue(rule: string): { toolName: string; ruleContent?: string } {
   const m = /^([^()]+)\((.*)\)$/s.exec(rule);
   return m ? { toolName: m[1]!, ruleContent: m[2]! } : { toolName: rule };
+}
+
+/**
+ * Whether a Codex approval asks for no more than its command and, at most, network for it, as the
+ * core's `networkOnly` (runtime.ts) has it: a path grant or anything else rides on no rule.
+ */
+export function networkOnly(input: Record<string, unknown>): boolean {
+  const extra = input.additionalPermissions;
+  if (extra != null) {
+    if (typeof extra !== 'object' || Array.isArray(extra)) return false;
+    const { network, ...rest } = extra as Record<string, unknown>;
+    if (Object.values(rest).some((v) => v != null)) return false;
+    if (network != null && network !== true && !(typeof network === 'object' && Object.keys(network).length === 1 && (network as Record<string, unknown>).enabled === true)) return false;
+  }
+  const context = input.networkApprovalContext;
+  return context == null || (typeof context === 'object' && typeof (context as Record<string, unknown>).host === 'string');
 }
