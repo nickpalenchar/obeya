@@ -2275,7 +2275,7 @@ button.link:hover { text-decoration: underline; }
    the moving line then runs thin under that line instead of beside it */
 .card .state .doing { font-style: italic; font-weight: 500; color: var(--muted); }
 .card .state .doing.demo { color: var(--approved); font-weight: 600; }
-.card .state.doing-now::after { position: absolute; left: 0; right: 0; bottom: -5px; width: auto; height: 1px; }
-.ph-card .state.doing-now { position: relative; left: 0; right: 0; padding-bottom: 6px; }
+.card .state.doing-now::after { position: absolute; left: 0; bottom: -5px; height: 1px; }
+.ph-card .state.doing-now { position: relative; left: 0; padding-bottom: 6px; }
 .ph-card .state .doing { white-space: pre; }
 .ph-card .state.doing-now::after { margin-left: 0; bottom: 0; }
