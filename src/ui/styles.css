@@ -1742,8 +1742,8 @@ button.link:hover { text-decoration: underline; }
 .fold-body { padding: 0 0 10px 18px; }
 .fold-body > .hint:first-child { margin-top: 0; }
 
-/* confirmations, and each command while the Koordinator reads it, stacked above the microphone, newest last */
-#acks { position: fixed; left: calc(50% + (var(--left, 0px) - var(--side, 0px)) / 2); transition: left .45s cubic-bezier(.3,.9,.3,1); bottom: 128px; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+/* confirmations, and each command while the Koordinator reads it, stacked in the bottom right corner, newest last */
+#acks { position: fixed; right: calc(var(--side, 0px) + 14px); transition: right .45s cubic-bezier(.3,.9,.3,1); bottom: 14px; z-index: 60; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: none; }
 .ack { background: var(--ink); color: var(--bg); border-radius: 3px; padding: 12px 16px; max-width: min(560px, calc(100vw - var(--left, 0px) - var(--side, 0px) - 32px)); font-size: 14px;
   display: flex; gap: 14px; align-items: center; pointer-events: auto; animation: ack-in .25s; }
 @keyframes ack-in { from { opacity: 0; transform: translateY(12px); } }
@@ -2135,6 +2135,7 @@ button.link:hover { text-decoration: underline; }
 /* no pointer hovers on a phone: the reply button shows on every message */
 .ph-view .talk .msg > .msg-reply { opacity: .75; }
 .ph-view ~ #ptt, .ph-view ~ #acks { left: 50%; }
+.ph-view ~ #acks { right: auto; transform: translateX(-50%); align-items: center; transition: none; }
 .ph-view ~ #ptt { bottom: calc(18px + env(safe-area-inset-bottom)); }
 .ph-view ~ #acks { bottom: calc(91px + env(safe-area-inset-bottom)); width: calc(100vw - 24px); }
 .ph-view ~ #acks .ack { max-width: 100%; }
