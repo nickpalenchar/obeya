@@ -252,6 +252,9 @@ test('a usage limit lifts when the used-up window Codex reported resets, else at
   expect(said('9:05 AM')).toBe(new Date(2026, 10, 4, 9, 5).getTime());
   expect(said('Nov 5th, 2026 10:38 PM')).toBe(new Date(2026, 10, 5, 22, 38).getTime());
   expect(codexLimit('You’ve hit your usage limit.', [], now)).toEqual({});
+  // a limit reported reached whose update lags the refusal
+  expect(codexLimit('limit', [{ limitId: 'codex', rateLimitReachedType: 'rateLimitReached', primary: { usedPercent: 99, resetsAt: now / 1000 + 300 } }], now)).toEqual({ resetsAt: now + 300_000 });
+  expect(codexLimit('limit', [{ limitId: 'codex', rateLimitReachedType: null, primary: { usedPercent: 99, resetsAt: now / 1000 + 300 } }], now)).toEqual({});
   // a reset already past is no answer
   expect(codexLimit('limit', [{ limitId: 'codex', primary: { usedPercent: 100, resetsAt: now / 1000 - 5 } }], now)).toEqual({});
 });

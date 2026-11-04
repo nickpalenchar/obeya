@@ -25,14 +25,15 @@ const turnEvent = z.object({ turn: z.object({ id: z.string(), status: z.string()
 const toolCall = z.object({ threadId: z.string(), turnId: z.string(), callId: z.string(), namespace: z.string().nullable(), tool: z.string(), arguments: z.unknown() });
 const jsonObject = z.record(z.string(), z.unknown());
 const rateLimitWindow = z.object({ usedPercent: z.number(), resetsAt: z.number().nullable().optional() }).nullable().optional();
-const rateLimitSnapshot = z.object({ limitId: z.string().nullable().optional(), primary: rateLimitWindow, secondary: rateLimitWindow });
+const rateLimitSnapshot = z.object({ limitId: z.string().nullable().optional(), primary: rateLimitWindow, secondary: rateLimitWindow, rateLimitReachedType: z.unknown().optional() });
 const rateLimitsUpdate = z.object({ rateLimits: rateLimitSnapshot });
 
 /**
  * When the usage limit that failed a Codex turn lifts (milliseconds), as far as Codex says: the last
  * reset of the windows its rate-limit updates report used up, else the time its message names
  * („… or try again at 10:38 PM.“, „… try again at Nov 5th, 2026 10:38 PM.“, the machine's own
- * clock), else nothing, and the worker tries again later.
+ * clock), else the last reset of a limit it reports reached (an update that lags the refusal says
+ * 99 % used), else nothing, and the worker tries again later.
  */
 export function codexLimit(message: string, snapshots: z.infer<typeof rateLimitSnapshot>[], now = Date.now()): { resetsAt?: number } {
   const resets = snapshots
@@ -41,7 +42,14 @@ export function codexLimit(message: string, snapshots: z.infer<typeof rateLimitS
     .map((w) => w!.resetsAt! * 1000);
   if (resets.length) return { resetsAt: Math.max(...resets) };
   const m = /\btry again at (?:([A-Z][a-z]{2}) (\d{1,2})(?:st|nd|rd|th)?, (\d{4}) )?(\d{1,2}):(\d{2}) ?([AP]M)\b/i.exec(message);
-  if (!m) return {};
+  if (!m) {
+    const reached = snapshots
+      .filter((s) => s.rateLimitReachedType != null)
+      .flatMap((s) => [s.primary?.resetsAt, s.secondary?.resetsAt])
+      .filter((r): r is number => !!r && r * 1000 > now)
+      .map((r) => r * 1000);
+    return reached.length ? { resetsAt: Math.max(...reached) } : {};
+  }
   const hour = (Number(m[4]) % 12) + (m[6]!.toUpperCase() === 'PM' ? 12 : 0);
   if (m[1]) {
     const month = 'janfebmaraprmayjunjulaugsepoctnovdec'.indexOf(m[1].toLowerCase()) / 3;

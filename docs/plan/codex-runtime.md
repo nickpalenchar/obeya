@@ -40,7 +40,10 @@ Harden the local Codex worker preview and complete its remaining acceptance and 
   through Obeya's death, where today's tracker misses a child that detached before its first sample;
   neither holds a process that asks the system to start it elsewhere. Prototypes only, out of the
   launch path; Claude, macOS and the installed app untested. See "Platform process boundaries" below.
-- [ ] **W6:** Live phase 1 acceptance. Rerun live mixed-harness cards, rate-limit recovery and longer-running pause/restart scenarios.
+- [x] **W6:** Live phase 1 acceptance. Done (2026-11-03, macOS, Codex CLI 0.162.0): a Claude and a
+  Codex card side by side through question, usage limit, pause, two restarts and landing, each in
+  one session throughout. Found and fixed: a Codex card waited a blind 15 minutes after a usage
+  limit; it now goes on at the reset. See "Live phase 1 acceptance (W6)" below.
 - [x] **W7:** Active session identity. Done (2026-11-02): the working and reading bubbles name the
   harness and model of the session at work; see `docs/design/conversation-on-the-card.md`.
 - [x] **W8:** Codex configuration trust. Done (2026-11-02): `.codex/` is the trust group `codex`
@@ -122,12 +125,10 @@ hiding the workspace pool; only its smallest stage hides them. No Codex usage is
 
 ### Verification limits
 
-- Live concurrent Claude/Codex cards were blocked by Claude OAuth expiry during acceptance; a
-  deterministic two-card test with real Git workspaces and fake sessions verifies message, question
-  and permission isolation. A later idle Claude usage fetch succeeds, but is not a repeat of the
-  live mixed-card test.
+- Live concurrent Claude/Codex cards, blocked by Claude OAuth expiry in the first pass, were rerun
+  in W6 (below).
 - A post-fix Codex review identified attribution losses in card logs and moved answers, since fixed.
-- Live rate-limit recovery and cross-platform cleanup remain unverified. Focused regression
+- Live rate-limit recovery is W6's (below); cross-platform cleanup remains unverified. Focused regression
   results are not a full-suite-green claim (the unrelated artifact-copy macro test is known to fail).
 - The running owner's instance is never a test target; all probe jobs and scratch instances used
   for this pass are stopped after verification.
@@ -565,6 +566,40 @@ leaves (W1, W4), and neither is containment against a process that means to leav
 available only with a reachable user manager and need the existing tracker as the fallback; Windows
 jobs need no service and also answer Obeya's crash. Integration is a launch-path change for both
 harnesses (the W3/W4 open point) plus the two decisions above, not part of this workstream.
+
+## Live phase 1 acceptance (W6)
+
+2026-11-03, macOS, a scratch Obeya from this checkout with real workers on the machine's Claude and
+Codex sign-ins (`--real-workers --restarts`), a scratch repository whose `bun run slow-check` takes
+three minutes. Card C ran on Claude Code (Sonnet, medium), card X on Codex (gpt-6.1-sol, low), both
+started at once with their harness chosen at the start. Usage limits were real refusals by the
+services' own shape, put in by `scripts/limit-proxy.ts`: real Claude Code and the installed Codex
+reach the real models through it (`ANTHROPIC_BASE_URL`, and `OBEYA_CODEX` naming its wrapper, which
+gives Codex a provider of the same ChatGPT sign-in), and for a set time it refuses each model request
+with a 429 as at the account's limit. No account was driven to its actual limit.
+
+| Step | Claude card | Codex card |
+| --- | --- | --- |
+| Start side by side, ask the owner | asked, answer delivered to it alone | asked, answer delivered to it alone |
+| Answer given while both harnesses are over the limit (150 s) | „Usage limit · continues at 22:41“ from the rate-limit event | the same, from Codex's rate-limit update (before the fix: a retry in 15 minutes) |
+| Limit lifts | went on by itself within 20 s, acted on the answer | the same |
+| Pause during the three-minute check | stopped at once, the check ended | the same, app-server and check ended |
+| Restart (new code) while paused | stayed paused | stayed paused |
+| Resume | went on, reran the check | went on, said the pause had cut the check off, reran it |
+| Restart while both run the check | waited for the safe point; finished the check, handed over | finished the check, paused for the restart, after it handed over |
+| Approve | landed on main | landed on main |
+
+Each card kept one session (`agent_runs`: one Claude session id, one `codex:` thread) through limit,
+pause, both restarts and landing. The proxy also showed that `codex -c … app-server` ignores
+overrides given before the subcommand; its wrapper puts them after.
+
+Seen besides, not fixed here:
+- The Codex card's work retrospective read the check the owner's pause had killed (exit -1) as a
+  Bash tool timeout and proposed a longer one: the rollout excerpt does not show the pause.
+- The Claude worker wrote German on an English task in both runs, before any words of the owner;
+  the Codex worker on the same kind of task wrote English.
+- The process tracker's `ps` snapshot (`spawnSync`) stalled the server for 0.6 to 1.8 s four times
+  while a Codex session ran.
 
 ## Phase 2: Pi
 

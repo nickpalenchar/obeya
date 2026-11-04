@@ -62,7 +62,10 @@ ends a turn over what the previous one left, which would otherwise use up the nu
 
 A turn the account's usage limit stopped (five-hour or weekly) is neither nudged nor a question. The
 SDK's `rate_limit_event` says `rejected` and when the limit resets (API error `rate_limit`); without
-the event, the message's „resets 7:20pm (Europe/Berlin)“ says when. The card's status line reads
+the event, the message's „resets 7:20pm (Europe/Berlin)“ says when. A Codex turn fails with
+`usageLimitExceeded`; the reset is the latest one of the windows its `account/rateLimits/updated`
+reports used up, else the time its message names („try again at 10:41 PM.“, on the machine's
+clock). The card's status line reads
 „Nutzungslimit · weiter um 14:40“, and ten seconds after the reset Obeya tells the worker to go on
 where it stopped (a limit that still holds is retried after a minute; one without a reset time
 every 15 minutes). Meanwhile the worker is not busy: a restart need not wait for it, and a note
