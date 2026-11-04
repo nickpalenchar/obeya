@@ -378,7 +378,14 @@ export function Detail(p: Props) {
   const queueBox = item.state === 'planned' && item.queue && (
     <div className="question queue">
       {'checking' in item.queue ? (
-        <div className="q-text">{t.queue.checkingLong}</div>
+        <>
+          <div className="q-text">{t.queue.checkingLong}</div>
+          <div className="actions">
+            <button className="btn" title={t.queue.checkingStopHint} onClick={() => act({ action: 'dequeue' }, { close: true, ack: t.queue.checkingStopped })}>
+              {t.stop}
+            </button>
+          </div>
+        </>
       ) : 'paused' in item.queue ? (
         <>
           <div className="q-text">{t.queue.pausedLong}</div>

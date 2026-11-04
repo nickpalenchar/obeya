@@ -508,6 +508,8 @@ const de = {
     checking: 'Obeya prüft',
     waiting: 'In der Warteschlange',
     checkingLong: 'Obeya prüft, ob die Aufgabe mit laufender Arbeit wahrscheinlich in Merge-Konflikte gerät.',
+    checkingStopHint: 'Bricht den Start ab, solange Obeya prüft: Die Aufgabe ist wieder geplant, ein neuer Start prüft von vorn.',
+    checkingStopped: 'Start abgebrochen.',
     behind: (cards: { title: string; notStarted: boolean }[]) => `Wartet auf ${cards.map((c) => `„${c.title}“${c.notStarted ? ' (noch nicht gestartet)' : ''}`).join(', ')}.`,
     /** Why a card waits that only the owner's arrows hold. */
     drawn: 'Du hast die Karten verbunden; sie startet, sobald das erledigt ist.',
@@ -2624,6 +2626,8 @@ const en: Strings = {
     checking: 'Obeya checking',
     waiting: 'In the queue',
     checkingLong: 'Obeya checks whether the task is likely to run into merge conflicts with work in progress.',
+    checkingStopHint: 'Calls off the start while Obeya checks: the task is planned again, and starting it again checks it afresh.',
+    checkingStopped: 'Start called off.',
     behind: (cards: { title: string; notStarted: boolean }[]) => `Waits for ${cards.map((c) => `“${c.title}”${c.notStarted ? ' (not started yet)' : ''}`).join(', ')}.`,
     drawn: 'You connected the cards; it starts once that is done.',
     drawnToo: (cards: { title: string; notStarted: boolean }[]) =>

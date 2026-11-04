@@ -127,6 +127,31 @@ function CardTurn({ item }: { item: Item }) {
   );
 }
 
+/**
+ * On a card on the canvas that Obeya is checking before its start, the Stop that calls the start
+ * off: where its play stood, faint like the pause of an agent at work.
+ */
+function CardCheckStop({ item }: { item: Item }) {
+  if (item.state !== 'planned' || !item.queue || !('checking' in item.queue)) return null;
+  return (
+    <button
+      className="play turn"
+      title={t.queue.checkingStopHint}
+      aria-label={t.stop}
+      // the canvas would take the press as the start of a drag or a click that opens the card
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        void api.act(item.id, { action: 'dequeue' }).catch(() => {});
+      }}
+    >
+      <svg className="btn-mark" viewBox="0 0 12 12" width="10" height="10" aria-hidden>
+        <rect x="2" y="2" width="8" height="8" rx="1" fill="currentColor" />
+      </svg>
+    </button>
+  );
+}
+
 /** The play mark on the buttons that start a card or a project's workstreams. */
 const PlayIcon = ({ size }: { size: number }) => (
   <svg width={size} height={size} viewBox="0 0 12 12">
@@ -276,6 +301,7 @@ export const CardView = memo(
         {(dep === 'before' || dep === 'after') && <div className="dep-tag">{t.deps[dep]}</div>}
         <CardFace item={item} where={showRepo ? item.repo : undefined} underway={underway} chip={shape === 'chip'} />
         {!underway && <CardTurn item={item} />}
+        {!underway && <CardCheckStop item={item} />}
         {startable && (
           <button
             className="play"

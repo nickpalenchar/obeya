@@ -119,6 +119,11 @@ the project. Nothing around it moves. Collapsing is stored in this Obeya, not in
 holds across reloads, devices and the archive.
 
 A planned or queued card shows a play button under the pointer that starts it without unfolding.
+While Obeya checks a started card before its start (the Koordinator's judgement, see Scheduling),
+a faint Stop takes the play button's place, and the unfolded card offers „Stoppen“ below what it
+checks: either calls the start off, and the card is planned again, as taken out of the queue; a new
+start checks afresh. Without it, a start clicked by mistake could not be taken back until the check
+ended (2026-11-04).
 
 While a card's worker is in a turn, a word in italics after its state line („Agent arbeitet ·
 denkt nach“) says what it is doing, and the moving line runs thin under that line instead of beside
