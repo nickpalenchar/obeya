@@ -239,6 +239,8 @@ canvas open at its own address. Addresses of the form before paths (`/?c=<canvas
 rewritten to this form, so old links and bookmarks keep working. What else the page shows that is
 not a place (`?view=phone`, the phone's open conversation `?talk`; on the canvas `?talk` opens
 Obeya's sheet once, as the navigation's link to an answer on another canvas does) stays in the query.
+`/c/<canvas>/feedback` is the Agent Feedback Log in place of that canvas (see Comparing ratings in
+Card lifecycle), and `?performance` on a canvas opens the performance dashboard once.
 
 Opening a card or a project is a step in the browser's history, on the canvas as on the phone: Back
 closes it again, and closing it (Esc, the close button) goes back that step, so Back after closing

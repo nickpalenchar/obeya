@@ -22,6 +22,8 @@ import { UsagePill } from './usage';
 import { ConfigDialog, Problem, showCanvasesSection, showDemosSection, showDevicesSection, showRepoClones } from './config';
 import { PhoneDialog } from './access';
 import { OpenPerformance, PerformanceDialog } from './performance';
+import { FeedbackLog } from './feedbackLog';
+import { LOG_KEYS, readLogQuery } from '../core/feedback-log';
 import { Setup } from './setup';
 import { Phone, phoneView } from './phone';
 import { KoordinatorSheet } from './koordinator';
@@ -72,11 +74,13 @@ export function App() {
   }, []);
   if (!canvases) return <Splash offline={failed} />;
   // the canvas in the address, else the first
-  const wanted = readAddress().canvas;
+  const { canvas: wanted, page } = readAddress();
   const current = canvases.find((c) => c.id === wanted) ?? canvases[0];
   if (!current) return <NoCanvas />;
   // a phone gets every canvas's waits and work, and the cards full screen, instead of the canvas
   if (phone) return <Phone canvases={canvases} />;
+  // the Agent Feedback Log, a page of its own in place of the canvas it was opened from
+  if (page === 'feedback') return <FeedbackLog canvases={canvases} here={current.id} />;
   setCanvas(current.id);
   keepDrafts(sessionStorage, current.id);
   keepWish(sessionStorage, current.id);
@@ -373,8 +377,10 @@ function Canvas({
   const [helpOn, setHelpOn] = useState(false);
   // „Telefon verbinden“, from the section „Von anderen Geräten“ of the configuration
   const [phoneOn, setPhoneOn] = useState(false);
-  // the performance dashboard, over the page as the configuration is; opened from there or from a rated card
-  const [perfOn, setPerfOn] = useState(false);
+  // the performance dashboard, over the page as the configuration is; opened from there or from a
+  // rated card, and open at once coming back from the feedback log (`?performance`), with its filters
+  const [perfAtStart] = useState(() => (new URLSearchParams(location.search).has('performance') ? readLogQuery(location.search).filter : undefined));
+  const [perfOn, setPerfOn] = useState(!!perfAtStart);
   const openPerformance = useCallback(() => {
     setCOn(false);
     setPerfOn(true);
@@ -700,7 +706,7 @@ function Canvas({
     const a = readAddress();
     const code = !a.canvas || a.canvas === snapshot.canvas.id ? a.card : undefined;
     const talk = new URLSearchParams(location.search).has('talk');
-    history.replaceState(history.state, '', `${code ? cardPath(snapshot.canvas.id, code) : canvasPath(snapshot.canvas.id)}${queryWithout(location.search, 'c', 'card', 'talk')}`);
+    history.replaceState(history.state, '', `${code ? cardPath(snapshot.canvas.id, code) : canvasPath(snapshot.canvas.id)}${queryWithout(location.search, 'c', 'card', 'talk', ...(perfAtStart ? LOG_KEYS : []))}`);
     // what comes back is what the address names already; a kept card the address left out (a
     // restart of the app's shell, a link to the canvas) gets its address once it is open
     addressSet.current = true;
@@ -2078,7 +2084,7 @@ function Canvas({
           {ackLine}
           <NotifyAsk {...notifyAsk} />
         </div>
-        <PerformanceDialog on={perfOn} onClose={() => setPerfOn(false)} canvases={canvases} here={snapshot.canvas.id} onOpenCard={(code) => void openNamed(code).catch(console.error)} />
+        <PerformanceDialog initial={perfAtStart} on={perfOn} onClose={() => setPerfOn(false)} canvases={canvases} here={snapshot.canvas.id} onOpenCard={(code) => void openNamed(code).catch(console.error)} />
       </div>
     </KoordinatorAgent.Provider>
     </OpenPerformance.Provider>

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { canvasPath, cardPath, named, queryWithout, readAddress } from './address';
+import { canvasPath, cardPath, feedbackLogPath, named, queryWithout, readAddress } from './address';
 
 const at = (url: string) => new URL(url, 'http://obeya');
 
@@ -10,6 +10,12 @@ test('the path names the canvas and the card open on it', () => {
   expect(readAddress(at('/c/my%20shop/card/a1b2c3'))).toEqual({ canvas: 'my shop', card: 'a1b2c3' });
   expect(readAddress(at('/'))).toEqual({});
   expect(readAddress(at('/c/shop/project/x'))).toEqual({});
+});
+
+test('the feedback log is a page of its own, opened from a canvas', () => {
+  expect(feedbackLogPath('my shop')).toBe('/c/my%20shop/feedback');
+  expect(readAddress(at('/c/my%20shop/feedback?group=month'))).toEqual({ canvas: 'my shop', page: 'feedback' });
+  expect(readAddress(at('/c/shop/feedback/x'))).toEqual({});
 });
 
 test('an address from before paths still names what it named', () => {

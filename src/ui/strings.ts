@@ -1908,6 +1908,7 @@ const de = {
   performance: {
     title: 'Agentenleistung',
     open: 'Bewertungen vergleichen',
+    toLog: 'Feedback-Log: jede Antwort nach Zeit',
     openHint: 'Alle Bewertungen nach Harness, Modell und Effort',
     about: 'Deine Bewertungen nach der Freigabe, nach Harness, Modell und Effort, die die Arbeit gemacht haben. Sie zeigen dein Urteil über einzelne Aufgaben, keinen Benchmark: Schwierigkeit und Art der Aufgabe zählen mit.',
     loading: 'Lädt …',
@@ -1942,6 +1943,23 @@ const de = {
     spreadLabel: (c: number[]) => c.map((k, s) => `${k}× ${s + 1} ${s ? 'Sterne' : 'Stern'}`).join(', '),
     dotsLabel: (r: number[], median: number | null) => `Bewertungen ${r.join(', ')}${median === null ? '' : `, Median ${median}`}`,
     when: (d: Date) => d.toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric' }),
+  },
+  feedbackLog: {
+    title: 'Agent-Feedback-Log',
+    about: 'Jede Antwort, die du nach der Freigabe auf die Arbeit eines Agenten gegeben hast, auf allen Leinwänden, die neueste zuerst.',
+    summary: (shown: number, ratings: number, all: number) =>
+      `${shown === all ? '' : `${shown} von `}${all} ${all === 1 ? 'Antwort' : 'Antworten'} · ${ratings} ${ratings === 1 ? 'Bewertung' : 'Bewertungen'}${shown === all ? '' : ' gezeigt'}`,
+    filters: { harness: 'Harness', model: 'Modell', effort: 'Effort', rating: 'Bewertung' },
+    stars: (s: number) => `${s} ${s === 1 ? 'Stern' : 'Sterne'}`,
+    groupBy: 'Gruppieren nach',
+    groups: { none: 'nicht gruppiert', config: 'Konfiguration', project: 'Projekt', repo: 'Repository', canvas: 'Leinwand', week: 'Woche', month: 'Monat' } as Record<string, string>,
+    cols: { when: 'Datum', card: 'Karte', stars: 'Sterne', comment: 'Kommentar', config: 'Konfiguration', project: 'Projekt', repo: 'Repository', canvas: 'Leinwand' },
+    noProject: 'Ohne Projekt',
+    noRepo: 'Ohne Repository',
+    week: (monday: string) => `Woche ab ${new Date(`${monday}T12:00:00Z`).toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}`,
+    month: (m: string) => new Date(`${m}-15T00:00:00Z`).toLocaleDateString('de-DE', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
+    sectionSummary: (n: number, ratings: number, mean: number | null) =>
+      `${n} ${n === 1 ? 'Antwort' : 'Antworten'}${mean === null ? '' : ` · Schnitt ${mean.toFixed(1).replace('.', ',')} aus ${ratings} ${ratings === 1 ? 'Bewertung' : 'Bewertungen'}`}`,
   },
   usage: {
     /** The bar's short names of the two groups of limits. */
@@ -3954,6 +3972,7 @@ const en: Strings = {
   performance: {
     title: 'Agent performance',
     open: 'Compare ratings',
+    toLog: 'Feedback log: every response by time',
     openHint: 'All ratings by harness, model and effort',
     about: 'Your ratings after approval, by the harness, model and effort that did the work. They show your judgement of single tasks, not a benchmark: how hard the task was and what kind it was count too.',
     loading: 'Loading …',
@@ -3988,6 +4007,23 @@ const en: Strings = {
     spreadLabel: (c: number[]) => c.map((k, s) => `${k}× ${s + 1} ${s ? 'stars' : 'star'}`).join(', '),
     dotsLabel: (r: number[], median: number | null) => `ratings ${r.join(', ')}${median === null ? '' : `, median ${median}`}`,
     when: (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+  },
+  feedbackLog: {
+    title: 'Agent Feedback Log',
+    about: 'Every response you gave on an agent’s work after approving it, on every canvas, the newest first.',
+    summary: (shown: number, ratings: number, all: number) =>
+      `${shown === all ? '' : `${shown} of `}${all} ${all === 1 ? 'response' : 'responses'} · ${ratings} ${ratings === 1 ? 'rating' : 'ratings'}${shown === all ? '' : ' shown'}`,
+    filters: { harness: 'Harness', model: 'Model', effort: 'Effort', rating: 'Rating' },
+    stars: (s: number) => `${s} ${s === 1 ? 'star' : 'stars'}`,
+    groupBy: 'Group by',
+    groups: { none: 'no grouping', config: 'Configuration', project: 'Project', repo: 'Repository', canvas: 'Canvas', week: 'Week', month: 'Month' },
+    cols: { when: 'Date', card: 'Card', stars: 'Stars', comment: 'Comment', config: 'Configuration', project: 'Project', repo: 'Repository', canvas: 'Canvas' },
+    noProject: 'No project',
+    noRepo: 'No repository',
+    week: (monday: string) => `Week of ${new Date(`${monday}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}`,
+    month: (m: string) => new Date(`${m}-15T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
+    sectionSummary: (n: number, ratings: number, mean: number | null) =>
+      `${n} ${n === 1 ? 'response' : 'responses'}${mean === null ? '' : ` · average ${mean.toFixed(1)} from ${ratings} ${ratings === 1 ? 'rating' : 'ratings'}`}`,
   },
   usage: {
     groups: { session: 'Session', weekly: 'Week' },

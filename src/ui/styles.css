@@ -2395,6 +2395,22 @@ button.link:hover { text-decoration: underline; }
 .rate-compare { margin-top: 6px; font-size: 13px; }
 #config .cfg-perf { margin-top: 10px; }
 @media (max-width: 700px) { #perf { padding: 10px; } .perf-main { padding: 20px 56px 24px 18px; } .perf-spread, .perf-dots { min-width: 100px; } }
+.perf-to-log { margin-left: auto; font-size: 13.5px; }
+a.link.perf-to-log, a.link.flog-back { color: var(--working); text-decoration: underline 1px currentColor; }
+/* the Agent Feedback Log: a page of its own in place of the canvas */
+#flog { position: fixed; inset: 0; overflow-y: auto; background: var(--panel); }
+.flog-main { max-width: 1500px; margin: 0 auto; padding: 22px 40px 48px; }
+.flog-back { display: inline-block; font-size: 13.5px; margin-bottom: 14px; }
+.flog-main h1 { margin: 0; font-size: 26px; }
+.flog-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.flog-table th, .flog-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: baseline; }
+.flog-table thead th { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; position: sticky; top: 0; background: var(--panel); z-index: 1; }
+.flog-when, .flog-stars { white-space: nowrap; }
+.flog-card { min-width: 180px; max-width: 320px; }
+.flog-comment { min-width: 220px; white-space: pre-wrap; }
+.flog-group th { background: color-mix(in srgb, var(--chip) 70%, transparent); padding-top: 14px; }
+.flog-group-name { font-weight: 600; margin-right: 12px; }
+.flog-group .hint { font-weight: 400; font-size: 12.5px; }
 .perf-trend { margin: 0 0 18px; }
 .perf-trend svg { display: block; width: 100%; height: auto; overflow: visible; }
 .perf-grid { stroke: var(--line); }

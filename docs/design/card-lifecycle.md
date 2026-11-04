@@ -197,6 +197,26 @@ again, the dialog keeps its filters and open row; it holds the keyboard's focus 
 gives it back to what opened it. A response with only a comment counts as a
 response, not a rating. The phone view has no dashboard.
 
+„Feedback-Log: jede Antwort nach Zeit“ in the dashboard's head leads to the Agent Feedback Log, a
+page of its own in place of the canvas (`/c/<canvas>/feedback`), with the dashboard's filters as they
+were; its link „← Agentenleistung“ leads back to that canvas with the dashboard open and the filters
+the two share, and so does the browser's Back. A page rather than a view in the dialog: a long list
+of responses wants the whole screen, and an address of its own keeps it across a reload and makes it
+a link (2026-11). It lists every response on every canvas, the newest first (by when it was last
+given), each with its date, card (a link to it, opening on its canvas, archived ones from the
+archive; a deleted card's title without one), stars („ohne Sterne“ for a comment alone), comment,
+whom it credits (for mixed work „Mehrere Konfigurationen“ with the configurations that did it),
+project, repository and canvas. Filters: the dashboard's (period by when a response was last given),
+then harness, model and effort of the credited configuration (each where there is more than one to
+choose, an unknown value named unknown), which work credited to no one configuration never matches,
+and rating, whole stars or „ohne Sterne“. Grouping: none, configuration (in the dashboard's order,
+mixed and unrecorded work last), project, repository, canvas (by name, those without one last),
+week (from Monday) or month (the newest first); each section heads its responses with their count
+and average, and the column it groups by gives way to that heading. The head counts the responses
+shown of all. With no responses at all it says what fills it; when the filters leave nothing, it
+says so with „Filter zurücksetzen“. Filters and grouping stay in the address. Every control is a
+link, a select or a button, in reading order for the keyboard.
+
 ### Live and done
 
 Merged (or landed on `main`) → `live`. The demo stays on the card. The worker hears that its work is

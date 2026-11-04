@@ -1,5 +1,6 @@
 // The page's address: `/c/<canvas>` shows a canvas, `/c/<canvas>/card/<code>` a card open on it,
-// the code being the card's short code or its whole id. What else the page shows (the phone view,
+// the code being the card's short code or its whole id, `/c/<canvas>/feedback` the Agent Feedback
+// Log, a page of its own opened from that canvas. What else the page shows (the phone view,
 // the conversation open on the phone) stays in the query.
 import type { Item } from '../core/types';
 
@@ -7,14 +8,16 @@ export interface Address {
   canvas?: string;
   /** A card's code or id, as the address has it. */
   card?: string;
+  /** A page in place of the canvas. */
+  page?: 'feedback';
 }
 
-const PATH = /^\/c\/([^/]+)(?:\/card\/([^/]+))?\/?$/;
+const PATH = /^\/c\/([^/]+)(?:\/card\/([^/]+)|\/(feedback))?\/?$/;
 
 /** What an address names; the query of addresses before paths (`?c=<canvas>&card=<id>`) too. */
 export function readAddress(at: { pathname: string; search: string } = location): Address {
   const m = PATH.exec(at.pathname);
-  if (m) return { canvas: decodeURIComponent(m[1]!), ...(m[2] ? { card: decodeURIComponent(m[2]) } : {}) };
+  if (m) return { canvas: decodeURIComponent(m[1]!), ...(m[2] ? { card: decodeURIComponent(m[2]) } : {}), ...(m[3] ? { page: 'feedback' as const } : {}) };
   const q = new URLSearchParams(at.search);
   const canvas = q.get('c');
   const card = q.get('card');
@@ -22,6 +25,9 @@ export function readAddress(at: { pathname: string; search: string } = location)
 }
 
 export const canvasPath = (canvas: string) => `/c/${encodeURIComponent(canvas)}`;
+
+/** The Agent Feedback Log, opened from a canvas: its link back to the dashboard leads there. */
+export const feedbackLogPath = (canvas: string) => `${canvasPath(canvas)}/feedback`;
 
 /** The address of a card on its canvas: by its short code where it has one. */
 export const cardPath = (canvas: string, card: Pick<Item, 'id' | 'short'> | string) =>

@@ -5,9 +5,10 @@
 // averages. A row opens to its responses, each linking back to its card.
 
 import { createContext, Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { logQuery, type LogFilter, type Period } from '../core/feedback-log';
 import { ageStep, FEW, filterChoices, filterFeedback, performance, type PerformanceFilter, type PerformanceRow, scatter, stars, trend } from '../core/performance';
 import type { CanvasInfo, Feedback, WorkConfig } from '../core/types';
-import { cardPath } from './address';
+import { cardPath, feedbackLogPath } from './address';
 import { api } from './api';
 import { plain } from './markdown';
 import { failText, t } from './strings';
@@ -15,7 +16,6 @@ import { failText, t } from './strings';
 /** Opens the dashboard, where the page offers it (the canvas, not the phone view). */
 export const OpenPerformance = createContext<(() => void) | null>(null);
 
-type Period = 'all' | '30' | '90';
 type View = 'stars' | 'dots' | 'trend';
 const VIEWS: View[] = ['stars', 'dots', 'trend'];
 const VIEW_KEY = 'obeya.performance.view';
@@ -29,14 +29,16 @@ interface Props {
   /** The canvas the page shows: its cards open in place, another canvas's at their address. */
   here: string;
   onOpenCard: (code: string) => void;
+  /** The filters it opens with: those the feedback log had, coming back from it. */
+  initial?: LogFilter;
 }
 
-export function PerformanceDialog({ on, onClose, canvases, here, onOpenCard }: Props) {
+export function PerformanceDialog({ on, onClose, canvases, here, onOpenCard, initial }: Props) {
   const p = t.performance;
   const [all, setAll] = useState<Feedback[] | null>(null);
   const [error, setError] = useState('');
-  const [filter, setFilter] = useState<PerformanceFilter>({});
-  const [period, setPeriod] = useState<Period>('all');
+  const [filter, setFilter] = useState<PerformanceFilter>(() => ({ ...(initial?.canvas ? { canvas: initial.canvas } : {}), ...(initial?.repo ? { repo: initial.repo } : {}), ...(initial?.project ? { project: initial.project } : {}) }));
+  const [period, setPeriod] = useState<Period>(initial?.period ?? 'all');
   const [view, setViewState] = useState<View>(() => VIEWS.find((v) => v === localStorage.getItem(VIEW_KEY)) ?? 'stars');
   const setView = (v: View) => {
     localStorage.setItem(VIEW_KEY, v);
@@ -99,6 +101,10 @@ export function PerformanceDialog({ on, onClose, canvases, here, onOpenCard }: P
     );
   };
   const filtered = !!(filter.canvas || filter.repo || filter.project || period !== 'all');
+  // the log opens with the dashboard's filters; Back from it opens the dashboard again, with them
+  const logFilter: LogFilter = { ...filter, period };
+  const logQ = logQuery({ filter: logFilter });
+  const toLog = () => history.replaceState(history.state, '', `${location.pathname}${logQ ? `${logQ}&` : '?'}performance`);
   const comparable = perf.ratings >= FEW;
 
   let body;
@@ -224,6 +230,9 @@ export function PerformanceDialog({ on, onClose, canvases, here, onOpenCard }: P
           <header className="perf-head">
             <h2 id="perf-title">{p.title}</h2>
             {all && all.length > 0 && <p className="hint">{p.summary(perf.responses, perf.ratings, perf.uncredited)}</p>}
+            <a className="link perf-to-log" href={`${feedbackLogPath(here)}${logQ}`} onClick={toLog}>
+              {p.toLog} →
+            </a>
           </header>
           <p className="hint perf-about">{p.about}</p>
           {all && all.length > 0 && (
@@ -268,7 +277,7 @@ export function PerformanceDialog({ on, onClose, canvases, here, onOpenCard }: P
   );
 }
 
-function Choice({ label, value, options, onChange }: { label: string; value?: string; options: { id: string; name: string }[]; onChange: (v: string | undefined) => void }) {
+export function Choice({ label, value, options, onChange }: { label: string; value?: string; options: { id: string; name: string }[]; onChange: (v: string | undefined) => void }) {
   return (
     <label className="perf-choice">
       <span>{label}</span>
@@ -284,10 +293,10 @@ function Choice({ label, value, options, onChange }: { label: string; value?: st
   );
 }
 
-const harnessName = (h: WorkConfig['harness']) => (h === 'claude' ? 'Claude Code' : h === 'codex' ? 'Codex' : t.performance.unknownHarness);
+export const harnessName = (h: WorkConfig['harness']) => (h === 'claude' ? 'Claude Code' : h === 'codex' ? 'Codex' : t.performance.unknownHarness);
 
 /** A configuration as one line: its model and effort, each named unknown where it is. */
-function configText(c: WorkConfig, withHarness = false) {
+export function configText(c: WorkConfig, withHarness = false) {
   const p = t.performance;
   return [withHarness ? harnessName(c.harness) : '', c.model ?? p.unknownModel, c.effort ?? p.unknownEffort].filter(Boolean).join(' · ');
 }
@@ -376,7 +385,7 @@ function DotScale() {
   );
 }
 
-function StarText({ rating }: { rating: number | undefined }) {
+export function StarText({ rating }: { rating: number | undefined }) {
   const s = stars(rating);
   if (s === null) return <span className="hint">{t.performance.noRating}</span>;
   return (
