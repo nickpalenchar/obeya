@@ -1501,7 +1501,9 @@ export class Board {
     if (was && (was.failed === undefined || was.with !== withId)) throw new BadRequest('merging', 'the proposal is being merged already');
     if (p.proposal?.revising) throw new BadRequest('revising', 'the proposal is being reworked');
     if (p.proposal?.idea) throw new BadRequest('notMergeable', 'a proposed idea is not merged with a task');
-    if (!mergeableWith(p, { ...other, mergingInto: undefined })) throw new BadRequest('notMergeable', `„${other.title}“ can no longer be merged with`);
+    if (p.snoozed) throw new BadRequest('notMergeable', 'a snoozed proposal is woken before it is merged');
+    // trying again after a failure: the other card is merged with this proposal already
+    if (!mergeableWith(p, other.mergingInto === id ? { ...other, mergingInto: undefined } : other)) throw new BadRequest('notMergeable', `„${other.title}“ can no longer be merged with`);
     const taken = items.filter((i) => !i.parent && i.id !== id && i.id !== withId && !i.mergingInto).map((i) => boundsOf(i, items));
     const at = was ? {} : freeSpotNear({ x: other.x, y: other.y }, MERGED_SIZE, taken);
     const proposal = storedProposal(row) ?? { questions: [] };

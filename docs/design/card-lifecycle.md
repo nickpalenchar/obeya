@@ -54,7 +54,7 @@ Agenten zurückgezogen“ and needs the owner, and its panel says by what and wh
 A proposal that belongs with another card, the owner's planned task or another proposal, is merged
 with it: „Zusammenführen mit …“ among the proposal's buttons opens a picker of the cards it can be
 merged with (tasks on the canvas nobody has worked on yet, not snoozed, not themselves merged or
-reworked; never a proposed idea), the newest first, with a search over titles and texts. Picked, the
+reworked, their repository running; never a proposed idea, nor from a snoozed proposal), the newest first, with a search over titles and texts. Picked, the
 two stand on the canvas as one card twice as wide, the proposal on the left, the other card on the
 right, glued by a knot that spins while a read-only agent in the other card's repository writes one
 card of both (title and text; questions stay questions). The pair goes to the nearest free spot by

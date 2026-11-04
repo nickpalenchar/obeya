@@ -26,7 +26,7 @@ export function mergeCandidates(p: Item, all: Item[], query: string): Item[] {
 /** „Zusammenführen mit …“ on a proposal: opens the picker of the cards it can be merged with. */
 export function MergeButton({ item, all, act }: { item: Item; all: Item[]; act: Act }) {
   const [open, setOpen] = useState(false);
-  if (item.proposal?.idea || !all.some((i) => mergeableWith(item, i))) return null;
+  if (item.proposal?.idea || item.snoozed || !all.some((i) => mergeableWith(item, i))) return null;
   return (
     <>
       <button className="btn" title={t.merge.buttonHint} onClick={() => setOpen(true)}>

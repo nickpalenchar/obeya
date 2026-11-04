@@ -124,6 +124,12 @@ describe('a proposal merged with another card', () => {
     const idea = board().create({ title: 'Think about exports', x: 0, y: 900, idea: true });
     expect(() => canvas.act(p.id, { action: 'merge', with: p.id })).toThrow();
     expect(() => canvas.act(p.id, { action: 'merge', with: idea.id })).toThrow('can no longer be merged');
+    // a card merged with one proposal is not merged with a second
+    const from = board().create({ title: 'Import', x: 0, y: 300 });
+    const q = board().propose(from.id, { title: 'CSV import', task: 'Import CSV too.' });
+    canvas.act(q.id, { action: 'merge', with: planned.id });
+    expect(() => canvas.act(p.id, { action: 'merge', with: planned.id })).toThrow('can no longer be merged');
+    canvas.act(q.id, { action: 'separate' });
     board().work(planned.id, { state: 'working' });
     expect(() => canvas.act(p.id, { action: 'merge', with: planned.id })).toThrow('can no longer be merged');
   });

@@ -257,7 +257,7 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
         {asksYou(item) && !underway && !revising && !item.proposal?.merge && <QuestionMark />}
         {/* one line on the card, cut short rather than running into the text above it */}
         <span className="state-text">
-          {underway ?? (revising ? t.revisingShort : mergeLabel(item) ?? stateLabel(item))}
+          {underway ?? (revising ? t.revisingShort : stateLabel(item))}
           {item.landedPart && <span className="landed-part">{t.landedPart.short} · {landedRef(item.landedPart)}</span>}
           {item.buildProposal && ` · ${t.idea.proposesBuild}`}
           {item.proposal?.acceptAfterRevision && ` · ${t.acceptsAfterRevision}`}
@@ -273,13 +273,6 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
   );
 }
 
-/** A proposal merged with another card says how far that is in place of its state. */
-const mergeLabel = (item: Item) => {
-  const m = item.state === 'proposal' ? item.proposal?.merge : undefined;
-  if (!m) return undefined;
-  return m.failed !== undefined ? t.merge.failedShort : m.task === undefined ? t.merge.mergingShort : t.merge.mergedShort;
-};
-
 /**
  * A proposal merged with another card (`partner`), on the canvas: both cards side by side, glued by
  * a spinner while an agent merges them, and by the merge mark once the merged card waits for the owner.
@@ -290,7 +283,7 @@ function MergedPair({ item, partner, showRepo }: { item: Item; partner?: Item; s
       <div className="merge-half">
         <CardFace item={item} where={showRepo ? item.repo : undefined} />
       </div>
-      <div className="merge-glue" title={mergeLabel(item)}>
+      <div className="merge-glue" title={stateLabel(item)}>
         <span className="merge-knot">{merging(item) ? <span className="spinner" /> : <MergeMark />}</span>
       </div>
       <div className={`merge-half partner s-${partner?.state ?? 'planned'}`}>{partner ? <CardFace item={partner} where={showRepo ? partner.repo : undefined} /> : <div className="ttl untitled">{t.merge.gone}</div>}</div>

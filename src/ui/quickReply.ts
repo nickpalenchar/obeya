@@ -70,7 +70,8 @@ export function quickReplies(i: Item, repo?: RepoRef): QuickReply[] {
       { label: t.superseded.remove, send: (id) => api.remove(id), ack: t.deleted(plain(i.title)), undo: (id) => api.restore(id), title: t.superseded.removeHint },
     ];
   if (i.state === 'proposal') {
-    if (i.proposal?.revising || i.proposal?.acceptAfterRevision) return [];
+    // a merged pair is approved or separated on the card, where the merged text shows
+    if (i.proposal?.revising || i.proposal?.acceptAfterRevision || i.proposal?.merge) return [];
     const p = i.proposal;
     const later = !p?.idea && !!p?.startAt;
     const accept: QuickReply[] = openQuestions(i).length

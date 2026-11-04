@@ -4388,8 +4388,10 @@ const longDay = (d: Date, today: Date) =>
 /** A number, with `digits` decimals at most. */
 const number = (n: number, digits = 0) => n.toLocaleString(locale, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 
-export const stateLabel = (i: { kind?: string; thread?: { thinking?: boolean }; state: CardState; need?: Need; pr?: unknown; contribution?: unknown; queue?: Queue; idea?: Idea; question?: { stuck?: true }; answering?: true; answered?: true; finishing?: boolean; followUp?: boolean; paused?: true; pausing?: true; snoozed?: Snooze; prototypeEnd?: 'discarded' | 'built'; retro?: string; proposal?: { setup?: true }; branch?: string }) =>
-  i.snoozed
+export const stateLabel = (i: { kind?: string; thread?: { thinking?: boolean }; state: CardState; need?: Need; pr?: unknown; contribution?: unknown; queue?: Queue; idea?: Idea; question?: { stuck?: true }; answering?: true; answered?: true; finishing?: boolean; followUp?: boolean; paused?: true; pausing?: true; snoozed?: Snooze; prototypeEnd?: 'discarded' | 'built'; retro?: string; proposal?: { setup?: true; merge?: { task?: string; failed?: string } }; branch?: string }) =>
+  i.state === 'proposal' && i.proposal?.merge
+    ? i.proposal.merge.failed !== undefined ? t.merge.failedShort : i.proposal.merge.task === undefined ? t.merge.mergingShort : t.merge.mergedShort
+    : i.snoozed
     ? i.snoozed.on
       ? t.snooze.on(i.snoozed.on.title, i.snoozed.on.state, i.snoozed.until && snoozeWhen(i.snoozed.until))
       : t.snooze.until(snoozeWhen(i.snoozed.until!))

@@ -133,6 +133,7 @@ export const mergeableWith = (p: Item, i: Item) =>
   !i.archivedAt &&
   !i.mergingInto &&
   !i.snoozed &&
+  !i.repoDown &&
   (untouched(i) || (i.kind === 'task' && i.state === 'proposal' && !i.proposal?.idea && !i.proposal?.merge && !i.proposal?.revising && !i.proposal?.acceptAfterRevision));
 
 /**
