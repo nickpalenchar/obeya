@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { CodexRpcError, type CodexConnection, type CodexHandlers } from './codex-rpc';
-import { codexSandbox, createCodexRuntime, projectTrust } from './codex-runtime';
+import { codexLimit, codexSandbox, createCodexRuntime, projectTrust } from './codex-runtime';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { gitRepo } from './testing';
 import { git } from './workspaces';
@@ -234,6 +234,26 @@ test('a usage limit is a failed turn, never a transient notification or model su
   wire.complete('turn-1', 'failed', { message: 'out of allowance', codexErrorInfo: 'usageLimitExceeded' });
   await until(() => events.some((e) => e.type === 'idle'));
   expect(events).toContainEqual({ type: 'error', message: 'out of allowance', limit: {} });
+});
+
+test('a usage limit lifts when the used-up window Codex reported resets, else at the time its message names', async () => {
+  const { wire, events } = fixture();
+  await until(() => wire.n === 1);
+  const reset = Math.floor(Date.now() / 1000) + 600;
+  // account-wide, not the thread's; a window not used up says nothing about this limit
+  wire.handlers.notification('account/rateLimits/updated', { rateLimits: { limitId: 'codex', primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: reset }, secondary: { usedPercent: 40, windowDurationMins: 10080, resetsAt: reset + 86400 } } });
+  wire.complete('turn-1', 'failed', { message: 'You’ve hit your usage limit.', codexErrorInfo: 'usageLimitExceeded' });
+  await until(() => events.some((e) => e.type === 'error'));
+  expect(events).toContainEqual({ type: 'error', message: 'You’ve hit your usage limit.', limit: { resetsAt: reset * 1000 } });
+
+  const now = new Date(2026, 10, 3, 22, 30).getTime();
+  const said = (m: string) => codexLimit(`You’ve hit your usage limit. Upgrade to Pro or try again at ${m}.`, [], now).resetsAt;
+  expect(said('10:38 PM')).toBe(new Date(2026, 10, 3, 22, 38).getTime());
+  expect(said('9:05 AM')).toBe(new Date(2026, 10, 4, 9, 5).getTime());
+  expect(said('Nov 5th, 2026 10:38 PM')).toBe(new Date(2026, 10, 5, 22, 38).getTime());
+  expect(codexLimit('You’ve hit your usage limit.', [], now)).toEqual({});
+  // a reset already past is no answer
+  expect(codexLimit('limit', [{ limitId: 'codex', primary: { usedPercent: 100, resetsAt: now / 1000 - 5 } }], now)).toEqual({});
 });
 
 test('unknown model, unsupported effort and substitution fail explicitly before doing work', async () => {

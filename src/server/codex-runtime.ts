@@ -24,6 +24,36 @@ const backgroundPage = z.object({ data: z.array(z.object({ itemId: z.string(), c
 const turnEvent = z.object({ turn: z.object({ id: z.string(), status: z.string(), error: z.object({ message: z.string(), codexErrorInfo: z.unknown() }).nullable().optional() }) });
 const toolCall = z.object({ threadId: z.string(), turnId: z.string(), callId: z.string(), namespace: z.string().nullable(), tool: z.string(), arguments: z.unknown() });
 const jsonObject = z.record(z.string(), z.unknown());
+const rateLimitWindow = z.object({ usedPercent: z.number(), resetsAt: z.number().nullable().optional() }).nullable().optional();
+const rateLimitSnapshot = z.object({ limitId: z.string().nullable().optional(), primary: rateLimitWindow, secondary: rateLimitWindow });
+const rateLimitsUpdate = z.object({ rateLimits: rateLimitSnapshot });
+
+/**
+ * When the usage limit that failed a Codex turn lifts (milliseconds), as far as Codex says: the last
+ * reset of the windows its rate-limit updates report used up, else the time its message names
+ * („… or try again at 10:38 PM.“, „… try again at Nov 5th, 2026 10:38 PM.“, the machine's own
+ * clock), else nothing, and the worker tries again later.
+ */
+export function codexLimit(message: string, snapshots: z.infer<typeof rateLimitSnapshot>[], now = Date.now()): { resetsAt?: number } {
+  const resets = snapshots
+    .flatMap((s) => [s.primary, s.secondary])
+    .filter((w) => w && w.usedPercent >= 100 && w.resetsAt && w.resetsAt * 1000 > now)
+    .map((w) => w!.resetsAt! * 1000);
+  if (resets.length) return { resetsAt: Math.max(...resets) };
+  const m = /\btry again at (?:([A-Z][a-z]{2}) (\d{1,2})(?:st|nd|rd|th)?, (\d{4}) )?(\d{1,2}):(\d{2}) ?([AP]M)\b/i.exec(message);
+  if (!m) return {};
+  const hour = (Number(m[4]) % 12) + (m[6]!.toUpperCase() === 'PM' ? 12 : 0);
+  if (m[1]) {
+    const month = 'janfebmaraprmayjunjulaugsepoctnovdec'.indexOf(m[1].toLowerCase()) / 3;
+    if (month < 0 || !Number.isInteger(month)) return {};
+    return { resetsAt: new Date(Number(m[3]), month, Number(m[2]), hour, Number(m[5])).getTime() };
+  }
+  // today, or tomorrow for a time already past
+  const at = new Date(now);
+  at.setHours(hour, Number(m[5]), 0, 0);
+  if (at.getTime() < now - 60_000) at.setDate(at.getDate() + 1);
+  return { resetsAt: at.getTime() };
+}
 const configLayers = z.object({ layers: z.array(z.object({ name: z.object({ type: z.string(), dotCodexFolder: z.string().optional() }).passthrough(), disabledReason: z.string().nullable().optional() })).nullable().optional() });
 
 /**
@@ -132,6 +162,8 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
       const completed = new Set<string>();
       const toolResults = new Map<string, Promise<unknown>>();
       const permissions = new Map<string | number | symbol, AbortController>();
+      // the account's limits as Codex last reported them, by limit
+      const limits = new Map<string, z.infer<typeof rateLimitSnapshot>>();
       const cancelPermissions = (obsolete = false) => {
         for (const controller of permissions.values()) controller.abort(obsolete ? 'permission-obsolete' : undefined);
         permissions.clear();
@@ -249,6 +281,12 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
         finally { pumping = false; }
       }
       function notification(method: string, params: Record<string, unknown>) {
+        // the account's limits are the app-server's, not the thread's
+        if (method === 'account/rateLimits/updated') {
+          const parsed = rateLimitsUpdate.safeParse(params);
+          if (parsed.success) limits.set(parsed.data.rateLimits.limitId ?? 'codex', parsed.data.rateLimits);
+          return;
+        }
         if (closing || params.threadId !== thread || !thread) return;
         if (method === 'serverRequest/resolved') {
           const id = params.requestId;
@@ -272,7 +310,8 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
             turn = undefined;
             if (result.status === 'failed') {
               const info = result.error?.codexErrorInfo;
-              emit({ type: 'error', message: result.error?.message ?? 'Codex turn failed', ...(['usageLimitExceeded', 'rateLimitExceeded'].includes(String(info)) ? { limit: {} } : {}) });
+              const message = result.error?.message ?? 'Codex turn failed';
+              emit({ type: 'error', message, ...(['usageLimitExceeded', 'rateLimitExceeded'].includes(String(info)) ? { limit: codexLimit(message, [...limits.values()]) } : {}) });
             }
             settle = true;
             idlePending = true;

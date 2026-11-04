@@ -3668,7 +3668,7 @@ export class Workers {
         if (e.limit) {
           live.limited = limitLifts(e.limit, this.o.limitMargin ?? 10_000);
           const t = this.o.board.t;
-          this.o.board.log(cardId, 'state', 'obeya', `${e.message}. ${e.limit.resetsAt ? t.worker.limitResumes(t.when(live.limited)) : t.worker.limitRetries(t.when(live.limited))}`);
+          this.o.board.log(cardId, 'state', 'obeya', `${e.message.replace(/\.?\s*$/, '.')} ${e.limit.resetsAt ? t.worker.limitResumes(t.when(live.limited)) : t.worker.limitRetries(t.when(live.limited))}`);
           break;
         }
         live.failed = e.message;
