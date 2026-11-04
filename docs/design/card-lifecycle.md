@@ -63,7 +63,11 @@ dismissing the proposal); the other card's own panel says it is being merged.
 
 Once the merged card is there the pair needs the owner (the pin, „Braucht dich“). Its panel shows
 the two cards side by side on top and the merged card under them, centred, with „Zusammenführung
-übernehmen“ and „Trennen“. Approving gives the other card the merged title and text, the
+übernehmen“ and „Trennen“. Long originals open clamped so the merged card is visible immediately
+on a tall screen; „Alles anzeigen“ expands both together for comparison, and can collapse them again.
+Only the panel scrolls, never the two originals independently. The merged text is always shown in
+full, and the actions stay at the panel's foot while it scrolls, on the phone as well.
+Approving gives the other card the merged title and text, the
 screenshots of both and the pair's place; a proposal also keeps the questions of both, a planned
 task gets the proposal's questions as open ones in its text, as accepting does. The proposal goes,
 kept as deleted with a mark so the Rückschau does not read it as dismissed, and what followed up on

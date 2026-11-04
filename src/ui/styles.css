@@ -635,10 +635,10 @@ button.pill.help:hover, button.pill.help.on { color: var(--ink); }
 /* the card's decisions at its end stay in view while a long text scrolls under them, filling the
    room below the content (and above the microphone) as the panel's foot; a line above them while
    there is more to scroll to */
-#panel .content > .actions:last-child { position: sticky; bottom: calc(-1 * var(--pb)); z-index: 1; margin-bottom: calc(-1 * var(--pb));
+#panel .content > .actions:last-child, #panel .merge-actions { position: sticky; bottom: calc(-1 * var(--pb)); z-index: 1; margin-bottom: calc(-1 * var(--pb));
   margin-top: 6px; padding: 12px 0 var(--pb); background: var(--panel); }
 @supports (animation-timeline: scroll()) {
-  #panel .content > .actions:last-child { animation: foot-line linear both; animation-timeline: scroll(nearest block); }
+  #panel .content > .actions:last-child, #panel .merge-actions { animation: foot-line linear both; animation-timeline: scroll(nearest block); }
 }
 @keyframes foot-line {
   0%, 99.5% { box-shadow: 0 -1px 0 var(--line); }
@@ -2554,8 +2554,11 @@ a.link.perf-to-log, a.link.flog-back { color: var(--working); text-decoration: u
 /* the merged card in its panel: the two it came from side by side, the merged one under them, centred */
 .merge-view { display: flex; flex-direction: column; align-items: center; gap: 0; margin-top: 10px; }
 .merge-sides { display: flex; align-items: stretch; width: 100%; }
-.merge-side { flex: 1 1 0; min-width: 0; box-sizing: border-box; padding: 14px 16px; border-radius: 3px; background: var(--card); box-shadow: var(--shadow); }
+.merge-side { position: relative; flex: 1 1 0; min-width: 0; box-sizing: border-box; padding: 14px 16px; border-radius: 3px; background: var(--card); box-shadow: var(--shadow); }
 .merge-side:first-child { box-shadow: none; border: 1.5px dashed var(--proposal); background: color-mix(in srgb, var(--proposal) 4%, var(--card)); }
+.merge-view:not(.expanded) .merge-side { max-height: clamp(140px, 22dvh, 280px); overflow: clip; }
+.merge-view.clipped:not(.expanded) .merge-side::after { content: ""; position: absolute; bottom: 0; left: 0; right: 0; height: 28px; pointer-events: none; background: linear-gradient(transparent, var(--card)); }
+.merge-toggle { margin-top: 10px; }
 .merge-side h3, .merge-result h3 { margin: 2px 0 6px; font-family: var(--serif); font-size: 18px; line-height: 1.2; }
 .merge-side-kind { font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .merge-sides-glue { position: relative; flex: 0 0 56px; display: flex; align-items: center; justify-content: center; color: var(--proposal); }
@@ -2565,5 +2568,14 @@ a.link.perf-to-log, a.link.flog-back { color: var(--working); text-decoration: u
 .merge-result.busy { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--proposal) 45%, transparent), var(--shadow); }
 .merge-wait { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; color: var(--proposal); }
 .merge-intro { text-align: center; max-width: 720px; }
-.merge-actions { justify-content: center; }
+.merge-actions { justify-content: center; width: 100%; }
+/* The phone page reserves 157px below its content; leave 87px for the microphone. */
+.ph-view .merge-actions { position: sticky; bottom: -70px; z-index: 5; padding: 12px 0; background: var(--bg); border-top: 1px solid var(--line); }
+.ph-view .merge-actions::after { content: ""; position: absolute; top: 100%; left: 0; right: 0; height: calc(87px + env(safe-area-inset-bottom)); background: var(--bg); pointer-events: none; }
+@media (max-width: 700px) {
+  .merge-side { padding: 10px; }
+  .merge-side h3 { font-size: 16px; }
+  .merge-sides-glue { flex-basis: 24px; }
+  .merge-result { padding: 14px; }
+}
 .btn > .merge-mark { vertical-align: -2px; margin-right: 2px; }

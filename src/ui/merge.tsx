@@ -1,7 +1,7 @@
 // Merging a proposal with another card: „Zusammenführen mit …“ and its picker, and the merged card
 // beside the two it came from, to approve or separate (design: Merging a proposal with a card).
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { type CardAction, type Item, merging, mergeableWith } from '../core/types';
 import { Inline, plain } from './markdown';
 import { Body } from './message';
@@ -96,6 +96,17 @@ function MergePicker({ item, all, onClose, onPick }: { item: Item; all: Item[]; 
 export function MergeView({ item, partner, act }: { item: Item; partner?: Item; act: Act }) {
   const m = item.proposal!.merge!;
   const busy = merging(item);
+  const [expanded, setExpanded] = useState(false);
+  const [clipped, setClipped] = useState(false);
+  const sides = useRef<HTMLDivElement>(null);
+  const sidesId = useId();
+  useEffect(() => {
+    if (expanded || !sides.current) return;
+    const cards = [...sides.current.querySelectorAll<HTMLElement>('.merge-side')];
+    const observer = new ResizeObserver(() => setClipped(cards.some((card) => card.scrollHeight > card.clientHeight + 1)));
+    cards.forEach((card) => observer.observe(card));
+    return () => observer.disconnect();
+  }, [expanded, item.body, partner?.body]);
   const side = (i: Item | undefined, kind: string) => (
     <div className="merge-side">
       <div className="merge-side-kind">{kind}</div>
@@ -113,14 +124,19 @@ export function MergeView({ item, partner, act }: { item: Item; partner?: Item; 
     </div>
   );
   return (
-    <div className="merge-view">
-      <div className="merge-sides">
+    <div className={`merge-view${expanded ? ' expanded' : ''}${clipped ? ' clipped' : ''}`}>
+      <div className="merge-sides" ref={sides} id={sidesId}>
         {side(item, t.merge.proposal)}
         <div className="merge-sides-glue">
           <span className="merge-knot">{busy ? <span className="spinner" /> : <MergeMark />}</span>
         </div>
         {side(partner, partner?.state === 'proposal' ? t.merge.proposal : partner ? stateLabel(partner) : '')}
       </div>
+      {(clipped || expanded) && (
+        <button className="btn merge-toggle" aria-expanded={expanded} aria-controls={sidesId} onClick={() => setExpanded(!expanded)}>
+          {expanded ? t.merge.showLess : t.merge.showAll}
+        </button>
+      )}
       <div className="merge-arrow" aria-hidden />
       <div className={busy ? 'merge-result busy' : 'merge-result'}>
         <div className="merge-side-kind">{t.merge.result}</div>
