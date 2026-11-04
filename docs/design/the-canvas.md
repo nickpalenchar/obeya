@@ -110,6 +110,14 @@ session of the „Kleine Aufgaben“ group (else the text's first line) before i
 meanwhile the canvas shows the first line, muted, and a title the owner types wins. A card left
 empty is dropped (one left by a closed page on Obeya's next start). Deleting offers undo.
 
+Automatic titles follow the plugin's `titles` skill, choosing a format from the task's meaning:
+„As <role> I should <action>“ for a user's capability where the role matters,
+„<component> - <something that is not working>“ for an observed fault, and
+„<component> should <new action>“ for new behaviour. The wording follows the task's language,
+aims for about 70 characters, and keeps the distinguishing action, symptom or condition. These
+formats work with ordinary prose and screenshots; a concise action title covers tasks with no
+role or component, without inventing either.
+
 An empty canvas names speaking first (hold Space and say what to build; the card appears at the
 pointer), the double-click second. The bar's "Neue Aufgabe" only teaches the double-click (a note
 with "Got it") and goes for good (per browser) once a card has been created by double-click.

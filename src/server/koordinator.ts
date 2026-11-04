@@ -16,6 +16,7 @@ import { LANGUAGE_NAMES } from '../core/locale';
 import { clip, messageOf } from '../core/text';
 import { type Label, type Labels, suggestable, type SuggestToggles } from '../core/labels';
 import { labelParams, labelsFrom, labelsGuide, labelWords } from './label-suggestion';
+import { titlesGuide } from './title-suggestion';
 
 /** A workstream as the Koordinator scheduled it, in its turn's order. */
 interface Planned {
@@ -1267,7 +1268,7 @@ export class Koordinator {
 }
 
 const NAME_SYSTEM = (language: string, labels: Label[] = []) =>
-  `You name a card on Obeya, a canvas on which the owner directs coding agents. The owner wrote the card's task (below) without a title. Give it one with the tool title: in the language the task is written in (${language} where it tells none), short and precise like a ticket title (at most about 70 characters), saying what the task changes or achieves; no quotes, no full stop at the end.${labels.length ? ` In the same call, give its ${labelWords(labels)}, judged as the guide below says.` : ''} Then end your turn.${labels.length ? `\n\n${labelsGuide()}` : ''}`;
+  `You name a card on Obeya, a canvas on which the owner directs coding agents. The owner wrote the card's task (below) without a title. Give it one with the tool title, following the naming guide below, in the language the task is written in (${language} where it tells none).${labels.length ? ` In the same call, give its ${labelWords(labels)}, judged as the labels guide below says.` : ''} Then end your turn.\n\n${titlesGuide()}${labels.length ? `\n\n${labelsGuide()}` : ''}`;
 
 const LABELS_SYSTEM = (labels: Label[]) =>
   `You label a card on Obeya, a canvas on which the owner directs coding agents: its title, text and screenshots are below. Give its ${labelWords(labels)} with the tool labels, judged as the guide below says, from the card alone, without reading files. Then end your turn.\n\n${labelsGuide()}`;
