@@ -240,7 +240,7 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
           {since && <span className="since"> · {since}</span>}
         </span>
       </div>
-      {needsYou(item) && !underway && <div className="badge pulse">{item.state === 'proposal' ? '✦' : '!'}</div>}
+      {needsYou(item) && !underway && <div className="badge pulse">{item.state === 'proposal' ? '✦' : asksYou(item) ? '?' : '!'}</div>}
     </>
   );
 }
@@ -1427,7 +1427,7 @@ export function Minimap({
             width={b.w * k}
             height={b.h * k}
             rx={item.kind === 'project' ? 1.5 : 0.5}
-            style={{ fill: item.kind === 'project' ? 'var(--container-line)' : `var(--${item.snoozed ? 'muted' : item.state})` }}
+            style={{ fill: item.kind === 'project' ? 'var(--container-line)' : `var(--${item.snoozed ? 'muted' : asksYou(item) ? 'asking' : item.state})` }}
             opacity={item.kind === 'project' || needsYou(item) ? 1 : 0.55}
           />
         ))}

@@ -200,7 +200,12 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .card.snoozed .state { --c: var(--muted); }
 .card.snoozed .state::after { display: none; }
 .card .state .clock-mark, .card .state .question-mark { flex: none; margin-right: -2px; }
-.card.asking .state { --c: var(--asking); }
+/* a question from its agent: the owner's turn in dark yellow, its rule, frame and pin, the pin with "?" */
+.card.asking { --c: var(--asking); }
+.card.asking .badge { --pin: var(--asking); }
+.card.s-waiting.asking { box-shadow: 0 0 0 2px var(--asking), var(--shadow); }
+.card.s-waiting.asking:hover { box-shadow: 0 0 0 2px var(--asking), var(--lift); }
+.z-far .card.s-waiting.asking { box-shadow: 0 0 0 5px var(--asking), var(--shadow); }
 .p-state .question-mark { vertical-align: -1px; }
 .ph-card .state :is(.clock-mark, .question-mark) { margin-right: 5px; vertical-align: -1px; }
 @keyframes flow { from { background-position: 100% 0; } to { background-position: -100% 0; } }
@@ -2276,6 +2281,7 @@ button.link:hover { text-decoration: underline; }
 .connection-handles.s-waiting.underway { --c: var(--approved); }
 .connection-handles.s-waiting.answering { --c: var(--working); }
 .connection-handles:not(.snoozed):not(.underway):not(.answering):is(.s-waiting, .s-idea.your-turn), .connection-handles.dep-highlight { --c: var(--waiting); }
+.connection-handles.asking:not(.dep-highlight) { --c: var(--asking); }
 /* what an arrow does, beside the pointer while the owner draws their first */
 #dephint { position: fixed; z-index: 40; pointer-events: none; transform: translate(16px, 16px); max-width: 300px; margin: 0; padding: 6px 10px; border-radius: 3px;
   background: var(--ink); color: var(--bg); font: 13px/1.35 var(--cond); text-align: left; animation: fade .15s ease-out; }
