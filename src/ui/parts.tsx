@@ -965,7 +965,7 @@ export const ProjectView = memo(
           </button>
           <span className="ttl">{plain(item.title)}</span>
           <span className="kind">{t.kind.project}</span>
-          <LabelMarks item={item} chips="head-labels" />
+          {hasLabels(item) && <span className="head-labels"><LabelMarks item={item} /></span>}
           <span className="progress">{t.progress(live, kids.length)}</span>
           {/* collapsed, its workstreams are not on the canvas to arrange; its sheet still has the button */}
           {!collapsed && (item.arranging || arrangeable(kids)) && (

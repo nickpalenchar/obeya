@@ -2531,11 +2531,12 @@ a.link.perf-to-log, a.link.flog-back { color: var(--working); text-decoration: u
 .lopt b { width: 1ch; font-weight: 600; }
 .lopt span { color: var(--muted); }
 .project > .head .prio, .project > .head .lchip { font-size: 11px; }
-/* the frame already says it is a project: its word gives way to the priority, so the title keeps its room */
-.project > .head:has(.prio, .head-labels) .kind { display: none; }
-/* the chips give way before the title does: they shrink ten times as fast, cut off at the right; the priority stays */
-.project > .head .ttl { flex: 0 1 auto; min-width: 6em; }
-.project > .head .head-labels { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 10 auto; overflow: hidden; }
+/* Labels have their own line in the existing space above the workstreams, leaving the title and actions their room. */
+.project > .head:has(.head-labels) .kind { display: none; }
+.project > .head .head-labels { position: absolute; left: 44px; right: 22px; top: 47px; display: flex; align-items: center; gap: 6px; overflow: hidden; }
+.project.collapsed:has(.head-labels) > .head { height: 46px; }
+.project.collapsed > .head .head-labels { top: 40px; }
+.project.collapsed:has(.head-labels) > .marks { top: 63px; }
 
 /* „Zusammenführen mit …“: the cards a proposal can be merged with, the newest first, with a search */
 #merge-pick { position: fixed; inset: 0; z-index: 60; background: var(--dim); display: flex; align-items: flex-start; justify-content: center; padding: 10vh 24px 24px; animation: fade .15s ease-out; }

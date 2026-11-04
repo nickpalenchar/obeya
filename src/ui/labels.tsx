@@ -64,13 +64,13 @@ const CHIPPED = ['category', 'subcategory', 'complexity'] as const;
 /** Whether a card has any label to show. */
 export const hasLabels = (item: Item) => !!item.priority || CHIPPED.some((l) => item[l] !== undefined);
 
-/** A card's labels on its face: its priority's flag, then a chip for each label it has (in a box of class `chips`, where given). */
-export function LabelMarks({ item, chips }: { item: Item; chips?: string }) {
+/** A card's labels on its face: its priority's flag, then a chip for each label it has. */
+export function LabelMarks({ item }: { item: Item }) {
   const shown = CHIPPED.filter((l) => item[l] !== undefined).map((l) => <Chip key={l} label={l} value={item[l]!} suggested={suggestedOf(item, l)} />);
   return (
     <>
       {item.priority && <PriorityMark priority={item.priority} suggested={suggestedOf(item, 'priority')} />}
-      {chips ? shown.length > 0 && <span className={chips}>{shown}</span> : shown}
+      {shown}
     </>
   );
 }

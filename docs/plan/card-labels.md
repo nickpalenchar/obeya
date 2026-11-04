@@ -54,8 +54,8 @@ this Obeya, never in plan docs, and not told to agents.
   priority flag and chips (complexity as rising bars and its number) and the unfolded card's four
   pickers; the complexity list shows each step's description beside it and as its tooltip. A
   suggested label is framed in `--suggest`, a magenta well apart from the proposal's violet; any
-  pick, the same value included, sends the PATCH that makes it the owner's. In a project's head the
-  title keeps its room: the chips give way first, cut off at the right.
+  pick, the same value included, sends the PATCH that makes it the owner's. A project's head shows
+  its labels on a separate line below its title and actions, above the workstreams.
 - [ ] **W3:** The suggestion. A plugin skill that judges category, sub-category, complexity and
   priority from a card's title, text and screenshots, with the lists and the complexity scale in it.
   Hook it into the naming session (one call returns the title and the labels) and, for a card that
