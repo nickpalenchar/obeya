@@ -1,5 +1,5 @@
 // The menu `/` opens in a card's task field (`cardRefs.ts`): the canvas's cards whose titles fit
-// what follows the slash, under the field, each as the smart link it will become. The arrow keys
+// what follows the slash, just under the line being typed, each as the smart link it will become. The arrow keys
 // mark, Enter, Tab or a click picks, Escape closes it and leaves the card open. Picking types the
 // card's link over the search, as if by hand (⌘Z takes it back). Under the field the cards the text
 // links to stand as smart links, since the field itself shows the links' markdown.
@@ -63,8 +63,8 @@ export function useCardSearch(field: RefObject<HTMLTextAreaElement | null>, self
     },
   };
   const refs = cardRefsIn(text);
-  // the menu over what follows the field, the cards linked under it
-  const menuShown = menu.length > 0 && <CardMenu cards={menu} marked={marked} onPick={pick} />;
+  // the menu under the line being typed, from its slash on; the cards linked under the field
+  const menuShown = menu.length > 0 && <CardMenu cards={menu} marked={marked} onPick={pick} at={field.current && search ? menuPlace(field.current, search.start) : undefined} />;
   const under = (
     <>
       {refs.length > 0 && (
@@ -80,14 +80,49 @@ export function useCardSearch(field: RefObject<HTMLTextAreaElement | null>, self
   return { props, menu: menuShown, under };
 }
 
-/** The cards that fit the search, the marked one picked with Enter or Tab, another with the arrow keys or a click. */
-function CardMenu({ cards, marked, onPick }: { cards: Item[]; marked: number; onPick: (card: Item) => void }) {
+/** Where the menu stands in the field's frame, and how wide it is. */
+type Place = { left: number; top: number; width: number };
+
+/** How wide the menu is at most. */
+const MENU_WIDTH = 460;
+
+/**
+ * Where the menu goes for a search whose slash is at `index` of the field's text: just under the
+ * slash's line, from the slash on, but not out past the field's right edge. Measured on a copy of
+ * the field that wraps its text the same way, relative to the field's frame.
+ */
+function menuPlace(el: HTMLTextAreaElement, index: number): Place {
+  const style = getComputedStyle(el);
+  const copy = document.createElement('div');
+  for (const p of ['boxSizing', 'width', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight', 'tabSize', 'textTransform', 'wordSpacing', 'textIndent'] as const)
+    copy.style[p] = style[p];
+  Object.assign(copy.style, { position: 'absolute', visibility: 'hidden', top: '0', left: '-9999px', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', borderStyle: 'solid' });
+  copy.textContent = el.value.slice(0, index);
+  const mark = document.createElement('span');
+  mark.textContent = el.value.slice(index) || '/';
+  copy.append(mark);
+  document.body.append(copy);
+  const line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.4;
+  const x = mark.offsetLeft;
+  const y = mark.offsetTop + line;
+  copy.remove();
+  const width = Math.min(MENU_WIDTH, el.offsetWidth);
+  return {
+    width,
+    left: el.offsetLeft + Math.max(0, Math.min(x - 8, el.offsetWidth - width)),
+    // within the field as it scrolls, and never below its bottom edge
+    top: el.offsetTop + Math.min(y - el.scrollTop, el.offsetHeight) + 4,
+  };
+}
+
+/** The cards that fit the search, the marked one picked with Enter or Tab, another with the arrow keys or a click; `at`: where it stands in the field's frame. */
+function CardMenu({ cards, marked, onPick, at }: { cards: Item[]; marked: number; onPick: (card: Item) => void; at?: Place }) {
   const list = useRef<HTMLUListElement>(null);
   useEffect(() => {
     list.current?.children[marked]?.scrollIntoView({ block: 'nearest' });
   }, [marked, cards]);
   return (
-    <div className="skill-menu card-menu" role="listbox" aria-label={t.cardRefs.menu}>
+    <div className="skill-menu card-menu" role="listbox" aria-label={t.cardRefs.menu} style={at}>
       <ul ref={list}>
         {cards.map((c, i) => (
           <li key={c.id} role="option" aria-selected={i === marked} className={i === marked ? 'on' : undefined} onMouseDown={(e) => e.preventDefault()} onClick={() => onPick(c)}>

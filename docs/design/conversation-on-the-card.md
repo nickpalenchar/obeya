@@ -381,7 +381,7 @@ machine's list.
 In a card's task text, while it can still be edited, `/` at the start of the text or of a word
 searches the canvas's cards: the words after it on the same line filter them, each of them in the
 title (case aside) or the card's short code; titles that start with the search first, at most
-eight, neither the card itself nor what is archived. The menu shows under the field only while
+eight, neither the card itself nor what is archived. The menu opens just under the line being typed, from the slash on, only while
 something fits, each card as the smart link it will become, with its short code; the keys and the
 click work as in the skills menu, and Escape closes it without closing the card. Picking types a
 markdown link over the search, `[Title](/c/<canvas>/card/<code>)` (the card's address, see

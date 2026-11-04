@@ -1797,8 +1797,8 @@ button.link:hover { text-decoration: underline; }
 .skill-menu .sk-hint { color: var(--muted); }
 .skill-menu .sk-desc { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .skill-menu .sk-loading { margin: 0; padding: 10px 12px; color: var(--muted); }
-/* `/` in a card's task field: the cards that fit, under the field */
-.skill-menu.card-menu { top: 100%; bottom: auto; margin: 4px 0 0; }
+/* `/` in a card's task field: the cards that fit, under the line being typed (placed by the script) */
+.skill-menu.card-menu { top: 100%; bottom: auto; right: auto; margin: 4px 0 0; }
 .card-menu li { align-items: center; justify-content: space-between; }
 .card-menu .cm-pill { min-width: 0; pointer-events: none; }
 .card-menu .cm-code { flex: none; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
