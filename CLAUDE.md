@@ -17,6 +17,10 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
   When the suite fails only from machine load or timing, don't ask to rerun it: hand over and say
   which failing tests were unrelated. When it hangs or stalls, stop it and go on to the demo and
   handover without asking: say there that the tests were skipped.
+- Never wait with `sleep` or polling chains in the foreground (`sleep 25; …`, `until curl …; sleep 3`):
+  a hook blocks them. Run long commands (`bun test --parallel`, `bun run typecheck`, a scratch Obeya
+  start) with run_in_background or Monitor and wait for the notification; for a short wait on a port
+  use one bounded `timeout 30 bash -c 'until curl -sf http://127.0.0.1:<port>/ >/dev/null; do sleep 2; done'`.
 - `src/core/` is shared by server and UI (types, plan-doc parser, layout); `src/server/` is the
   Bun server with SQLite; `src/ui/` the React canvas; `src/adapters/` what Obeya knows of a repository (its defaults, its settings).
 - Code that drives agents is tested against the fake runtime in `src/server/testing.ts` and real
@@ -46,6 +50,10 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
   (`.obeya/settings.json` in that repository), not into this repo. Those settings stay few and
   generic: each describes something that holds for any kind of app, not one kind of web stack, and
   no two cover the same need; where two overlap, merge them.
+- The extension design (`docs/plan/extensions.md`) is best effort: not every feature fits it
+  cleanly, and the core may be extended where needed. A worker promoting a feature into an
+  extension should expect other features to have seeped into the code it moves, and edits those
+  itself.
 - The owner works in Obeya at the level of requirements, feature and bug descriptions and specs,
   and checks results in demos and result artifacts. Source code and diffs stay in the background:
   on a card with a demo or artifact, its changed files are optional and stay collapsed until
