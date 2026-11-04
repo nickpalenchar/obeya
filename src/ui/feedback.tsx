@@ -77,8 +77,8 @@ export function Rate({ item, prompt, onClose }: { item: Item; prompt?: boolean; 
         </span>
         {shown > 0 && <span className="rate-name">{t.feedback.stars[shown - 1]}</span>}
         {prompt && (
-          <button type="button" className="btn rate-skip" title={rating ? undefined : t.feedback.skipHint} onClick={onClose}>
-            {rating ? t.feedback.done : t.feedback.skip}
+          <button type="button" className="btn rate-skip" title={rating || text ? undefined : t.feedback.skipHint} disabled={busy} onClick={() => (text ? void sendComment() : onClose?.())}>
+            {rating || text ? t.feedback.done : t.feedback.skip}
           </button>
         )}
       </div>
@@ -102,9 +102,11 @@ export function Rate({ item, prompt, onClose }: { item: Item; prompt?: boolean; 
                   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void sendComment();
                 }}
               />
-              <button type="button" className="btn" disabled={!text || busy || text === saved?.comment} onClick={() => void sendComment()}>
-                {t.feedback.send}
-              </button>
+              {!prompt && (
+                <button type="button" className="btn" disabled={!text || busy || text === saved?.comment} onClick={() => void sendComment()}>
+                  {t.feedback.send}
+                </button>
+              )}
             </>
           )}
         </div>
