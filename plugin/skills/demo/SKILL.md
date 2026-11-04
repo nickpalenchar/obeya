@@ -185,6 +185,24 @@ it from the video, see above), `wait`, `evaluate(fn, arg?)` (`page.evaluate` tha
 once the page has not answered for 20 s), and `d.page` for raw Playwright. Keep the recording on the app's own pages: other material (a results page, a report)
 goes on screen with `showImage`, since a `goto` to another origin and back broke the timeline.
 
+### A change to persisted data models
+
+When the change alters the data the app persists (tables, columns, indexes, relations,
+migrations, ORM models), the owner also gets a schema-change page beside the demo. Read the
+models the change touches, before and after, out of whatever the project uses (the migration, the
+model files and their diff), into `<demo dir>/schema-models.json` (its shape is in the header of
+`${CLAUDE_SKILL_DIR}/lib/schema.ts`): every entity the change touches, with all its fields, keys,
+indexes and references, and the entities those refer to or that refer to them; `was` on an
+entity or field that was renamed; `sources`: the migrations and model files you read. Then:
+
+```bash
+node ${CLAUDE_SKILL_DIR}/lib/schema.ts <demo dir>/schema-models.json <demo dir>/schema-change.html
+```
+
+Look at the page in the browser: does it show what the migration does, nothing more and nothing
+less? Under Obeya, name it first in `ready_for_review`'s `files` by its absolute path, with a
+caption. Without Obeya, link it from the summary.
+
 ## 5. Render
 
 ```bash

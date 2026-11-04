@@ -519,6 +519,33 @@ they look at. A demo whose directory a later one reused, or whose files are gone
 comment on a place keeps its demo: a click shows that demo, and the worker hears it as about the
 earlier video.
 
+#### A change to persisted data models
+
+A change that alters the data its project persists (tables, columns, indexes, relations,
+migrations, ORM models; not API types or config schemas) brings a schema-change page as the first
+of the files beside the demo. The worker makes it: it reads the touched models before and after out
+of whatever the project uses into a small JSON (entities with their fields, types, keys, indexes and
+references; a `was` for a rename; the source files it read), and the demo skill's renderer turns
+that into one self-contained HTML page. The renderer knows no SQL dialect or ORM, and runs under
+plain Node like the rest of the skill. The page draws the touched entities as boxes with lines for
+their references, added green, changed amber, removed red, in columns so that references run left
+to right. Beside them, dashed, stand their direct neighbours along the relations the change makes,
+drops or breaks (what a new entity or a changed field refers to, what refers to a dropped or renamed
+one): a column added to a central table does not bring every table around it. A large schema is cut
+to those, an entity's unchanged fields beyond a handful to its keys and references, the rest
+counted. Below the diagram it lists the changes in words and the
+source files it was drawn from, since the worker's reading of them can be wrong. Entity, field and
+type names are in a monospace font as in code, the rest in the page's normal font; it follows the
+light or dark look of the system and loads nothing from elsewhere. A change that touches no
+persisted model gets no page.
+
+Such a page is for review, not part of the change, so it stays out of git: it lies in the
+handover's demo directory, and `ready_for_review`'s `files` take it by its absolute path there
+(else the directory of the demo already on the card). The card serves it from there as it serves
+the change's files, and keeps naming it after landing while the demo directory holds it. Its name
+must not be the path of a file of the change, which the list and the served address would mistake
+for it. It does not go onto a shared demo page, which shows no named files.
+
 ### UI checks
 
 Workers check web UIs with the plugin's skill `browser` (`obeya:browser`): a headless browser driven
@@ -554,6 +581,13 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
 
 - **A demo is a video or an HTML artifact, chosen by the worker** (2026-10-01): drafts to choose
   from (a logo) say more side by side on a page than in a recording.
+- **A data-model change brings a schema diagram the worker renders** (owner, 2026-11-03): the
+  worker reads the models out of the project, a renderer the demo skill ships draws them. Rejected:
+  Obeya parsing migrations itself (it cannot know how a repository defines its models, and the core
+  holds no project-specific logic); an instruction alone without a renderer (each worker would draw
+  its own kind of page). Only persisted models count (owner). The page lies in the demo directory,
+  not in git (owner, 2026-11-03): committed, every data-model change would add a generated page to
+  the project's history.
 - **A question can bring a demo** (owner, 2026-11-03): drafts to choose a direction from (three
   designs, say) were a path in the question's text, which the owner had to open by hand. Rejected:
   handing over with the drafts and the demo report's question, which puts work that has only begun

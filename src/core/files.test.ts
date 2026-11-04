@@ -56,6 +56,16 @@ describe('the files a card shows as its result', () => {
     ]);
   });
 
+  test("a page from the demo's directory comes first as a new page, beside the change's files", () => {
+    const named = [{ path: 'schema-change.html', caption: 'Schema', dir: '/demos/x' }];
+    expect(shownFiles(branch, named).map((f) => `${f.path} ${f.kind}${f.added ? ' new' : ''}${f.diff ? ' diff' : ''} ${f.caption ?? ''}`.trim())).toEqual([
+      'schema-change.html page new Schema',
+      'docs/report.pdf pdf new',
+      'docs/new-name.md markdown new',
+      'src/app.ts text diff',
+    ]);
+  });
+
   test('a file gone from the folder since gets no tab, named or not', () => {
     const changes = folder.folder!.changes.map((c) => (c.path === 'Steuer.xlsx' || c.path === 'CLAUDE.md' ? { ...c, gone: true as const } : c));
     const named = [{ path: 'Steuer.xlsx', caption: 'Die Tabelle' }];

@@ -263,7 +263,8 @@ column shows, so its scrollbar is the only one; a video left for another file st
 
 A card with named files, or a folder card handed over without a demo but with files to show, is a
 split even without a demo; the server decides at the handover so the layout does not jump. A worker
-names only files of its change, at most twelve, or is asked again; without `files` later the earlier
+names only files of its change, or a page in its demo's directory (see A change to persisted data
+models in Demos), at most twelve, or is asked again; without `files` later the earlier
 ones stand, an empty list removes them. An open view reads its file afresh when a handover arrives
 or the work changes it.
 

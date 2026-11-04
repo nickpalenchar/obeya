@@ -28,7 +28,7 @@ import { EXEC_LANE_NOTE, execTools } from './exec-tools';
 import { type Forward, HOST_DIR, hostName, remote } from './hosts';
 import { runAppCommand } from './app-command';
 import { readingShared } from '../adapters';
-import { branchName, type CardWorkspaces, type FileAt, gitSteps, type Landed, type Lease, type PullStopped, shortageOf, together, WorkspaceError, type Workspaces } from './workspaces';
+import { branchName, type CardWorkspaces, type FileAt, gitSteps, ownFile, type Landed, type Lease, type PullStopped, shortageOf, together, WorkspaceError, type Workspaces } from './workspaces';
 import type { FolderWorkspaces, UndoReport } from './folder';
 import { contributionOf, type PrState, type Shipped, type StoredContribution, type StoredNewRepo } from './board';
 import { type Doing, onTool, onToolDone, shownDoing, THINKING_AFTER } from './doing';
@@ -2303,6 +2303,9 @@ export class Workers {
     const landed = row.state === 'live' && shipped?.commit ? shipped.commit : undefined;
     // to open: the checkout's copy only of what landed there, never for a branch elsewhere
     const ref = landed ?? (local ? undefined : (row.branch ?? undefined));
+    // a page the worker named from its demo's directory, which stays out of git
+    const beside = (row.files ? (JSON.parse(row.files) as CardFile[]) : []).find((f) => f.dir && f.path === path);
+    if (beside) return ownFile(beside.dir!, path);
     const changed = await this.changedFiles(cardId);
     const at = (p: string, onDisk = local) => this.o.workspaces.fileOf(cardId, p, ref, onDisk);
     if (changed.includes(path)) return at(path);
@@ -2317,21 +2320,36 @@ export class Workers {
 
   /**
    * The files a worker names as its result at its handover, as paths of its change relative to the
-   * workspace (or folder); what is wrong instead, for the worker to fix.
+   * workspace (or folder), or as files in `demoDir`, the directory of the demo it hands over (else
+   * the one on the card), by their absolute paths; what is wrong instead, for the worker to fix.
    */
-  private async namedFiles(cardId: string, files: { path: string; caption: string }[]): Promise<CardFile[] | string> {
-    const ws = (this.o.board.row(cardId).workspace ?? '').replace(/^ssh:\/\/[^/]+/, '');
-    const roots = [ws, ...(ws && !hostName(this.o.board.row(cardId).workspace) ? [realpathOr(ws)] : [])].filter(Boolean);
+  private async namedFiles(cardId: string, files: { path: string; caption: string }[], demoDir?: string): Promise<CardFile[] | string> {
+    const row = this.o.board.row(cardId);
+    const ws = (row.workspace ?? '').replace(/^ssh:\/\/[^/]+/, '');
+    const roots = [ws, ...(ws && !hostName(row.workspace) ? [realpathOr(ws)] : [])].filter(Boolean);
+    const shown = demoDir ?? (row.demo ? (JSON.parse(row.demo) as StoredDemo).dir : undefined);
+    // a demo made on another machine is checked once it is copied here
+    const onHost = !!demoDir && !!hostName(row.workspace);
+    const demoRoots = shown ? [...new Set([shown, ...(onHost ? [] : [realpathOr(shown)])])] : [];
     const changed = await this.changedFiles(cardId);
     const out: CardFile[] = [];
     for (const f of files) {
-      let given = String(f.path).trim();
+      let given = String(f.path).trim().replace(/\\/g, '/');
+      const caption = clip(String(f.caption ?? '').replace(/\s+/g, ' ').trim(), 200);
+      const dir = demoRoots.find((r) => given.startsWith(`${r.replace(/\\/g, '/')}/`));
+      if (dir) {
+        const path = normalPath(given.slice(dir.length + 1));
+        if (!path || (!onHost && !ownFile(dir, path))) return `${f.path} is no file in your demo's directory`;
+        if (changed.includes(path)) return `${f.path} has the path of a file of your change (${path}); give it another name`;
+        if (!out.some((o) => o.path === path)) out.push({ path, caption, dir: shown! });
+        continue;
+      }
       const root = roots.find((r) => given.startsWith(`${r}/`));
       if (root) given = given.slice(root.length + 1);
       const path = isAbsolute(given) ? null : normalPath(given);
       if (!path || !changed.includes(path))
-        return `${f.path} is not among the files your card made or changed${changed.length ? ` (${changed.slice(0, 30).join(', ')}${changed.length > 30 ? ', …' : ''})` : ' (none so far)'}`;
-      if (!out.some((o) => o.path === path)) out.push({ path, caption: clip(String(f.caption ?? '').replace(/\s+/g, ' ').trim(), 200) });
+        return `${f.path} is not among the files your card made or changed${changed.length ? ` (${changed.slice(0, 30).join(', ')}${changed.length > 30 ? ', …' : ''})` : ' (none so far)'}${shown ? `, nor in your demo's directory (${shown})` : ''}`;
+      if (!out.some((o) => o.path === path)) out.push({ path, caption });
     }
     return out;
   }
@@ -4549,7 +4567,7 @@ export class Workers {
             .max(MAX_RESULT_FILES)
             .optional()
             .describe(
-              `the files ${this.folder ? 'in the folder' : 'of your branch'} that are the result for the owner (a document, a report, a spreadsheet, a page; not the code or configuration behind it), each with its path and a one-line caption in ${language}. The card shows them beside the demo: Markdown formatted, a PDF in the browser's viewer, any other file to open on the owner's computer. Without them, the ones named at your last handover stand.`,
+              `the files ${this.folder ? 'in the folder' : 'of your branch'} that are the result for the owner (a document, a report, a spreadsheet, a page; not the code or configuration behind it), each with its path and a one-line caption in ${language}. The card shows them beside the demo: Markdown formatted, a PDF in the browser's viewer, any other file to open on the owner's computer. A page you rendered for review only lies in your demo's directory instead, named by its absolute path there. When your change alters persisted data models (tables, columns, indexes, relations, migrations, ORM models), the first file is the schema-change page the demo skill renders, with a caption. Without them, the ones named at your last handover stand.`,
             ),
         },
         run: ({ summary, demo, files, review: results, pr_draft: draft }) => {
@@ -4691,7 +4709,11 @@ export class Workers {
               return this.demoHere(cardId, given.dir).then((here) =>
                 'wrong' in here
                   ? `Not handed over: the demo could not be copied to the owner's machine (${here.wrong}). Check the directory, then call ready_for_review again.`
-                  : handOverWork({ ...given, dir: here.dir }, named, false),
+                  : handOverWork(
+                      { ...given, dir: here.dir },
+                      named?.map((f) => (f.dir === given.dir ? { ...f, dir: here.dir } : f)),
+                      false,
+                    ),
               );
             // in a folder, what the change has to show decides whether a handover without a demo shows it beside the conversation
             if (this.folder && !given) return this.showsFiles(cardId).then((shows) => handOverWork(given, named, shows));
@@ -4699,8 +4721,10 @@ export class Workers {
           };
           // the files named as the result, checked against what the card changed before anything is handed over
           if (files !== undefined)
-            return this.namedFiles(cardId, files as { path: string; caption: string }[]).then((named) =>
-              typeof named === 'string' ? `Not handed over: ${named}. Name only files your card made or changed, then call ready_for_review again.` : handOverWith(named),
+            return this.namedFiles(cardId, files as { path: string; caption: string }[], given?.dir).then((named) =>
+              typeof named === 'string'
+                ? `Not handed over: ${named}. Name only files your card made or changed, or files in your demo's directory, then call ready_for_review again.`
+                : handOverWith(named),
             );
           return handOverWith();
         },

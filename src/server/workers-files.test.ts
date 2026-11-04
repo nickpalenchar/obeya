@@ -100,3 +100,36 @@ describe('the files a card names as its result', () => {
     expect((await serve('notes.md')).status).toBe(404);
   });
 });
+
+describe('a page the worker names from its demo directory', () => {
+  test('counts as a result without being in git, is served from there, and takes no name of the change', async () => {
+    const { c, ws } = await reportCard();
+    const demo = artifact();
+    writeFileSync(join(demo.dir, 'schema-change.html'), '<p>schema</p>');
+    // only an existing file in the demo's directory, by its absolute path
+    expect(await runtime.last.call('ready_for_review', { summary: 'S', demo, files: [{ path: join(demo.dir, 'none.html'), caption: 'x' }] })).toContain("is no file in your demo's directory");
+    // one with the name of a file of the change would be mistaken for it
+    writeFileSync(join(demo.dir, 'README.md'), 'not the readme');
+    expect(await runtime.last.call('ready_for_review', { summary: 'S', demo, files: [{ path: join(demo.dir, 'README.md'), caption: 'x' }] })).toContain('has the path of a file of your change');
+    const done = await runtime.last.call('ready_for_review', {
+      summary: 'S',
+      demo,
+      files: [
+        { path: join(demo.dir, 'schema-change.html'), caption: 'Schema' },
+        { path: join(ws, 'docs', 'report.md'), caption: 'Bericht' },
+      ],
+    });
+    expect(done).toContain('Recorded');
+    expect(board.item(c.id)!.files).toEqual([
+      { path: 'schema-change.html', caption: 'Schema', dir: demo.dir },
+      { path: 'docs/report.md', caption: 'Bericht' },
+    ]);
+    expect(await workers.file(c.id, 'schema-change.html')).toEqual({ path: join(realpathSync(demo.dir), 'schema-change.html') });
+    // the demo's other files are not results
+    expect(await workers.file(c.id, 'index.html')).toBeNull();
+    // a later handover without a demo names one of the demo on the card
+    workers.message(c.id, 'Noch einmal.');
+    expect(await runtime.last.call('ready_for_review', { summary: 'S', files: [{ path: join(demo.dir, 'schema-change.html'), caption: 'Schema' }] })).toContain('Recorded');
+    expect(board.item(c.id)!.files).toEqual([{ path: 'schema-change.html', caption: 'Schema', dir: demo.dir }]);
+  });
+});
