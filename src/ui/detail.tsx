@@ -20,7 +20,7 @@ import { know, known } from './known';
 import { Branch } from './diff';
 import { ResultFiles } from './files';
 import { DiscardChanges, FolderBox, FolderLine, useFolderDiff } from './folder';
-import { PriorityMark, PriorityPick } from './priority';
+import { LabelMarks, LabelPicks } from './labels';
 import { asksYou, CardFace, cardClass, landedRef, PauseMark, PlayMark, QuestionMark, shownTitle } from './parts';
 import { asksAhead, holdsNotes } from '../core/queue';
 import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitText, type Behind } from './queue';
@@ -182,7 +182,7 @@ export function Detail(p: Props) {
       <>
         <div className="p-kind">
           {[repo, t.kind.question].filter(Boolean).join(' · ')}
-          {!item.archivedAt && <PriorityPick item={item} />}
+          {item.archivedAt ? <LabelMarks item={item} /> : <LabelPicks item={item} />}
         </div>
         <div className="p-title">
           <Inline md={item.title} />
@@ -1282,12 +1282,12 @@ function PrototypeStart({ item, act }: { item: Item; act: (a: CardAction, done: 
 }
 
 /** A workstream as the owner picks it: its label and title. */
-/** The unfolded card's kind line, with its priority to set beside it; an archived card only shows its priority. */
+/** The unfolded card's kind line, with its labels to set beside it; an archived card only shows them. */
 function KindLine({ kind, item }: { kind: string; item: Item }) {
   return (
     <div className="p-kind">
       {kind}
-      {item.archivedAt ? item.priority && <PriorityMark priority={item.priority} /> : <PriorityPick item={item} />}
+      {item.archivedAt ? <LabelMarks item={item} /> : <LabelPicks item={item} />}
     </div>
   );
 }

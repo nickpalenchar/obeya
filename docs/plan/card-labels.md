@@ -50,13 +50,12 @@ this Obeya, never in plan docs, and not told to agents.
   UI and skill. Setting a label through the API clears its mark; a "suggest" write fills only empty,
   never-cleared labels and sets the mark. Old cards read as having no labels. Agents' prompts and
   tools stay without the labels. Tests for the writes, the marks and the never-overwrite rule.
-- [ ] **W2:** Pickers and chips on the card. On the unfolded card (a project: its sheet), pickers for
-  category, sub-category and complexity beside the priority one, with „Keine“, the complexity steps'
-  descriptions as tooltips and the pick taking effect at once, as priority's does. On the card face,
-  compact chips after the priority flag; a suggested label's chip has the purple border, an owner's
-  the normal one, and the purple stays clear of the proposal's violet. The phone view shows the same
-  chips and pickers. Strings in both tables of `src/ui/strings.ts`. Screenshots checked for polish on
-  desktop and phone.
+- [x] **W2:** Pickers and chips on the card. Done (2026-11-04): `src/ui/labels.tsx` draws the face's
+  priority flag and chips (complexity as rising bars and its number) and the unfolded card's four
+  pickers; the complexity list shows each step's description beside it and as its tooltip. A
+  suggested label is framed in `--suggest`, a magenta well apart from the proposal's violet; any
+  pick, the same value included, sends the PATCH that makes it the owner's. In a project's head the
+  title keeps its room: the chips give way first, cut off at the right.
 - [ ] **W3:** The suggestion. A plugin skill that judges category, sub-category, complexity and
   priority from a card's title, text and screenshots, with the lists and the complexity scale in it.
   Hook it into the naming session (one call returns the title and the labels) and, for a card that

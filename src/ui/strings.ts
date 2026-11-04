@@ -6,6 +6,7 @@ import { clientExtensions as extensions } from '../extensions/client';
 import { ApiError } from './api';
 import type { DiffFile } from '../core/diff';
 import { type Language, languageOf } from '../core/locale';
+import { type Complexity, COMPLEXITY_DESCRIPTIONS, LABEL_NAMES } from '../core/labels';
 import { MESSAGES } from '../core/messages';
 import type { OutdatedBy } from '../core/page-changes';
 import type { NotAProject } from '../core/plan-doc';
@@ -24,6 +25,15 @@ function cloneGroups(leaving: LeavingClone[]): { host?: string; numbers?: number
   }
   return groups;
 }
+
+/** The complexity scale in German, step for step the same as `COMPLEXITY_DESCRIPTIONS`, which the suggestion reads. */
+const complexityDe: Record<Complexity, string> = {
+  1: 'Eine Korrektur in einer Zeile oder am Wortlaut.',
+  2: 'Eine kleine Änderung an einer Stelle.',
+  3: 'Eine Änderung über einige Dateien, mit Tests.',
+  5: 'Ein Feature, das Server und UI berührt.',
+  8: 'Eine Änderung über mehrere Bereiche, oder eine, die ein Plan-Dokument braucht.',
+};
 
 const de = {
   extensionActions: 'Weitere Aktionen',
@@ -585,6 +595,24 @@ const de = {
     set: 'Priorität setzen',
     none: 'Keine',
     names: { trivial: 'Trivial', low: 'Niedrig', medium: 'Mittel', high: 'Hoch', veryHigh: 'Sehr hoch', critical: 'Kritisch' },
+  },
+  /** A card's other labels (`core/labels.ts`), beside its priority. */
+  labels: {
+    /** On a label Obeya suggested and the owner has not touched since (its chip has a purple border). */
+    suggested: 'Von Obeya vorgeschlagen. Wähl selbst, um ihn zu übernehmen oder zu ändern.',
+    category: {
+      label: 'Kategorie',
+      names: { frontend: 'Frontend', backend: 'Backend', dataMigration: 'Datenmigration', docs: 'Doku', tooling: 'Tooling' },
+    },
+    subcategory: {
+      label: 'Unterkategorie',
+      names: { refactor: 'Refactoring', newFeature: 'Neues Feature', bugFix: 'Bugfix', configuration: 'Konfiguration' },
+    },
+    complexity: {
+      label: 'Komplexität',
+      step: (n: Complexity) => `Komplexität ${n}: ${complexityDe[n]}`,
+      descriptions: complexityDe,
+    },
   },
   deps: {
     connect: 'Mit einer wartenden Karte verbinden',
@@ -2747,6 +2775,22 @@ const en: Strings = {
     set: 'Set priority',
     none: 'None',
     names: { trivial: 'Trivial', low: 'Low', medium: 'Medium', high: 'High', veryHigh: 'Very high', critical: 'Critical' },
+  },
+  labels: {
+    suggested: 'Suggested by Obeya. Pick one yourself to keep it or change it.',
+    category: {
+      label: 'Category',
+      names: { frontend: LABEL_NAMES.frontend, backend: LABEL_NAMES.backend, dataMigration: LABEL_NAMES.dataMigration, docs: LABEL_NAMES.docs, tooling: LABEL_NAMES.tooling },
+    },
+    subcategory: {
+      label: 'Sub-category',
+      names: { refactor: LABEL_NAMES.refactor, newFeature: LABEL_NAMES.newFeature, bugFix: LABEL_NAMES.bugFix, configuration: LABEL_NAMES.configuration },
+    },
+    complexity: {
+      label: 'Complexity',
+      step: (n: Complexity) => `Complexity ${n}: ${COMPLEXITY_DESCRIPTIONS[n]}`,
+      descriptions: COMPLEXITY_DESCRIPTIONS,
+    },
   },
   deps: {
     connect: 'Connect to a card that waits for this one',

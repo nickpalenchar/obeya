@@ -8,7 +8,7 @@ import { canvasOf } from './api';
 import { cardHref, referenced } from './cardRefs';
 import { plain } from './markdown';
 import { Cards } from './message';
-import { PriorityMark } from './priority';
+import { PriorityMark } from './labels';
 import { stateLabel } from './strings';
 
 /** The card by `title` (its own by default); plain text where it is not on the canvas. `onOpen` in place of the `Cards` around it. */
