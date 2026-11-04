@@ -2390,3 +2390,6 @@ button.link:hover { text-decoration: underline; }
 .perf-grid { stroke: var(--line); }
 .perf-axis-text { fill: var(--muted); font-size: 12px; }
 .perf-line-key::before { content: ""; display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: 3px; background: var(--r); }
+
+.notify-ask { pointer-events: auto; width: min(460px, calc(100vw - 32px)); padding: 14px 16px; border-radius: 4px; border: 1px solid var(--line); background: var(--card); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); font-size: 14.5px; display: flex; flex-direction: column; gap: 8px; }
+.notify-ask-actions { display: flex; gap: 8px; align-items: center; }

@@ -35,7 +35,7 @@ import icon512 from '../ui/logo/icon-512.png' with { type: 'file' };
 import { servePdfjs } from './pdfjs';
 import { Tailscale } from './tailscale';
 import { codexModels } from './codex-runtime';
-import { agentsView, feedbackPromptView, languageView, ownerLanguage, saveAgents, saveFeedbackPrompt, saveLanguage, saveTheme, saveUsageMeter, themeView, usageMeterView } from './settings';
+import { agentsView, feedbackPromptView, languageView, notificationsView, ownerLanguage, saveAgents, saveNotifications, saveFeedbackPrompt, saveLanguage, saveTheme, saveUsageMeter, themeView, usageMeterView } from './settings';
 import { proposeTags, TagProposals } from './tag-proposal';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
@@ -538,6 +538,11 @@ export function serve(
           usage?.setOn(view.on);
           return view;
         }),
+      },
+      // whether pages notify the owner on the desktop when a card needs them; null: not asked yet
+      '/api/notifications': {
+        GET: needs(config, (c) => notificationsView(c.home)),
+        PUT: needs(config, async (c, req) => saveNotifications(c.home, await req.json())),
       },
       // whether approving work asks for feedback on it: every canvas's cards follow at once; the responses given stay
       '/api/feedback-prompt': {

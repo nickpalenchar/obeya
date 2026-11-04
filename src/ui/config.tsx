@@ -5,7 +5,7 @@
 
 import { type CSSProperties, Fragment, type ReactNode, useContext, useEffect, useId, useRef, useState } from 'react';
 import { OpenPerformance } from './performance';
-import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type CodexModel, type AgentsView, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type FeedbackPromptView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
+import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type CodexModel, type AgentsView, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type FeedbackPromptView, type NotificationsView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
 import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { LANGUAGES } from '../core/locale';
@@ -19,6 +19,7 @@ import { useFitHeight } from './fitHeight';
 import { useCopy } from './copy';
 import { failText, fileSize, snoozeWhen, t } from './strings';
 import { applyTheme } from './theme';
+import { canNotify, notificationsChanged, type Permission, permission, requestPermission } from './desktopNotify';
 import { WishLink } from './wish';
 import { canvasPath } from './address';
 
@@ -462,6 +463,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
             <LanguageBlock on={on} />
             <ThemeBlock on={on} />
             <UsageBlock on={on} />
+            <NotificationsBlock on={on} />
             <FeedbackBlock on={on} />
             {view && <ServerBlock server={view.server} />}
           </section>
@@ -835,6 +837,44 @@ function UsageBlock({ on }: { on: boolean }) {
           {l.label}
         </label>
       </Field>
+      {status && <p className="hint c-status">{status}</p>}
+    </>
+  );
+}
+
+/** Whether this machine's pages notify on the desktop when a card needs the owner: saved on its own; turning on asks the system for its permission. */
+function NotificationsBlock({ on }: { on: boolean }) {
+  const [view, setView] = useState<NotificationsView | null>(null);
+  const [perm, setPerm] = useState<Permission>('granted');
+  const [status, setStatus] = useState('');
+  useEffect(() => {
+    if (!on) return;
+    api.notifications().then(setView, console.error);
+    permission().then(setPerm, console.error);
+  }, [on]);
+  if (!view || !canNotify()) return null;
+  const l = t.notifications;
+  const choose = async (wanted: boolean) => {
+    setStatus('');
+    try {
+      const p = wanted && perm !== 'granted' ? await requestPermission() : perm;
+      setPerm(p);
+      setView(await api.saveNotifications(wanted));
+      notificationsChanged();
+    } catch (e) {
+      setStatus(failText(e));
+    }
+  };
+  return (
+    <>
+      <Head sub title={l.title} hint={l.hint} file={view.file} />
+      <Field label={l.title}>
+        <label className="c-check">
+          <input type="checkbox" checked={view.on === true} onChange={(e) => choose(e.target.checked)} />
+          {l.label}
+        </label>
+      </Field>
+      {view.on === true && perm !== 'granted' && <p className="hint c-status">{perm === 'denied' ? l.denied : l.notGranted}</p>}
       {status && <p className="hint c-status">{status}</p>}
     </>
   );

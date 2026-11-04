@@ -1889,6 +1889,16 @@ const de = {
       hint: 'Nach der Freigabe fragt Obeya, wie gut der Agent gearbeitet hat: 1 bis 5 Sterne und auf Wunsch ein Kommentar, gespeichert mit Harness, Modell und Effort, die die Arbeit gemacht haben. Überspringen hält nichts auf. Ausgeschaltet fragt Obeya nicht mehr; gegebene Antworten bleiben erhalten. Gilt sofort.',
     },
   },
+  notifications: {
+    title: 'Benachrichtigungen am Rechner',
+    label: 'Bescheid geben, wenn ein Agent mich braucht',
+    ask: 'Soll Obeya dir Bescheid geben, wenn ein Agent dich braucht, während du gerade woanders bist? Das lässt sich später in der Konfiguration ändern.',
+    turnOn: 'Einschalten',
+    no: 'Nein, danke',
+    hint: 'Wenn eine Karte auf dich zu warten beginnt (Demo, Frage, Vorschlag …) und du Obeya gerade nicht ansiehst, meldet sich der Rechner. Gilt sofort, auf diesem Rechner.',
+    denied: 'Das System lässt keine Benachrichtigungen von Obeya zu: Erlaube sie in den Einstellungen des Systems oder des Browsers.',
+    notGranted: 'Das System hat die Erlaubnis noch nicht gegeben. Schalte die Einstellung aus und wieder ein, um sie neu anzufragen.',
+  },
   performance: {
     title: 'Agentenleistung',
     open: 'Bewertungen vergleichen',
@@ -3918,6 +3928,16 @@ const en: Strings = {
       label: 'Ask after each approval',
       hint: 'After you approve a card, Obeya asks how well the agent did: 1 to 5 stars and an optional comment, saved with the harness, model and effort that did the work. Skipping holds nothing up. Turned off, Obeya asks no more; responses already given are kept. Applies at once.',
     },
+  },
+  notifications: {
+    title: 'Notifications on this computer',
+    label: 'Notify me when an agent needs me',
+    ask: 'Should Obeya notify you when an agent needs you while you are looking elsewhere? You can change this later in the configuration.',
+    turnOn: 'Turn on',
+    no: 'No thanks',
+    hint: 'When a card starts to wait for you (a demo, a question, a proposal …) and you are not looking at Obeya, the computer notifies you. Applies at once, on this computer.',
+    denied: 'The system does not allow notifications from Obeya: allow them in the settings of the system or the browser.',
+    notGranted: 'The system has not given permission yet. Turn the setting off and on again to ask anew.',
   },
   performance: {
     title: 'Agent performance',

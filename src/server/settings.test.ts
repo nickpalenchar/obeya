@@ -6,7 +6,7 @@ import { languageOf } from '../core/locale';
 import { AGENT_DEFAULTS, type AgentSetting } from '../core/types';
 import { withAgentSetting } from './runtime';
 import { OWNER_SETTINGS_FILE as SETTINGS_FILE, systemLanguage } from '../../plugin/skills/demo/lib/language.ts';
-import { agentSetting, agentsView, conversationLanguage, languageView, ownerLanguage, saveAgents, saveLanguage, saveTheme, saveUsageMeter, themeView, usageMeterView, feedbackPromptView, saveFeedbackPrompt } from './settings';
+import { agentSetting, agentsView, conversationLanguage, languageView, ownerLanguage, saveAgents, saveLanguage, saveTheme, saveUsageMeter, themeView, usageMeterView, feedbackPromptView, saveFeedbackPrompt, notificationsView, saveNotifications } from './settings';
 import { FakeRuntime } from './testing';
 
 const homes: string[] = [];
@@ -167,4 +167,15 @@ test('feedback after approval: asked for until turned off, which alone stands in
   expect(saveFeedbackPrompt(home, { on: true }).on).toBe(true);
   expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8'))).toEqual({ usageMeter: false });
   for (const bad of [{ on: 'no' }, {}, null]) expect(() => saveFeedbackPrompt(home, bad)).toThrow();
+});
+
+test('desktop notifications: not decided until the owner chose, then on or off as saved', () => {
+  const home = scratchHome();
+  expect(notificationsView(home).on).toBeNull();
+  expect(saveNotifications(home, { on: false }).on).toBe(false);
+  expect(notificationsView(home).on).toBe(false);
+  expect(saveNotifications(home, { on: true }).on).toBe(true);
+  for (const bad of [{ on: 'yes' }, {}, null]) expect(() => saveNotifications(home, bad)).toThrow();
+  writeFileSync(join(home, SETTINGS_FILE), JSON.stringify({ notifications: 'yes' }));
+  expect(notificationsView(home).on).toBeNull();
 });

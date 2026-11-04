@@ -2497,6 +2497,13 @@ export interface UsageMeterView {
   on: boolean;
 }
 
+/** Whether the desktop notifies the owner when a card needs them (`src/server/settings.ts`); `null` until they were asked. */
+export interface NotificationsView {
+  /** The file it is saved in, under Obeya's home. */
+  file: string;
+  on: boolean | null;
+}
+
 /** Whether approving a card's work asks the owner for feedback on it (`src/server/settings.ts`); on until the owner turns it off. */
 export interface FeedbackPromptView {
   /** The file it is saved in, under Obeya's home. */

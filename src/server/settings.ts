@@ -11,7 +11,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chosenConversationLanguage, chosenLanguage, conversationLanguageIn, OWNER_SETTINGS_FILE as SETTINGS_FILE, ownerLanguageIn, ownerSettingsWritten, systemLanguage } from '../../plugin/skills/demo/lib/language.ts';
 import { type Language, LANGUAGES } from '../core/locale';
-import { AGENT_DEFAULTS, AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentRole, type AgentSetting, type AgentsView, type LanguageView, type RemoteSetting, type Theme, THEMES, type ThemeView, type UsageMeterView, type FeedbackPromptView } from '../core/types';
+import { AGENT_DEFAULTS, AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentRole, type AgentSetting, type AgentsView, type LanguageView, type RemoteSetting, type Theme, THEMES, type ThemeView, type UsageMeterView, type FeedbackPromptView, type NotificationsView } from '../core/types';
 import { BadRequest } from './board';
 
 interface Settings {
@@ -29,6 +29,8 @@ interface Settings {
   usageMeter?: false;
   /** `false`: approving a card's work asks for no feedback on it; absent, it does. */
   feedbackPrompt?: false;
+  /** Whether a page notifies the owner on the desktop when a card needs them; absent until the owner has been asked. */
+  notifications?: boolean;
 }
 
 function read(home: string): Settings {
@@ -37,7 +39,7 @@ function read(home: string): Settings {
     const language = LANGUAGES.find((l) => l === o.language);
     const conversationLanguage = LANGUAGES.find((l) => l === o.conversationLanguage);
     const theme = THEMES.find((x) => x === o.theme);
-    return { ...o, language, conversationLanguage, theme, agents: agentsOf(o.agents), remote: remoteOf(o.remote) ?? undefined, usageMeter: o.usageMeter === false ? false : undefined, feedbackPrompt: o.feedbackPrompt === false ? false : undefined };
+    return { ...o, language, conversationLanguage, theme, agents: agentsOf(o.agents), remote: remoteOf(o.remote) ?? undefined, usageMeter: o.usageMeter === false ? false : undefined, feedbackPrompt: o.feedbackPrompt === false ? false : undefined, notifications: typeof o.notifications === 'boolean' ? o.notifications : undefined };
   } catch {
     return {};
   }
@@ -102,8 +104,18 @@ export function saveFeedbackPrompt(home: string, input: unknown): FeedbackPrompt
   return feedbackPromptView(home);
 }
 
+export const notificationsView = (home: string): NotificationsView => ({ file: join(home, SETTINGS_FILE), on: read(home).notifications ?? null });
+
+/** Saves whether the desktop notifies the owner when a card needs them (`{ on }`). Other settings in the file stay. */
+export function saveNotifications(home: string, input: unknown): NotificationsView {
+  const on = (input as { on?: unknown } | null)?.on;
+  if (typeof on !== 'boolean') throw new BadRequest('invalid', 'on must be true or false');
+  save(home, 'notifications', on, `desktop notifications ${on ? 'on' : 'off'},`);
+  return notificationsView(home);
+}
+
 /** Saves one of the owner's choices, or with `null` takes it out; the other settings in the file stay. */
-function save<K extends 'language' | 'conversationLanguage' | 'theme' | 'remote' | 'usageMeter' | 'feedbackPrompt'>(home: string, key: K, value: Settings[K] | null, what: string) {
+function save<K extends 'language' | 'conversationLanguage' | 'theme' | 'remote' | 'usageMeter' | 'feedbackPrompt' | 'notifications'>(home: string, key: K, value: Settings[K] | null, what: string) {
   write(home, { ...read(home), [key]: value ?? undefined });
   console.log(`Obeya: ${what} saved to ${join(home, SETTINGS_FILE)}`);
 }

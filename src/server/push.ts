@@ -10,8 +10,8 @@
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Language } from '../core/locale';
-import { MESSAGES, type Messages } from '../core/messages';
-import { type Item, needsYou } from '../core/types';
+import { MESSAGES } from '../core/messages';
+import { type PushKind, plainTitle } from '../core/waits';
 import { BadRequest } from './board';
 import type { Store } from './db';
 import { UNUSED_MS } from './remote';
@@ -26,8 +26,10 @@ export const WINDOW_MS = 60_000;
 /** Obeya's VAPID key, in its home: subscriptions hold its public half, so it stays. */
 const KEY_FILE = 'vapid.json';
 
-/** What a card waits for, as a push says it. */
-export type PushKind = Exclude<keyof Messages['push'], 'several'>;
+export { kindOf, plainTitle, type PushKind, startedWaiting } from '../core/waits';
+
+/** At most `n` characters: a push carries at most about 4 KB, and a phone shows a few lines anyway. */
+const clipped = (text: string, n: number) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);
 
 /** A card that started to wait for the owner. */
 export interface Waits {
@@ -39,40 +41,6 @@ export interface Waits {
   /** Whether it still waits: one the owner took care of within the minute is not pushed. */
   still: () => boolean;
 }
-
-/** What a card that needs the owner waits for; `before`: the card as it was before it did (a failed landing was landing). */
-export function kindOf(i: Item, before?: Item): PushKind {
-  if (before?.landing) return 'landing';
-  if (i.state === 'proposal') return 'proposal';
-  if (i.superseded) return 'superseded';
-  if (i.state === 'inPr') return 'pr';
-  if (i.idea) return 'idea';
-  if (i.need === 'question') return i.question?.stuck ? 'stuck' : 'question';
-  if (i.answered) return 'answered';
-  return i.need === 'demo' ? 'demo' : 'review';
-}
-
-/**
- * The cards of `after` that need the owner and did not in `before` (the items by id), with what they
- * wait for; a card its agent withdrew or replaced just now, also when it waited for them already.
- */
-export function startedWaiting(before: ReadonlyMap<string, Item>, after: readonly Item[]): { item: Item; kind: PushKind }[] {
-  return after.flatMap((i) => {
-    const was = before.get(i.id);
-    if (i.superseded && was && !was.superseded && !i.snoozed) return [{ item: i, kind: 'superseded' as const }];
-    return needsYou(i) && !(was && needsYou(was)) ? [{ item: i, kind: kindOf(i, was) }] : [];
-  });
-}
-
-/** At most `n` characters: a push carries at most about 4 KB, and a phone shows a few lines anyway. */
-const clipped = (text: string, n: number) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);
-
-/** A title as plain text: a notification shows no markdown. */
-export const plainTitle = (md: string) =>
-  md
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/[*_`~]+/g, '')
-    .trim();
 
 export interface PushOptions {
   store: Store;

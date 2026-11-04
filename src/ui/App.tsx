@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, centre, onCanvas, type Place, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
 import { type CanvasInfo, type CanvasSnapshot, type CardPatch, type ConfigProblem, finished, type Group, type Item, nameless, needsYou, openPerGroup, type PendingRestart, type PlanDir, EVICT_HOLD_MS, START_ALL_HOLD_MS, titleFrom, type AppUpdate, type SourceUpdate, unreadAnswers, unreadPerProject, type Usage, type Waiting, waitingIn } from '../core/types';
+import { NotifyAsk, useDesktopNotifications } from './desktopNotify';
 import { api, ApiError, beforeReload, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas } from './api';
 import { GroupNames, growFrom, inside, Lasso, MarkHint, Marked, Ring, TerritoryLayer, useTerritories } from './groups';
 import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, midX, MIN_ZOOM, NO_SIDES, overviewCam, placeIn, shows, type Sides, stopFlight, TOP, toWorld } from './camera';
@@ -950,6 +951,7 @@ function Canvas({
   const openRef = useRef(open);
   openRef.current = open;
   const openCard = useCallback((i: Item) => void openRef.current(i).catch(console.error), []);
+  const notifyAsk = useDesktopNotifications(snapshot, openCard);
 
   /** "Als Projekt aufbereiten" on the note on a plan directory: a card whose agent prepares the doc, started at once. */
   const preparePlanDoc = useCallback(async (dir: PlanDir, file: string) => {
@@ -2071,6 +2073,7 @@ function Canvas({
           <ToldList told={told.told} open={focus?.type === 'card' ? focus.id : undefined} onUndo={told.undo} />
           {ratePrompt.prompt}
           {ackLine}
+          <NotifyAsk {...notifyAsk} />
         </div>
         <PerformanceDialog on={perfOn} onClose={() => setPerfOn(false)} canvases={canvases} here={snapshot.canvas.id} onOpenCard={(code) => void openNamed(code).catch(console.error)} />
       </div>

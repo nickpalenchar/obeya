@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CardDiff } from '../core/diff';
 import { type Place, placeParam } from '../core/layout';
-import type { AccessView, Pairing, RemoteSetting, CodexModel, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, TagProposalJob, PageTags, NarrationLanguage, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView, Waiting, Feedback, FeedbackAnswer, FeedbackPromptView } from '../core/types';
+import type { AccessView, Pairing, RemoteSetting, CodexModel, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, TagProposalJob, PageTags, NarrationLanguage, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView, Waiting, Feedback, FeedbackAnswer, FeedbackPromptView, NotificationsView } from '../core/types';
 import type { Wish } from '../core/wish';
 import { noteMessage, watchPageStalls } from './stalls';
 
@@ -170,6 +170,9 @@ export const api = {
   /** Whether the bar shows the plan's usage limits. */
   usageMeter: () => call<UsageMeterView>('GET', '/api/usage-meter'),
   saveUsageMeter: (on: boolean) => call<UsageMeterView>('PUT', '/api/usage-meter', { on }),
+  /** Whether this machine's pages notify the owner on the desktop; `null`: not asked yet. */
+  notifications: () => call<NotificationsView>('GET', '/api/notifications'),
+  saveNotifications: (on: boolean) => call<NotificationsView>('PUT', '/api/notifications', { on }),
   feedbackPrompt: () => call<FeedbackPromptView>('GET', '/api/feedback-prompt'),
   /** Every response the owner gave on agents' work, on every canvas. */
   allFeedback: () => call<Feedback[]>('GET', '/api/feedback'),

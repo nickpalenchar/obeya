@@ -768,6 +768,8 @@ fn main() {
     // on a link with target=_blank and hands it to the plugin over IPC, which the page may not call
     // (capabilities/window.json), so the click would do nothing; the shell opens such links itself
     .plugin(tauri_plugin_dialog::init())
+    // system notifications, which the canvas page asks for when a card needs the owner (capabilities/window.json)
+    .plugin(tauri_plugin_notification::init())
     .plugin(tauri_plugin_updater::Builder::new().build())
     .setup(move |app| {
       let handle = app.handle().clone();

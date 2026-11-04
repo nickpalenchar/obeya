@@ -293,6 +293,21 @@ and the canvases it last had. The worker requests the page anew rather than pass
 Android's Chrome marks a home-screen launch `Sec-Fetch-Site: cross-site`, and passed on it loses
 `Sec-Fetch-Mode: navigate`, so *Its own site* would refuse it. The canvas page registers no worker.
 
+#### Notifications on the desktop
+
+The canvas page tells the owner at the computer when a card starts to wait for them, by the same
+rules as the phone's pushes (*What is pushed*; the cards waiting as the page opens, or as another
+canvas is shown, are not news), but only while nobody is looking at the page: it is hidden or its
+window is not focused. Several at once make one notification. In the app (Tauri) the notification is
+the system's, shown by the shell; in a browser it is the page's own, and clicking it opens the card.
+
+Whether it happens is the owner's choice and per machine: „Benachrichtigungen am Rechner“ in the
+Konfiguration (Allgemein), saved in the home's settings. It is undecided until the owner has been
+asked; the first page asks once, in a box above the confirmations, with „Einschalten“ (which asks the
+system for its permission) and „Nein, danke“. The setting is on only if the system granted the
+permission; where it is on but the system refuses, the Konfiguration says so. The phone view has its
+own switch (see above).
+
 #### Stalls
 
 Obeya's server runs on one thread: while it computes or waits in a synchronous call (a git command,
