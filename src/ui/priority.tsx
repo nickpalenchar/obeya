@@ -45,7 +45,7 @@ export function PriorityPick({ item }: { item: Item }) {
       </button>
       {open && (
         <div className="prio-menu" role="menu">
-          {[...PRIORITIES].reverse().map((p) => (
+          {PRIORITIES.map((p) => (
             <button key={p} role="menuitemradio" aria-checked={item.priority === p} className={item.priority === p ? 'on' : ''} onClick={() => pick(p)}>
               <PriorityMark priority={p} />
             </button>
