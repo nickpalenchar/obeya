@@ -121,6 +121,40 @@ describe('transcript excerpt', () => {
     expect(excerptOf(CODEX)!.findings).toHaveLength(5);
   });
 
+  test('a Codex rollout shows where the owner paused: the command the pause killed is cut off, not failed', () => {
+    const thread = '01a1aaaa-0000-7000-8000-000000000009';
+    const event = (turn: string, payload: Record<string, unknown>) => JSON.stringify({ type: 'event_msg', payload: { thread_id: thread, turn_id: turn, ...payload } });
+    const said = (turn: string, id: string, text: string) => event(turn, { type: 'item_completed', item: { type: 'AgentMessage', id, content: [{ type: 'Text', text }] } });
+    const ran = (turn: string, id: string, script: string, code: number, output = '') =>
+      event(turn, { type: 'item_completed', item: { type: 'CommandExecution', id, command: ['/bin/zsh', '-lc', script], status: code ? 'failed' : 'completed', aggregated_output: output, exit_code: code } });
+    const rollout = [
+      JSON.stringify({ type: 'session_meta', payload: { id: thread } }),
+      said('t1', 'm1', 'I run the slow check.'),
+      // the owner pauses: the turn is aborted, then the command it was running ends with -1
+      event('t1', { type: 'turn_aborted', reason: 'interrupted' }),
+      ran('t1', 'c1', 'bun run slow-check', -1, 'slow-check: step 4 of 9 done\n'),
+      said('t2', 'm2', 'The pause cut the check off; I run it again.'),
+      ran('t2', 'c2', 'bun run slow-check', 1, 'slow-check: step 6 failed\n'),
+      ran('t2', 'c3', 'bun run slow-check', 0),
+      // exit -1 in a turn nobody interrupted is the agent's own failure
+      ran('t3', 'c4', 'npx playwright test', -1, 'e2e: timed out\n'),
+    ].join('\n');
+    const e = excerpt(rollout)!;
+    expect(e.cutOff).toEqual([1]);
+    const [rerun, e2e] = e.findings;
+    expect(rerun).toMatchObject({ kind: 'retry', calls: [{ step: 1, failed: false, cutOff: true }, { step: 2, failed: true }, { step: 3, failed: false }] });
+    expect(e2e).toMatchObject({ kind: 'failure', call: { step: 4, what: '`npx playwright test`', failed: true } });
+    expect(e.findings).toHaveLength(2);
+    const text = excerptText([e]);
+    expect(text).toContain('The owner paused, stopped or restarted the card during step 1');
+    expect(text).toContain('⏸ `bun run slow-check` (cut off');
+    expect(text).not.toContain('step 4 of 9');
+
+    // the pause alone, and the rerun that passed, is no friction
+    const paused = excerpt([rollout.split('\n').slice(0, 5).join('\n'), ran('t2', 'c3', 'bun run slow-check', 0)].join('\n'))!;
+    expect(paused).toMatchObject({ steps: 2, cutOff: [1], findings: [] });
+  });
+
   test('finds a Codex session’s rollout by its thread id, in a day directory or the archive', () => {
     dir = mkdtempSync(join(tmpdir(), 'obeya-tr-'));
     const thread = '01a1aaaa-0000-7000-8000-000000000001';

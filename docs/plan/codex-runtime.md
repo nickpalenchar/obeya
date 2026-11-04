@@ -594,8 +594,6 @@ pause, both restarts and landing. The proxy also showed that `codex -c … app-s
 overrides given before the subcommand; its wrapper puts them after.
 
 Seen besides, not fixed here:
-- The Codex card's work retrospective read the check the owner's pause had killed (exit -1) as a
-  Bash tool timeout and proposed a longer one: the rollout excerpt does not show the pause.
 - The Claude worker wrote German on an English task in both runs, before any words of the owner;
   the Codex worker on the same kind of task wrote English.
 - The process tracker's `ps` snapshot (`spawnSync`) stalled the server for 0.6 to 1.8 s four times

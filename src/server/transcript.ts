@@ -19,6 +19,8 @@ export interface Call {
   /** What it did: the command, the file, the pattern. */
   what: string;
   failed: boolean;
+  /** Ended by the owner or Obeya rather than by the agent: a pause, a stop, a restart, a Ctrl-C. */
+  cutOff?: true;
   /** The error it ended in, shortened. */
   error?: string;
   /** The agent's last words before the call and its first words after the result. */
@@ -39,6 +41,8 @@ export interface Excerpt {
   steps: number;
   /** How many calls came before the first change to a file; null when it changed none. */
   firstChange: number | null;
+  /** The steps the owner or Obeya cut off (a pause, a stop, a restart), when there were any. */
+  cutOff?: number[];
   findings: Finding[];
 }
 
@@ -120,7 +124,7 @@ export function excerptOf(file: string | null): Excerpt | null {
 }
 
 type Entry = { kind: 'text'; text: string } | { kind: 'call'; id: string; tool: string; input: Record<string, unknown> };
-type Result = { failed: boolean; output: string };
+type Result = { failed: boolean; output: string; cutOff?: boolean };
 /** A run as read from a file: the agent's words and calls in order, and what came of each call. */
 interface Run {
   entries: Entry[];
@@ -153,16 +157,25 @@ function claudeRun(records: Record<string, unknown>[]): Run {
 
 /**
  * Codex's rollout: the `item_completed` events of its app-server, each holding a finished item with
- * its outcome. The thread's own rollout holds no subagent's items.
+ * its outcome. The thread's own rollout holds no subagent's items. A turn the owner's pause or stop
+ * or Obeya's restart interrupted ends in `turn_aborted`; what it was still running completes after
+ * that (a command with exit code -1), cut off rather than failed.
  */
 function codexRun(records: Record<string, unknown>[]): Run {
   const run: Run = { entries: [], results: new Map(), recognised: false };
-  const call = (id: string, tool: string, input: Record<string, unknown>, result: Result) => {
+  const turnOf = (d: Record<string, unknown>) => (isObject(d.payload) && typeof d.payload.turn_id === 'string' ? d.payload.turn_id : '');
+  const aborted = new Set(records.filter((d) => d.type === 'event_msg' && isObject(d.payload) && d.payload.type === 'turn_aborted').map(turnOf).filter(Boolean));
+  const abortedSoFar = new Set<string>();
+  let turn = '';
+  const call = (id: string, tool: string, input: Record<string, unknown>, result: Result, code?: number) => {
     run.recognised = true;
     run.entries.push({ kind: 'call', id, tool, input });
-    run.results.set(id, result);
+    const cutOff = result.failed && aborted.has(turn) && (abortedSoFar.has(turn) || code === -1);
+    run.results.set(id, cutOff ? { ...result, cutOff } : result);
   };
   for (const d of records) {
+    turn = turnOf(d);
+    if (d.type === 'event_msg' && isObject(d.payload) && d.payload.type === 'turn_aborted') abortedSoFar.add(turn);
     const item = d.type === 'event_msg' && isObject(d.payload) && d.payload.type === 'item_completed' ? d.payload.item : undefined;
     if (!isObject(item) || typeof item.id !== 'string') continue;
     if (item.type === 'AgentMessage') {
@@ -176,7 +189,7 @@ function codexRun(records: Record<string, unknown>[]): Run {
       const words = item.command.filter((w): w is string => typeof w === 'string');
       const output = str(item.aggregated_output);
       const code = typeof item.exit_code === 'number' ? item.exit_code : 0;
-      call(item.id, 'Bash', { command: words.length === 3 && /^-\w*c$/.test(words[1]!) ? words[2]! : words.join(' ') }, { failed: item.status === 'failed' || code !== 0, output: `Exit code ${code}\n${output}` });
+      call(item.id, 'Bash', { command: words.length === 3 && /^-\w*c$/.test(words[1]!) ? words[2]! : words.join(' ') }, { failed: item.status === 'failed' || code !== 0, output: `Exit code ${code}\n${output}` }, code);
     } else if (item.type === 'FileChange' && isObject(item.changes)) {
       Object.entries(item.changes).forEach(([file, change], n) => {
         const added = isObject(change) && change.type === 'add';
@@ -217,12 +230,14 @@ export function excerpt(jsonl: string): Excerpt | null {
     }
     const r = results.get(e.id);
     // cut off by Obeya's restart, or stopped by the owner: no mistake of the agent's
-    const failed = !!r?.failed && !CUT_OFF.some((c) => c.test(r.output));
+    const cutOff = !!r?.failed && (!!r.cutOff || CUT_OFF.some((c) => c.test(r.output)));
+    const failed = !!r?.failed && !cutOff;
     calls.push({
       step: calls.length + 1,
       tool: e.tool,
       what: describe(e.tool, e.input),
       failed,
+      ...(cutOff ? { cutOff: true as const } : {}),
       ...(failed ? { error: shorten(r!.output) } : {}),
       ...(lastText ? { before: clip(lastText, WORDS) } : {}),
       key: keyOf(e.tool, e.input),
@@ -257,7 +272,8 @@ export function excerpt(jsonl: string): Excerpt | null {
   }
 
   const first = calls.findIndex((c) => CHANGES.includes(c.tool));
-  return { steps: calls.length, firstChange: first < 0 ? null : first, findings: findings.slice(0, MAX_FINDINGS) };
+  const cutOff = calls.filter((c) => c.cutOff).map((c) => c.step);
+  return { steps: calls.length, firstChange: first < 0 ? null : first, ...(cutOff.length ? { cutOff } : {}), findings: findings.slice(0, MAX_FINDINGS) };
 }
 
 /**
@@ -270,7 +286,8 @@ export function excerptText(runs: Excerpt[]): string {
   const text = runs
     .map((r, n) => {
       const head = `${runs.length > 1 ? `Run ${n + 1} of ${runs.length}: ` : ''}${r.steps} tool calls${r.firstChange !== null ? `, the first change to a file after ${r.firstChange}` : ', no change to a file'}.`;
-      return [head, ...r.findings.map((f, i) => `${i + 1}. ${finding(f)}`)].join('\n');
+      const cut = r.cutOff ? `The owner paused, stopped or restarted the card during step${r.cutOff.length > 1 ? 's' : ''} ${r.cutOff.join(', ')}: ${r.cutOff.length > 1 ? 'those calls were' : 'that call was'} cut off, no mistake of the agent's.` : '';
+      return [head, ...(cut ? [cut] : []), ...r.findings.map((f, i) => `${i + 1}. ${finding(f)}`)].join('\n');
     })
     .join('\n\n');
   return clip(text, MAX_TEXT);
@@ -283,7 +300,7 @@ function finding(f: Finding): string {
   const failed = f.calls.filter((c) => c.failed).length;
   return [
     `Steps ${first.step}–${last.step}: ${f.calls.length} similar ${first.tool} calls in a row, ${failed} failed${last.failed ? ', the last one too' : ''}:`,
-    ...f.calls.map((c) => `   ${c.failed ? '✗' : '✓'} ${c.what}`),
+    ...f.calls.map((c) => `   ${c.failed ? '✗' : c.cutOff ? '⏸' : '✓'} ${c.what}${c.cutOff ? ' (cut off: the owner paused, stopped or restarted the card)' : ''}`),
     ...around(first, last, f.calls.find((c) => c.failed)),
   ].join('\n');
 }

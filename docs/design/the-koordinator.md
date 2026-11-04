@@ -223,7 +223,10 @@ session before („Der frühere Lauf (Sitzung …) bleibt für die Arbeitsrücks
 The excerpt holds failed tool calls with their error, runs of similar calls (a failure and its
 correction, a command three times or more), files written whole more than once, the worker's words
 around each, and how many calls the run took before it first changed a file. Calls cut off by a
-restart or stopped by the owner (a command killed or ended with Ctrl-C), and subagents, are left out; an unreadable transcript gives no
+restart or stopped by the owner (a command killed or ended with Ctrl-C; in a Codex rollout, what a
+turn ended as `turn_aborted` was still running, a command there ending with exit code -1) count as
+no failure, and the excerpt names their steps as the owner's pause, stop or restart, so a model does
+not read them as a timeout of the agent's; subagents are left out. An unreadable transcript gives no
 excerpt and no error. A short read-only small job (see Models and effort) makes 0–3 friction notes
 of it (what went wrong, what it cost, what would have prevented it). It is told the settings a
 retrospective may propose as they apply now, so a worker working out what one would have said
