@@ -49,6 +49,33 @@ accepted already is only marked until it is finished: its card reads „Ersetzt 
 Agenten zurückgezogen“ and needs the owner, and its panel says by what and why, with „Entfernen“ (as
 „Löschen“, with an undo) and „Behalten“. A finished card stays as it is.
 
+#### Merging a proposal with a card
+
+A proposal that belongs with another card, the owner's planned task or another proposal, is merged
+with it: „Zusammenführen mit …“ among the proposal's buttons opens a picker of the cards it can be
+merged with (tasks on the canvas nobody has worked on yet, not snoozed, not themselves merged or
+reworked; never a proposed idea), the newest first, with a search over titles and texts. Picked, the
+two stand on the canvas as one card twice as wide, the proposal on the left, the other card on the
+right, glued by a knot that spins while a read-only agent in the other card's repository writes one
+card of both (title and text; questions stay questions). The pair goes to the nearest free spot by
+the other card. Meanwhile neither needs the owner and both refuse everything but „Trennen“ (and
+dismissing the proposal); the other card's own panel says it is being merged.
+
+Once the merged card is there the pair needs the owner (the pin, „Braucht dich“). Its panel shows
+the two cards side by side on top and the merged card under them, centred, with „Zusammenführung
+übernehmen“ and „Trennen“. Approving gives the other card the merged title and text, the
+screenshots of both and the pair's place; a proposal also keeps the questions of both, a planned
+task gets the proposal's questions as open ones in its text, as accepting does. The proposal goes,
+kept as deleted with a mark so the Rückschau does not read it as dismissed, and what followed up on
+it follows up on the other card. „Trennen“ leaves both as they were, side by side where the pair
+stood. An agent that ends without a merged text leaves the reason in the panel, with „Nochmal
+versuchen“; a merge cut off by a restart starts again.
+
+Decision (2026-11-04): the merged text waits for the owner rather than replacing the card at once,
+since an agent's summary may drop or blur what either card asked for; and only cards nobody has
+worked on can be merged, so no worker's task changes under it. Merging into a new third card was
+rejected: the owner's card, with its place, group and arrows, is what stays.
+
 #### Reworking a proposal by words
 
 Instead of editing a proposal by hand, the owner may say or type what should change (its field „Was

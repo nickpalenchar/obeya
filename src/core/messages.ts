@@ -404,6 +404,10 @@ const de = {
     ruleTaken: (rule: string) => `Regel aufgenommen: „${rule}“`,
     revised: 'Vorschlag überarbeitet.',
     reviseFailed: (why: string) => `Überarbeiten ging nicht: ${why}`,
+    mergeStarted: (title: string) => `Wird mit „${title}“ zusammengeführt.`,
+    mergeFailed: (why: string) => `Zusammenführen ging nicht: ${why}`,
+    mergeSeparated: (title: string) => `Von „${title}“ wieder getrennt.`,
+    mergedFrom: (title: string) => `Mit dem Vorschlag „${title}“ zusammengeführt.`,
   },
   /** The card's button that approves work past the pull request, straight onto the main branch (the UI's own label). */
   approveDirect: 'Direkt auf main',
@@ -878,6 +882,10 @@ const en: Messages = {
     ruleTaken: (rule: string) => `Rule added: “${rule}”`,
     revised: 'Proposal revised.',
     reviseFailed: (why: string) => `Revising did not work: ${why}`,
+    mergeStarted: (title: string) => `Being merged with “${title}”.`,
+    mergeFailed: (why: string) => `Merging did not work: ${why}`,
+    mergeSeparated: (title: string) => `Separated from “${title}” again.`,
+    mergedFrom: (title: string) => `Merged with the proposal “${title}”.`,
   },
   approveDirect: 'Straight to main',
   claudeMd: {

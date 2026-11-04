@@ -11,6 +11,7 @@ import { answerText, toggle } from './answer';
 import { ApiError, api, canvasOf, cardAt, type Field, holdRestart, onCardEvent, onCardEventGone, onReconnect } from './api';
 import { cardPath } from './address';
 import { Naming, smartLink } from './cardLink';
+import { MergeButton, MergeView } from './merge';
 import { LinkField, type LinkFieldHandle } from './cardMenu';
 import { useCopy } from './copy';
 import { manualPrerequisites } from './deps';
@@ -480,8 +481,14 @@ export function Detail(p: Props) {
       <SupersededBox item={item} all={all} act={act} onDelete={p.onDelete} />
       <RepoDownBox item={item} />
 
-      {item.state === 'proposal' && (
-        <ProposalView item={item} from={p.from} act={act} listener={listener} onRevise={tell('revise')} codexAllowed={!inFolder && !item.contribution}>
+      {item.mergingInto && (
+        <p className="hint merge-into">
+          <Naming text={t.merge.into} cards={[{ card: all.find((i) => i.id === item.mergingInto) }]} />
+        </p>
+      )}
+      {item.state === 'proposal' && item.proposal?.merge && <MergeView item={item} partner={all.find((i) => i.id === item.proposal!.merge!.with)} act={act} />}
+      {item.state === 'proposal' && !item.proposal?.merge && (
+        <ProposalView item={item} all={all} from={p.from} act={act} listener={listener} onRevise={tell('revise')} codexAllowed={!inFolder && !item.contribution}>
           {editable ? (
             <ManualFields item={item} repos={p.repos} choice={choice} onEdit={p.onEdit} grow />
           ) : (
@@ -1071,6 +1078,7 @@ function QuestionView({ item, act, run, onTell }: { item: Item; act: (a: CardAct
  */
 function ProposalView({
   item,
+  all,
   from,
   act,
   listener,
@@ -1079,6 +1087,7 @@ function ProposalView({
   children,
 }: {
   item: Item;
+  all: Item[];
   from?: Item;
   act: (a: CardAction, done: ActDone) => Promise<void>;
   listener?: string;
@@ -1161,6 +1170,7 @@ function ProposalView({
             {t.acceptAsIdea}
           </button>
         )}
+        {!revising && !armed && <MergeButton item={item} all={all} act={act} />}
         <button className="btn" onClick={() => act({ action: 'dismiss' }, { close: true, ack: t.dismissed })}>
           {t.dismiss}
         </button>

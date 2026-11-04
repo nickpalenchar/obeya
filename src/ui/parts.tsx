@@ -4,7 +4,7 @@ import { memo, type MouseEvent, type ReactNode, useEffect, useRef, useState } fr
 import { createPortal } from 'react-dom';
 import { type Bounds, dependencyOrder, shapeOf } from '../core/layout';
 import { clip } from '../core/text';
-import { agentFailed, answering, type AppUpdate, type CanvasInfo, type BlockedClone, type ClonePool, demoStage, finished, finishedArchivable, finishingUp, handedOver, type Item, needsYou, openQuestions, pausable, type PendingRestart, halted, type PoolHost, type ProjectHistory, type PullRequest, type SourceUpdate, stoppedArchivable, titleFrom } from '../core/types';
+import { agentFailed, answering, type AppUpdate, type CanvasInfo, type BlockedClone, type ClonePool, demoStage, finished, finishedArchivable, finishingUp, handedOver, type Item, merging, needsYou, openQuestions, pausable, type PendingRestart, halted, type PoolHost, type ProjectHistory, type PullRequest, type SourceUpdate, stoppedArchivable, titleFrom } from '../core/types';
 import { ProjectTalk } from './koordinator';
 import { api } from './api';
 import type { Cam, Sides } from './camera';
@@ -65,6 +65,8 @@ export function TalkIcon() {
 
 interface CardProps {
   item: Item;
+  /** A proposal merged with another card: that card, shown glued to it. */
+  partner?: Item;
   /** On a canvas with several repositories, cards name theirs. */
   showRepo: boolean;
   b: Bounds;
@@ -184,7 +186,7 @@ export const cardClass = (item: Item, underway?: string) =>
     `s-${item.state}`,
     item.idea && `idea-${item.idea.status}`,
     item.kind === 'question' && 'q-card',
-    (item.idea?.thinking || item.proposal?.revising || item.thread?.thinking) && 'thinking',
+    (item.idea?.thinking || item.proposal?.revising || item.thread?.thinking || merging(item)) && 'thinking',
     item.idea && needsYou(item) && 'your-turn',
     agentFailed(item) && 'failed',
     underway && 'underway',
@@ -252,10 +254,10 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
       {meta && <div className="meta">{meta}</div>}
       <div className={doingNow(item) && !underway ? 'state doing-now' : 'state'}>
         {item.snoozed && !underway && <ClockMark />}
-        {asksYou(item) && !underway && !revising && <QuestionMark />}
+        {asksYou(item) && !underway && !revising && !item.proposal?.merge && <QuestionMark />}
         {/* one line on the card, cut short rather than running into the text above it */}
         <span className="state-text">
-          {underway ?? (revising ? t.revisingShort : stateLabel(item))}
+          {underway ?? (revising ? t.revisingShort : mergeLabel(item) ?? stateLabel(item))}
           {item.landedPart && <span className="landed-part">{t.landedPart.short} · {landedRef(item.landedPart)}</span>}
           {item.buildProposal && ` · ${t.idea.proposesBuild}`}
           {item.proposal?.acceptAfterRevision && ` · ${t.acceptsAfterRevision}`}
@@ -271,11 +273,45 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
   );
 }
 
+/** A proposal merged with another card says how far that is in place of its state. */
+const mergeLabel = (item: Item) => {
+  const m = item.state === 'proposal' ? item.proposal?.merge : undefined;
+  if (!m) return undefined;
+  return m.failed !== undefined ? t.merge.failedShort : m.task === undefined ? t.merge.mergingShort : t.merge.mergedShort;
+};
+
+/**
+ * A proposal merged with another card (`partner`), on the canvas: both cards side by side, glued by
+ * a spinner while an agent merges them, and by the merge mark once the merged card waits for the owner.
+ */
+function MergedPair({ item, partner, showRepo }: { item: Item; partner?: Item; showRepo: boolean }) {
+  return (
+    <div className="merge-pair">
+      <div className="merge-half">
+        <CardFace item={item} where={showRepo ? item.repo : undefined} />
+      </div>
+      <div className="merge-glue" title={mergeLabel(item)}>
+        <span className="merge-knot">{merging(item) ? <span className="spinner" /> : <MergeMark />}</span>
+      </div>
+      <div className={`merge-half partner s-${partner?.state ?? 'planned'}`}>{partner ? <CardFace item={partner} where={showRepo ? partner.repo : undefined} /> : <div className="ttl untitled">{t.merge.gone}</div>}</div>
+      {needsYou(item) && <div className="badge pulse">✦</div>}
+    </div>
+  );
+}
+
+/** Two lines joining into one: the mark of merging cards. */
+export const MergeMark = ({ size = 16 }: { size?: number }) => (
+  <svg className="merge-mark" width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 2v3.5a4 4 0 0 0 4 4h6M3 14v-3.5a4 4 0 0 1 4-4" />
+    <path d="M10.5 7 13 9.5 10.5 12" />
+  </svg>
+);
+
 /** What the card's worker is doing in its turn, after its state line: a stage of its demo in green. */
 const doingNow = (item: Item) => (item.inTurn && !item.paused ? item.doing : undefined);
 
 export const CardView = memo(
-  function CardView({ item, b, lifted, dragging, pop, prototyped, showRepo, els, onStart, onArchive, dep, onHover, underway }: CardProps) {
+  function CardView({ item, partner, b, lifted, dragging, pop, prototyped, showRepo, els, onStart, onArchive, dep, onHover, underway }: CardProps) {
     const shape = shapeOf(item);
     // a card the Koordinator is checking has nothing to start yet
     const startable = item.state === 'planned' && (!item.queue || 'behind' in item.queue);
@@ -288,6 +324,7 @@ export const CardView = memo(
       'item',
       cardClass(item, underway),
       shape,
+      item.state === 'proposal' && item.proposal?.merge && 'merged-pair',
       dep && `dep-${dep}`, lifted && 'lifted', dragging && 'dragging', pop && 'pop'].filter(Boolean).join(' ');
     return (
       <div
@@ -299,7 +336,11 @@ export const CardView = memo(
         onPointerLeave={() => onHover(null)}
       >
         {(dep === 'before' || dep === 'after') && <div className="dep-tag">{t.deps[dep]}</div>}
-        <CardFace item={item} where={showRepo ? item.repo : undefined} underway={underway} chip={shape === 'chip'} />
+        {item.state === 'proposal' && item.proposal?.merge ? (
+          <MergedPair item={item} partner={partner} showRepo={showRepo} />
+        ) : (
+          <CardFace item={item} where={showRepo ? item.repo : undefined} underway={underway} chip={shape === 'chip'} />
+        )}
         {!underway && <CardTurn item={item} />}
         {!underway && <CardCheckStop item={item} />}
         {startable && (
@@ -338,7 +379,7 @@ export const CardView = memo(
     );
   },
   (a, b) =>
-    a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.prototyped === b.prototyped && a.showRepo === b.showRepo && a.onStart === b.onStart && a.onArchive === b.onArchive && a.dep === b.dep && a.onHover === b.onHover && a.underway === b.underway,
+    a.item === b.item && a.partner === b.partner && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.prototyped === b.prototyped && a.showRepo === b.showRepo && a.onStart === b.onStart && a.onArchive === b.onArchive && a.dep === b.dep && a.onHover === b.onHover && a.underway === b.underway,
 );
 
 /**

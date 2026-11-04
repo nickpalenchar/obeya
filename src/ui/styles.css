@@ -200,6 +200,22 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .card.s-proposal { background: transparent; box-shadow: none; border: 1.5px dashed var(--proposal); }
 .card.s-proposal:hover { transform: none; background: color-mix(in srgb, var(--proposal) 5%, transparent); }
 .card.s-proposal::before { display: none; }
+/* a proposal merged with another card: both cards side by side, glued by a knot that spins while an agent merges them */
+.card.s-proposal.merged-pair { padding: 0; border: 0; background: transparent; }
+.card.s-proposal.merged-pair:hover { background: transparent; }
+.merge-pair { display: flex; align-items: stretch; height: 100%; }
+.merge-half { position: relative; flex: 0 0 300px; box-sizing: border-box; padding: 13px 14px 12px; border-radius: 2px;
+  border: 1.5px dashed var(--proposal); background: color-mix(in srgb, var(--proposal) 4%, var(--card)); }
+.merge-half.partner { border: 0; background: var(--card); box-shadow: var(--shadow); }
+.merge-half.partner::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; border-radius: 2px; background: var(--c); }
+.merge-half.partner .state::after, .merge-half .badge { display: none; }
+.merge-glue { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; color: var(--proposal); }
+.merge-glue::before { content: ""; position: absolute; left: 0; right: 0; top: calc(50% - 1.5px); height: 3px; background: var(--proposal); opacity: .55; }
+.merge-knot { position: relative; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--card); border: 1.5px solid var(--proposal); box-shadow: var(--shadow); }
+.merge-knot svg { display: block; }
+.spinner { display: block; width: 16px; height: 16px; border-radius: 50%; border: 2.5px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-top-color: currentColor; animation: spin .9s linear infinite; }
 /* the owner's turn: a frame in the stamp-pad colour, and a pin with "!" */
 .card.s-waiting, .card.s-idea.your-turn { box-shadow: 0 0 0 2px var(--waiting), var(--shadow); }
 .card.s-waiting:hover, .card.s-idea.your-turn:hover { box-shadow: 0 0 0 2px var(--waiting), var(--lift); }
@@ -2497,3 +2513,37 @@ a.link.perf-to-log, a.link.flog-back { color: var(--working); text-decoration: u
 .project > .head .prio { font-size: 11px; }
 /* the frame already says it is a project: its word gives way to the priority, so the title keeps its room */
 .project > .head:has(.prio) .kind { display: none; }
+
+/* „Zusammenführen mit …“: the cards a proposal can be merged with, the newest first, with a search */
+#merge-pick { position: fixed; inset: 0; z-index: 60; background: var(--dim); display: flex; align-items: flex-start; justify-content: center; padding: 10vh 24px 24px; animation: fade .15s ease-out; }
+#merge-pick .box { position: relative; display: flex; flex-direction: column; background: var(--panel); border-radius: 3px; box-shadow: var(--lift); padding: 22px 26px 18px; width: 640px; max-width: 100%; max-height: 100%; box-sizing: border-box; }
+#merge-pick h2 { margin: 0 44px 12px 0; font-size: 21px; }
+#merge-pick .close { position: absolute; right: 14px; top: 12px; border: 0; background: var(--chip); color: var(--ink); width: 32px; height: 32px; border-radius: 3px; cursor: pointer; }
+#merge-pick .merge-search { width: 100%; box-sizing: border-box; font: inherit; font-size: 15px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 3px; background: var(--card); color: var(--ink); }
+#merge-pick .hint { margin: 8px 0 6px; }
+.merge-list { list-style: none; margin: 0; padding: 0; overflow: auto; min-height: 0; }
+.merge-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; border: 0; border-radius: 3px; background: transparent; color: var(--ink); padding: 9px 10px; cursor: pointer; font: inherit; }
+.merge-row.on { background: color-mix(in srgb, var(--proposal) 10%, transparent); }
+.merge-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+.merge-dot.s-proposal { background: transparent; border: 1.5px dashed var(--proposal); width: 8px; height: 8px; }
+.merge-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.merge-row-title { font-family: var(--serif); font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.merge-row-body { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.merge-row-kind { flex: none; color: var(--muted); font-size: 12px; }
+
+/* the merged card in its panel: the two it came from side by side, the merged one under them, centred */
+.merge-view { display: flex; flex-direction: column; align-items: center; gap: 0; margin-top: 10px; }
+.merge-sides { display: flex; align-items: stretch; width: 100%; }
+.merge-side { flex: 1 1 0; min-width: 0; box-sizing: border-box; padding: 14px 16px; border-radius: 3px; background: var(--card); box-shadow: var(--shadow); }
+.merge-side:first-child { box-shadow: none; border: 1.5px dashed var(--proposal); background: color-mix(in srgb, var(--proposal) 4%, var(--card)); }
+.merge-side h3, .merge-result h3 { margin: 2px 0 6px; font-family: var(--serif); font-size: 18px; line-height: 1.2; }
+.merge-side-kind { font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.merge-sides-glue { position: relative; flex: 0 0 56px; display: flex; align-items: center; justify-content: center; color: var(--proposal); }
+.merge-sides-glue::before { content: ""; position: absolute; left: 0; right: 0; top: calc(50% - 1.5px); height: 3px; background: var(--proposal); opacity: .55; }
+.merge-arrow { width: 3px; height: 26px; background: var(--proposal); opacity: .55; }
+.merge-result { width: min(720px, 100%); box-sizing: border-box; padding: 16px 20px; border-radius: 3px; background: var(--card); box-shadow: 0 0 0 2px var(--proposal), var(--shadow); }
+.merge-result.busy { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--proposal) 45%, transparent), var(--shadow); }
+.merge-wait { display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; color: var(--proposal); }
+.merge-intro { text-align: center; max-width: 720px; }
+.merge-actions { justify-content: center; }
+.btn > .merge-mark { vertical-align: -2px; margin-right: 2px; }

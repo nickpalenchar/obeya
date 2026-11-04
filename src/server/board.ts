@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import type { AgentAt, AgentIdentity, Feedback, WorkConfig } from '../core/types';
 import { existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { arrangeWorkstreams, type Bounds, boundsOf, CARD_SIZE, freeSpotNear, GAP, type Place, PROJECT_HEAD, placeProjects, planDirNoteBox, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
+import { arrangeWorkstreams, type Bounds, boundsOf, CARD_SIZE, freeSpotNear, GAP, MERGED_SIZE, type Place, PROJECT_HEAD, placeProjects, planDirNoteBox, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
 import type { CardFile } from '../core/files';
 import type { Language } from '../core/locale';
 import { MESSAGES, type Messages, snoozeTerm } from '../core/messages';
@@ -70,6 +70,7 @@ import {
   STATES,
   finished,
   formatQuestion,
+  mergeableWith,
   needsYou,
   plannedToStart,
   type Notice,
@@ -1398,6 +1399,7 @@ export class Board {
     if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
     const proposal = storedProposal(row);
     if (proposal?.revising) throw new BadRequest('revising', 'the proposal is being reworked');
+    if (proposal?.merge) throw new BadRequest('merging', 'the proposal is merged with another card; approve or separate that first');
     // an agent's proposal keeps that it was one: its task is not the owner's words; Obeya's setup card is as if the owner made it
     const kept = proposal && !proposal.setup && JSON.stringify({ ...(proposal.idea ? { idea: true } : {}), questions: [] } satisfies Proposal);
     this.store.update(id, { state: asIdea ? 'idea' : 'planned', body: withQuestions(row.body ?? '', proposal?.questions ?? [], picks, this.t), proposal: kept || null });
@@ -1412,6 +1414,7 @@ export class Board {
     const row = this.own(id);
     if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
     const proposal = storedProposal(row) ?? { questions: [] };
+    if (proposal.merge) throw new BadRequest('merging', 'the proposal is merged with another card; approve or separate that first');
     const these: Revising = {
       words: words.slice(0, 20000),
       ...(spoken ? { spoken } : {}),
@@ -1478,6 +1481,99 @@ export class Board {
     });
     this.changed();
     return true;
+  }
+
+  // ---------------------------------------------------------------- merging a proposal
+
+  /**
+   * The owner merges proposal `id` with card `withId` (`mergeableWith` it): the two show as one, at
+   * the free spot nearest the other card, while an agent writes the merged card. A merge that
+   * failed may be tried again.
+   */
+  mergeStart(id: string, withId: string) {
+    const row = this.own(id);
+    if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
+    const items = this.items();
+    const p = items.find((i) => i.id === id);
+    const other = items.find((i) => i.id === withId);
+    if (!p || !other) throw new BadRequest('unknownCard', 'unknown card');
+    const was = p.proposal?.merge;
+    if (was && (was.failed === undefined || was.with !== withId)) throw new BadRequest('merging', 'the proposal is being merged already');
+    if (p.proposal?.revising) throw new BadRequest('revising', 'the proposal is being reworked');
+    if (p.proposal?.idea) throw new BadRequest('notMergeable', 'a proposed idea is not merged with a task');
+    if (!mergeableWith(p, { ...other, mergingInto: undefined })) throw new BadRequest('notMergeable', `„${other.title}“ can no longer be merged with`);
+    const taken = items.filter((i) => !i.parent && i.id !== id && i.id !== withId && !i.mergingInto).map((i) => boundsOf(i, items));
+    const at = was ? {} : freeSpotNear({ x: other.x, y: other.y }, MERGED_SIZE, taken);
+    const proposal = storedProposal(row) ?? { questions: [] };
+    this.store.update(id, { ...at, proposal: JSON.stringify({ ...proposal, merge: { with: withId } } satisfies Proposal) });
+    this.log(id, 'state', 'koordinator', this.t.koordinator.mergeStarted(other.title));
+    this.changed();
+  }
+
+  /** The merged card as the agent wrote it, or why there is none; false when the proposal is not being merged (any more). */
+  merged(id: string, r: { title: string; task: string } | { failed: string }): boolean {
+    const row = this.store.card(id);
+    if (!row || row.canvas_id !== this.canvas.id || row.deleted_at || row.state !== 'proposal') return false;
+    const proposal = storedProposal(row);
+    const was = proposal?.merge;
+    if (!was || was.task !== undefined || was.failed !== undefined) return false;
+    const merge = 'failed' in r ? { with: was.with, failed: r.failed.slice(0, 2000) } : { with: was.with, title: r.title.trim().slice(0, 200), task: r.task.trim().slice(0, 20000) };
+    this.store.update(id, { proposal: JSON.stringify({ ...proposal, merge } satisfies Proposal) });
+    if ('failed' in r) this.log(id, 'error', 'koordinator', this.t.koordinator.mergeFailed(r.failed));
+    this.changed();
+    return true;
+  }
+
+  /** The owner separates a proposal from the card it is merged with: both stay as they were, side by side where the two stood as one. */
+  separate(id: string) {
+    const row = this.own(id);
+    const { merge, ...proposal } = storedProposal(row) ?? { questions: [] };
+    if (!merge) throw new BadRequest('notProposal', 'the proposal is not merged with another card');
+    const other = this.store.card(merge.with);
+    const there = other && other.canvas_id === this.canvas.id && !other.deleted_at && !other.archived_at;
+    this.store.update(id, { proposal: JSON.stringify(proposal satisfies Proposal) });
+    if (there) this.store.update(other.id, { x: row.x + MERGED_SIZE[0] - CARD_SIZE.task[0], y: row.y });
+    this.log(id, 'state', 'koordinator', this.t.koordinator.mergeSeparated(there ? (other.title ?? '') : ''));
+    this.changed();
+  }
+
+  /**
+   * The owner approves the merged card: the card the proposal was merged with takes its title and
+   * text, the screenshots of both, the place the two stood as one, and (a proposal itself) the
+   * questions of both, those of a planned task going into its text as open; what followed up on the
+   * proposal follows up on it. The proposal goes, marked as merged rather than dismissed. Returns the card that stays.
+   */
+  approveMerge(id: string): string {
+    const row = this.own(id);
+    const proposal = storedProposal(row);
+    const merge = proposal?.merge;
+    if (!proposal || !merge || merge.task === undefined) throw new BadRequest('merging', 'the merged card is not there yet');
+    const p = this.item(id);
+    const other = this.item(merge.with);
+    if (!p || !other) throw new BadRequest('unknownCard', 'the card it was merged with is gone');
+    if (!mergeableWith(p, { ...other, mergingInto: undefined })) throw new BadRequest('notMergeable', `„${other.title}“ can no longer be merged with`);
+    const keep = this.own(other.id);
+    const images = [...new Set([...(other.images ?? []), ...(p.images ?? [])])];
+    const title = merge.title?.trim() || other.title;
+    const kept = storedProposal(keep);
+    const asked = new Set((kept?.questions ?? []).map((q) => q.text));
+    const added = proposal.questions.filter((q) => !asked.has(q.text));
+    const task = keep.state === 'proposal' ? merge.task : withQuestions(merge.task, proposal.questions, [], this.t);
+    this.store.update(other.id, {
+      title,
+      body: task.slice(0, 20000),
+      images: images.length ? JSON.stringify(images) : null,
+      x: row.x,
+      y: row.y,
+      ...(keep.state === 'proposal' && kept ? { proposal: JSON.stringify({ ...kept, questions: [...kept.questions, ...added] } satisfies Proposal) } : {}),
+    });
+    for (const r of this.store.cards(this.canvas.id)) if (r.from_id === id && r.id !== other.id) this.store.update(r.id, { from_id: other.id });
+    const { merge: _, ...rest } = proposal;
+    this.store.update(id, { proposal: JSON.stringify({ ...rest, superseded: { by: other.id, title, why: 'merged' } } satisfies Proposal), deleted_at: new Date().toISOString() });
+    this.log(other.id, 'state', 'koordinator', this.t.koordinator.mergedFrom(row.title ?? ''));
+    if (keep.state === 'proposal') for (const q of added) this.log(other.id, 'question', 'worker', formatQuestion(q, this.language()));
+    this.changed();
+    return other.id;
   }
 
   // ---------------------------------------------------------------- archive
@@ -3030,6 +3126,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         y: r.y,
         source: 'manual',
         repo: r.repo ?? home,
+        createdAt: r.created_at,
         ...work(r),
         ...(r.state === 'idea' ? { idea: ideaOf(r) } : r.idea ? decided(r) : {}),
         ...(r.thread ? { thread: threadOf(r) } : {}),
@@ -3113,7 +3210,9 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
       .sort((a, b) => a.order - b.order)
       .map((k) => k.item),
   );
-  return [...projects, ...ordered, ...manual];
+  // a card merged with a proposal shows within it, until the owner decides
+  const into = new Map(manual.flatMap((i) => (i.state === 'proposal' && i.proposal?.merge ? [[i.proposal.merge.with, i.id] as const] : [])));
+  return [...projects, ...ordered, ...(into.size ? manual.map((i) => (into.has(i.id) ? { ...i, mergingInto: into.get(i.id)! } : i)) : manual)];
 }
 
 /** The card's labels that are set, and which of them are Obeya's suggestion. */

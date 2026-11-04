@@ -248,6 +248,7 @@ function Canvas({
   itemsRef.current = items;
   // the workstreams of a collapsed project are not on the canvas: its marks stand for them
   const placed = useMemo(() => onCanvas(items).map((item) => ({ item, b: boundsOf(item, items) })), [items]);
+  const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const territories = useTerritories(placed, snapshot.groups);
   const kidsOf = useMemo(() => {
     const m = new Map<string, Item[]>();
@@ -1860,6 +1861,7 @@ function Canvas({
                 <CardView
                   key={item.id}
                   item={item}
+                  partner={item.state === 'proposal' && item.proposal?.merge ? itemById.get(item.proposal.merge.with) : undefined}
                   b={b}
                   lifted={item.id === openId}
                   dragging={item.id === dragId || dragWith.includes(item.id)}

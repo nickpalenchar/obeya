@@ -120,6 +120,21 @@ export const buildableOn = (i: Item) => i.state === 'planned' && !i.branch && !i
 export const untouched = (i: Item) =>
   i.kind === 'task' && i.source === 'manual' && i.state === 'planned' && !i.branch && !i.workspace && (!i.queue || 'behind' in i.queue) && !i.prototypeOf && !i.becomesProject;
 
+/** A proposal that is merged with another card right now: its agent writes the merged text. */
+export const merging = (i: Pick<Item, 'state' | 'proposal'>) => i.state === 'proposal' && !!i.proposal?.merge && i.proposal.merge.task === undefined && i.proposal.merge.failed === undefined;
+
+/**
+ * A card a proposal can be merged with („Zusammenführen mit …“): a task on the canvas nobody has
+ * worked on yet, the owner's planned one or another proposal, not itself being merged nor reworked.
+ */
+export const mergeableWith = (p: Item, i: Item) =>
+  i.id !== p.id &&
+  !i.parent &&
+  !i.archivedAt &&
+  !i.mergingInto &&
+  !i.snoozed &&
+  (untouched(i) || (i.kind === 'task' && i.state === 'proposal' && !i.proposal?.idea && !i.proposal?.merge && !i.proposal?.revising && !i.proposal?.acceptAfterRevision));
+
 /**
  * A task of the owner's that can still be planned as a project, as an idea can: planned, nobody has
  * worked on it, the Koordinator does not hold it, and it is no prototype nor decided as a project already.
@@ -196,7 +211,7 @@ export function titleFrom(body: string): string {
 export function openQuestions(i: Pick<Item, 'archivedAt' | 'state' | 'need' | 'question' | 'idea' | 'proposal'>): Question[] {
   if (i.archivedAt) return [];
   if (i.state === 'idea') return i.idea?.status === 'open' && !i.idea.thinking ? i.idea.questions : [];
-  if (i.state === 'proposal') return i.proposal && !i.proposal.revising ? i.proposal.questions : [];
+  if (i.state === 'proposal') return i.proposal && !i.proposal.revising && !i.proposal.merge ? i.proposal.questions : [];
   return i.state === 'waiting' && (i.need === 'question' || i.need === 'demo') && i.question ? [i.question] : [];
 }
 
@@ -207,11 +222,13 @@ export const agentFailed = (i: Pick<Item, 'state' | 'need' | 'question' | 'answe
  * A card needs the owner: it waits (but not while its worker takes in what the owner wrote on its
  * handover, nor once they approved it and its work lands), is a proposal or an accepted one its agent withdrew or
  * replaced since, has a pull request that only waits for the owner's merge, or is an open idea whose agent has replied
- * and is done.
+ * and is done. A proposal merged with another card needs them once the merged text is there, the
+ * card it is merged with not on its own meanwhile.
  */
 export const needsYou = (i: Item) =>
   !i.snoozed &&
-  ((i.state === 'waiting' && !answering(i) && !i.landing) || (i.state === 'proposal' && !i.proposal?.revising) || !!i.superseded || (i.state === 'inPr' && [i.pr, ...(i.morePrs ?? [])].some((p) => p?.ready && !p.merged && !p.closed)) || (!!i.idea && i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking));
+  !i.mergingInto &&
+  ((i.state === 'waiting' && !answering(i) && !i.landing) || (i.state === 'proposal' && !i.proposal?.revising && !merging(i)) || !!i.superseded || (i.state === 'inPr' && [i.pr, ...(i.morePrs ?? [])].some((p) => p?.ready && !p.merged && !p.closed)) || (!!i.idea && i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking));
 
 /**
  * What a worker can wait for another card to reach: `done`, its work on main (or the card closed
@@ -380,6 +397,10 @@ export interface Item {
   proposal?: Proposal;
   /** An agent's proposal the owner accepted: its text is that agent's. */
   proposed?: true;
+  /** The proposal this card is merged with right now (`Proposal.merge`): it shows glued to it, and is not on its own until the owner decides. */
+  mergingInto?: string;
+  /** When the card was created (ISO). */
+  createdAt?: string;
   /** An accepted proposal its agent withdrew or replaced since, while the card is not finished: the owner removes it or keeps it. */
   superseded?: Superseded;
   /** The repository the card belongs to (an id from the canvas's `repos`). */
@@ -595,6 +616,8 @@ export interface Proposal {
    * `start_at`): accepted, it is planned and snoozed until then, and starts at the time.
    */
   startAt?: string;
+  /** The owner merges it with another card: the two show as one until they approve the merged text or separate them. */
+  merge?: Merge;
   /**
    * Obeya's own proposal of the card that fills in a repository's settings, while it knows them not
    * yet (design: Repositories and configuration): accepted, it is the owner's card like the one the
@@ -613,6 +636,20 @@ export interface Superseded {
   title?: string;
   /** Why, in the agent's words. */
   why?: string;
+}
+
+/**
+ * A proposal being merged with another card (`with`, a planned task or another proposal): an agent
+ * writes one card of both; until then neither `title` nor `task` is there. Approved, the other card
+ * takes the merged text and this proposal goes; separated, both stay as they were.
+ */
+export interface Merge {
+  with: string;
+  /** The merged card as the agent wrote it. */
+  title?: string;
+  task?: string;
+  /** The agent ended without a merged text: why. */
+  failed?: string;
 }
 
 /** The owner's words a proposal is reworked by, with the screenshots that came with them (image ids). */
@@ -1641,6 +1678,12 @@ export type CardAction =
   | { action: 'accept'; start?: boolean; idea?: boolean; picks?: string[][]; agent?: AgentSetting }
   /** A proposal: accepting it after its revision is taken back. */
   | { action: 'unaccept' }
+  /** A proposal merged with another card (`with`, one `mergeableWith` it): an agent writes one card of both, for the owner to approve. */
+  | { action: 'merge'; with: string }
+  /** A merged proposal: the other card takes the merged text, and the proposal goes. */
+  | { action: 'approveMerge' }
+  /** A proposal being merged, or merged: both cards stay as they were. */
+  | { action: 'separate' }
   /** A proposal, or a card whose agent withdrew or replaced it since (`Item.superseded`): it goes, its worker stopped. */
   | { action: 'dismiss' }
   /** A card whose agent withdrew or replaced it since: the owner keeps it, and the mark goes. */
@@ -1771,6 +1814,10 @@ export type ErrorCode =
   | 'notProposal'
   | 'notSuperseded'
   | 'revising'
+  /** Changing a proposal or the card it is merged with while they are merged, or approving a merge whose text is not there yet. */
+  | 'merging'
+  /** Merging a proposal with a card that is no planned task nor proposal nobody has worked on (any more). */
+  | 'notMergeable'
   | 'planCard'
   | 'noWorkspace'
   | 'dirtyWorkspaces'

@@ -42,17 +42,21 @@ export function projectSize(children: Pick<Item, 'kind' | 'state' | 'parent' | '
   return [w, h];
 }
 
+/** A proposal merged with another card: both cards side by side, glued by the mark between them. */
+export const MERGED_SIZE: readonly [number, number] = [2 * CARD_SIZE.task[0] + 56, CARD_SIZE.task[1]];
+
 export function sizeOf(i: Item, all: Item[]): [number, number] {
   const shape = shapeOf(i);
   if (shape === 'project') return i.collapsed ? [...PROJECT_COLLAPSED] : projectSize(all.filter((c) => c.parent === i.id));
+  if (i.state === 'proposal' && i.proposal?.merge) return [...MERGED_SIZE];
   const [w, h] = CARD_SIZE[shape];
   return [w, h];
 }
 
-/** The items the canvas shows: all but the workstreams of a collapsed project. */
+/** The items the canvas shows: all but the workstreams of a collapsed project, and a card merged with a proposal, which shows within it. */
 export function onCanvas(items: Item[]): Item[] {
   const collapsed = new Set(items.flatMap((i) => (i.collapsed ? [i.id] : [])));
-  return collapsed.size ? items.filter((i) => !i.parent || !collapsed.has(i.parent)) : items;
+  return collapsed.size || items.some((i) => i.mergingInto) ? items.filter((i) => !i.mergingInto && (!i.parent || !collapsed.has(i.parent))) : items;
 }
 
 export interface Bounds {

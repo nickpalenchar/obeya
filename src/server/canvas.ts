@@ -32,6 +32,7 @@ import { WorkRetro } from './work-retro';
 import { PrWatcher } from './pr-watcher';
 import { branchCommit, readingDefaultBranch, ReadTree, refsSeal } from './read-tree';
 import { Revisions } from './revisions';
+import { Merges } from './merges';
 import { ProjectAgents } from './project-agents';
 import { ghHosts, onGitHub, outsidePlanDir, planHistory, readPlanDocs, watchPlanDocs } from './repo';
 import { boundsOf, GAP, type Place, planDirNoteBox, unionBounds } from '../core/layout';
@@ -201,7 +202,10 @@ const WAKE_EVERY_MS = 15_000;
 /** What waits while a card's new repository is about to be made (`NewRepo.due`): every other way on. */
 const DUE_REFUSES: CardAction['action'][] = ['start', 'force', 'build', 'planDoc', 'splitOff', 'prototype', 'snooze', 'startAt', 'accept'];
 
-const BOARD_ONLY: CardAction['action'][] = ['name', 'dequeue', 'reorder', 'startAt', 'dismiss', 'keep', 'park', 'drop'];
+/** What the owner may do on a card while it is merged with a proposal: nothing that changes what it is. */
+const MERGE_LEAVES: CardAction['action'][] = ['name'];
+
+const BOARD_ONLY: CardAction['action'][] = ['name', 'dequeue', 'reorder', 'startAt', 'dismiss', 'keep', 'park', 'drop', 'approveMerge', 'separate'];
 
 /** The card's repository does not run on the canvas: nothing goes to its agents (`Item.repoDown`). */
 const repoDown = (card: Item) => new BadRequest('repoDown', `the repository ${card.repo} of the card does not run on this canvas`);
@@ -223,6 +227,7 @@ export class CanvasRuntime {
   readonly files: Files;
   readonly answers: Answers;
   readonly revisions: Revisions;
+  readonly merges: Merges;
   /** The skills of the cards' agents, by repository. */
   private readonly skills: Skills;
   /** Demos shared with colleagues, on the demo site of the card's repository. */
@@ -428,6 +433,8 @@ export class CanvasRuntime {
       onRevised: (cardId, revised) => this.revised(cardId, revised),
     });
     this.revisions.resume();
+    this.merges = new Merges({ board, runtime: deps.runtime, preferences: this.preferences, pathFor: (card) => this.repoOf(card).read.path });
+    this.merges.resume();
     this.sharing = new Sharing({
       board,
       runtime: deps.runtime,
@@ -1714,6 +1721,10 @@ export class CanvasRuntime {
     if (card?.repoDown && !BOARD_ONLY.includes(a.action)) throw repoDown(card);
     // while its new repository is about to be made, the card is not decided otherwise
     if (card?.newRepo?.due && DUE_REFUSES.includes(a.action)) throw new BadRequest('newRepoDue', 'the card is about to be built in its new repository; take that back first');
+    // a card merged with a proposal, and the proposal while the two are one, wait for the owner's call on the merge
+    if (card?.mergingInto && !MERGE_LEAVES.includes(a.action)) throw new BadRequest('merging', 'the card is merged with a proposal; approve or separate that first');
+    if (card?.state === 'proposal' && card.proposal?.merge && !['merge', 'approveMerge', 'separate', 'dismiss', ...MERGE_LEAVES].includes(a.action))
+      throw new BadRequest('merging', 'the proposal is merged with another card; approve or separate that first');
     const text = 'text' in a ? (a.text ?? '') : '';
     const images = this.images.resolve('images' in a ? a.images : undefined);
     // a reply to anything but a message of this card's conversation is the words alone
@@ -1794,6 +1805,13 @@ export class CanvasRuntime {
         return this.accept(cardId, a.picks, a.start !== false, a.idea, a.agent === undefined ? undefined : startAgentSetting(a.agent));
       case 'unaccept':
         return this.unaccept(cardId);
+      case 'merge':
+        if (typeof a.with !== 'string') throw new BadRequest('invalid', 'with must name the card to merge with');
+        return this.merges.merge(cardId, a.with);
+      case 'approveMerge':
+        return void this.board.approveMerge(cardId);
+      case 'separate':
+        return this.board.separate(cardId);
       case 'dismiss':
         // a card its agent withdrew or replaced goes like a deleted one, its worker stopped
         if (this.board.item(cardId)?.superseded) return this.remove(cardId);
