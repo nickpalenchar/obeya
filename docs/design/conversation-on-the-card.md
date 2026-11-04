@@ -376,6 +376,29 @@ card, whose agent reads none of the repository's settings. A list is kept for tw
 place; after that it serves while it is asked again. A worker on another machine gets this
 machine's list.
 
+### Cards by `/` in the task text
+
+In a card's task text, while it can still be edited, `/` at the start of the text or of a word
+searches the canvas's cards: the words after it on the same line filter them, each of them in the
+title (case aside) or the card's short code; titles that start with the search first, at most
+eight, neither the card itself nor what is archived. The menu shows under the field only while
+something fits, each card as the smart link it will become, with its short code; the keys and the
+click work as in the skills menu, and Escape closes it without closing the card. Picking types a
+markdown link over the search, `[Title](/c/<canvas>/card/<code>)` (the card's address, see
+Addresses), as if by hand; the text keeps that markdown, so the agent reads the card's title and
+where it lives, and every place that shows the text plainly (the card's face) shows the title.
+The field itself is plain text: under it, the cards its text links to stand as smart links. Until
+the owner has picked a card once, a hint under the field says so while it has the cursor
+(„„/“ und Wörter aus dem Titel einer Karte verlinken sie.“).
+
+Wherever a card's conversation shows text (the task as first message, the agents' messages), a link
+to a card's address is a **smart link**: a pill with a dot in the colour of the card's state, its
+title as it is now (not as it was when linked) in blue and underlined, and its priority where it has
+one; its tooltip is the card's state line, and a click opens the card as other card links do. A
+card no longer on the canvas (archived, deleted, or on another canvas) keeps the link's text in a
+muted pill. Further facts a card comes to have (an assignee, labels, a due date) belong in the
+pill too, beside the priority, as long as it stays one line.
+
 ### Marking screenshots
 
 A screenshot still in a field opens ready to be marked: a drag frames a region, a click sets a pin,
@@ -505,3 +528,9 @@ image.
   that starts with `/name` to Claude Code as a slash command (Obeya says what the owner's words are,
   a note on a handover, say, so they never start the message, and words that reach the agent during
   a turn come with a tool result, where nothing is expanded).
+- **Card links are markdown links to the card's address, searched by plain text** (2026-11-04;
+  fuzzy search later: owner): the agent and every plain view read the title without Obeya translating anything,
+  and the link opens the card wherever the address does. `/` searches cards in the task text, where
+  no agent's skills are offered; the conversation's field keeps `/` for skills. Fuzzy search is
+  left for later. Rejected: a token of the card's id (`#ab12`), which says nothing to the agent or
+  in plain text; a rich editor showing the pills inside the field, a large change for one feature.

@@ -34,12 +34,21 @@ function bareUrl(s: string): string {
   }
 }
 
+/**
+ * How a link to a card's address (`/c/<canvas>/card/<code>`) shows: as a smart link where the text
+ * is shown among the canvas's cards; null for a link it does not take, which shows as its text.
+ */
+export const CardRefs = createContext<((href: string, text: string) => ReactNode | null) | null>(null);
+
 export function Inline({ md }: { md: string }) {
-  return <>{render(md, false, useContext(DocImages))}</>;
+  return <>{render(md, false, useContext(DocImages), useContext(CardRefs))}</>;
 }
 
-/** `inLink`: the text of a link, where an address is only words, since a link holds no other; `image`: where images are served. */
-function render(md: string, inLink = false, image: ((src: string) => string | null) | null = null): ReactNode[] {
+type Images = ((src: string) => string | null) | null;
+type Refs = ((href: string, text: string) => ReactNode | null) | null;
+
+/** `inLink`: the text of a link, where an address is only words, since a link holds no other; `image`: where images are served; `ref`: how a card's link shows. */
+function render(md: string, inLink = false, image: Images = null, ref: Refs = null): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
   let k = 0;
@@ -48,9 +57,9 @@ function render(md: string, inLink = false, image: ((src: string) => string | nu
     const [, code, bold, strike, em, star, text, href, bare, alt, src] = m;
     let end = m.index + m[0].length;
     if (code !== undefined) out.push(<code key={k++}>{code}</code>);
-    else if (bold !== undefined) out.push(<b key={k++}>{render(bold, inLink, image)}</b>);
-    else if (strike !== undefined) out.push(<s key={k++}>{render(strike, inLink, image)}</s>);
-    else if (em !== undefined || star !== undefined) out.push(<em key={k++}>{render(em ?? star!, inLink, image)}</em>);
+    else if (bold !== undefined) out.push(<b key={k++}>{render(bold, inLink, image, ref)}</b>);
+    else if (strike !== undefined) out.push(<s key={k++}>{render(strike, inLink, image, ref)}</s>);
+    else if (em !== undefined || star !== undefined) out.push(<em key={k++}>{render(em ?? star!, inLink, image, ref)}</em>);
     else if (src !== undefined) {
       const url = image?.(src);
       out.push(url ? <img key={k++} className="doc-img" src={url} alt={alt} title={alt || undefined} /> : <span key={k++}>{alt}</span>);
@@ -60,7 +69,10 @@ function render(md: string, inLink = false, image: ((src: string) => string | nu
       // shown without its scheme, which says nothing in a sentence
       out.push(inLink ? url : <a key={k++} className="link" href={url} target="_blank" rel="noreferrer">{url.replace(/^https?:\/\/(www\.)?/, '')}</a>);
     } else if (/^https?:/.test(href!) && !inLink) out.push(<a key={k++} className="link" href={href} target="_blank" rel="noreferrer">{render(text!, true, image)}</a>);
-    else out.push(<span key={k++}>{render(text!, inLink, image)}</span>);
+    else {
+      const card = inLink ? null : ref?.(href!, text!);
+      out.push(card ? <span key={k++}>{card}</span> : <span key={k++}>{render(text!, inLink, image)}</span>);
+    }
     last = end;
   }
   if (last < md.length) out.push(md.slice(last));

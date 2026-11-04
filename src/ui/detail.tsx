@@ -10,7 +10,8 @@ import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answerText, toggle } from './answer';
 import { ApiError, api, canvasOf, cardAt, type Field, holdRestart, onCardEvent, onCardEventGone, onReconnect } from './api';
 import { cardPath } from './address';
-import { Naming } from './cardLink';
+import { Naming, smartLink } from './cardLink';
+import { useCardSearch } from './cardMenu';
 import { useCopy } from './copy';
 import { manualPrerequisites } from './deps';
 import { firstOpening } from './demoSeen';
@@ -23,7 +24,7 @@ import { asksYou, CardFace, cardClass, landedRef, PauseMark, PlayMark, QuestionM
 import { asksAhead, holdsNotes } from '../core/queue';
 import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitText, type Behind } from './queue';
 import { dimensions, shownTags } from '../core/page-tags';
-import { Inline, plain } from './markdown';
+import { CardRefs, Inline, plain } from './markdown';
 import { Body, Cards, goToMessage, Msg, Quote, Reading, useAnswer, useReportedHeight } from './message';
 import { appended, cardDraft, draftOf, dropDraft, giveBack, questionsKey, typeAtCursor, updateDraft, useDraft, useDraftField, useDrafting } from './draft';
 import { eventQuote, type Reply, setReply } from './reply';
@@ -453,7 +454,7 @@ export function Detail(p: Props) {
   );
 
   return (
-    <>
+    <CardRefs.Provider value={smartLink}>
       <KindLine kind={kind} item={item} />
       {editable ? <ManualTitle item={item} onEdit={p.onEdit} /> : <div className="p-title">{shownTitle(item)}</div>}
       <div className={['p-state', finishingUp(item) && 'finishing', (item.paused || item.snoozed) && 'paused'].filter(Boolean).join(' ')}>
@@ -745,7 +746,7 @@ export function Detail(p: Props) {
       {item.state === 'planned' && !worked && !item.queue && fresh && <p className="hint">{fresh.hint}</p>}
       {review && item.noChange && !item.prototypeOf && <p className="hint">{inFolder ? t.folder.noChangeHint : t.noChangeHint}</p>}
       {review && direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
-    </>
+    </CardRefs.Provider>
   );
 }
 
@@ -2948,6 +2949,7 @@ function ManualFields({ item, repos, choice, fresh, onEdit, grow }: { item: Item
     onEdit({ body: next });
   };
   const shots = useShotInput({ initial: item.images, onChange: (images) => onEdit({ images }), put });
+  const cards = useCardSearch(ref, item, body);
   return (
     <>
       {!item.newRepo?.due && <RepoPick choice={choice} repos={repos} fresh={!!fresh} />}
@@ -2966,9 +2968,12 @@ function ManualFields({ item, repos, choice, fresh, onEdit, grow }: { item: Item
               setBody(e.target.value);
               onEdit({ body: e.target.value });
             }}
+            {...cards.props}
           />
           <AttachButton shots={shots} />
+          {cards.menu}
         </div>
+        {cards.under}
         {shots.error && <p className="p-error c-error">{shots.error}</p>}
       </div>
     </>

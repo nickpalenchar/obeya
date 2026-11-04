@@ -66,6 +66,18 @@ a.link:hover, a.link:focus-visible { --hl: color-mix(in srgb, var(--question) 17
   background: var(--hl); box-shadow: 0 0 0 2px var(--hl); outline: none; }
 /* a card named in a sentence: blue and underlined, so it reads as a link at a glance */
 a.link.card-link { color: var(--working); text-decoration: underline 1px currentColor; }
+/* a card a text links to: a pill with the dot of its state, its title (blue and underlined, as links are) and its priority */
+.smart-link { --c: var(--muted); display: inline-flex; align-items: center; gap: 6px; max-width: 100%; vertical-align: baseline;
+  padding: 1px 8px 1px 7px; border: 1px solid var(--line); border-radius: 999px; background: var(--chip); line-height: 1.45;
+  font-size: .92em; color: var(--working); text-decoration: none; white-space: nowrap; transition: border-color .12s, background-color .12s; }
+.smart-link .sl-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+.smart-link .sl-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; text-decoration: underline 1px currentColor; text-underline-offset: .18em; }
+.smart-link .prio { font-size: .9em; }
+a.smart-link:hover, a.smart-link:focus-visible { border-color: var(--working); background: color-mix(in srgb, var(--working) 8%, var(--chip)); outline: none; }
+/* a card no longer on the canvas: its title as the link had it, muted */
+.smart-link.gone { color: var(--muted); }
+.smart-link.gone .sl-title { text-decoration: none; }
+.smart-link.gone .sl-dot { background: transparent; border: 1px solid var(--muted); width: 5px; height: 5px; }
 /* headings are titles on paper, in the serif; the rest stays in the condensed sans */
 h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-family: var(--serif); font-weight: 600; letter-spacing: -.005em; }
 
@@ -1785,6 +1797,14 @@ button.link:hover { text-decoration: underline; }
 .skill-menu .sk-hint { color: var(--muted); }
 .skill-menu .sk-desc { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .skill-menu .sk-loading { margin: 0; padding: 10px 12px; color: var(--muted); }
+/* `/` in a card's task field: the cards that fit, under the field */
+.skill-menu.card-menu { top: 100%; bottom: auto; margin: 4px 0 0; }
+.card-menu li { align-items: center; justify-content: space-between; }
+.card-menu .cm-pill { min-width: 0; pointer-events: none; }
+.card-menu .cm-code { flex: none; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+/* under the task field: the cards its text links to */
+.card-refs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.card-refs-hint { margin: 6px 0 0; }
 @media (max-width: 760px) { #minimap, #sheet-grip { display: none; } .sheet, .sheet.reading { width: auto; left: 14px; right: 14px; top: 64px; bottom: 158px; border-radius: 3px; border: 0; box-shadow: var(--lift); } #sheet-close { top: 72px; right: 22px; } #talk-docked.on { top: 74px; right: 22px; } .split { grid-template-columns: 1fr; grid-template-rows: none; max-height: none; } .split .split-talk .talk { min-height: 240px; max-height: min(520px, 60vh); } }
 
 /* the play button on a startable card, shown while the pointer is on the card */

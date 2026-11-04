@@ -44,7 +44,7 @@ touches, and keep those current in the same change.
 - [Conversation on the card](design/conversation-on-the-card.md) — what the owner sees and does in
   a card's conversation: messages, reading order, replying to a message, the task as first message,
   card layout (the files beside the demo, trying the app by hand), screenshots and marking them,
-  other files by their path, skills by `/`.
+  other files by their path, skills by `/`, cards by `/` in the task text and smart links.
 - [The canvas](design/the-canvas.md) — the UI around the cards: the bar, creating cards, cards on
   the canvas (a project arranged by its dependencies), moving around, unfolding a card, addresses
   (a card's permalink, Back and Forward), sheets, visual identity, groups on the canvas, refusals.

@@ -2178,6 +2178,11 @@ const de = {
       `Screenshots fügst du auch mit ${k.paste} aus der Zwischenablage ein, ohne sie erst als Datei zu speichern.${k.grab ? ` ${k.grab} legt einen Screenshot direkt dort ab.` : ''}`,
   },
   /** The menu of the agent's skills that `/` opens in a field whose words go to a card's agent. */
+  cardRefs: {
+    menu: 'Karten auf der Fläche',
+    linked: 'Verknüpfte Karten',
+    hint: '„/“ und Wörter aus dem Titel einer Karte verlinken sie.',
+  },
   skills: {
     menu: 'Skills des Agenten',
     hint: '„/“ ruft einen Skill des Agenten auf.',
@@ -4215,6 +4220,11 @@ const en: Strings = {
       `You can also paste screenshots from the clipboard with ${k.paste}, without saving them as a file first.${k.grab ? ` ${k.grab} puts a screenshot straight there.` : ''}`,
   },
   /** The menu of the agent's skills that `/` opens in a field whose words go to a card's agent. */
+  cardRefs: {
+    menu: 'Cards on the canvas',
+    linked: 'Linked cards',
+    hint: 'Type “/” and words of a card’s title to link it.',
+  },
   skills: {
     menu: "The agent's skills",
     hint: '“/” asks the agent for one of its skills.',
