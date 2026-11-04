@@ -310,7 +310,7 @@ const SAYS = {
   report: (status: string) => ({ tool: 'report', args: { status } }),
   talk: (text: string) => ({ tool: 'reply', args: { text } }),
   question: (question: string) => ({ tool: 'ask', args: { question } }),
-  review: (summary: string) => ({ tool: 'ready_for_review', args: { summary } }),
+  review: (summary: string) => ({ tool: 'ready_for_review', args: { summary, data_models: 'unchanged', data_models_reason: 'A staged handover.' } }),
   to_obeya: (request: string) => ({ tool: 'to_obeya', args: { request } }),
   tool: (json: string) => ({ args: {}, ...(JSON.parse(json) as { tool: string; args?: Record<string, unknown> }) }) as { tool: string; args: Record<string, unknown> },
   step: (json: string) => ({ step: JSON.parse(json) as { type: 'tool'; name: string } }),
@@ -353,7 +353,7 @@ if (artifactPort) {
   // the page it may be shared on stays as the card's demo had it
   const { page } = (await stagedCard(Number(artifactPort), key!)).demo ?? {};
   const summary = words.join(' ').trim() || 'Updated the artifact.';
-  console.log(await standIn(Number(artifactPort), key!, { tool: 'ready_for_review', args: { summary, demo: { kind: 'html', dir: to, ...(page ? { page } : {}) } } }));
+  console.log(await standIn(Number(artifactPort), key!, { tool: 'ready_for_review', args: { summary, data_models: 'unchanged', data_models_reason: 'A staged handover.', demo: { kind: 'html', dir: to, ...(page ? { page } : {}) } } }));
   process.exit(0);
 }
 

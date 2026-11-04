@@ -488,6 +488,11 @@ export interface Item {
   /** Waiting for approval, its branch holds no change (checked at the handover): approving makes the card `done`. */
   noChange?: boolean;
   /**
+   * Waiting for approval, its branch showed signs of a change to persisted data models, which its
+   * worker says is none: the worker's reason, in a line, for the owner to judge.
+   */
+  modelsUnchanged?: string;
+  /**
    * Approved work its agent did, while Obeya asks for feedback: the handover the owner's response
    * would be about, and the answer given on it so far (none: not answered yet).
    */

@@ -508,7 +508,7 @@ test("a worker resumed after a restart on a public repository writes the page, t
   const page = (r: FakeRuntime) => {
     const tool = r.last.spec.tools!.find((t) => t.name === 'ready_for_review')!;
     const sent = { title: 'Orders as CSV', text: 'Shop owners download their orders as a CSV file.' };
-    return (z.object(tool.schema as z.ZodRawShape).parse({ summary: 'S', demo: { dir: demo, chapters: ['Before'], page: sent } }) as { demo: { page?: unknown } }).demo.page;
+    return (z.object(tool.schema as z.ZodRawShape).parse({ summary: 'S', data_models: 'unchanged', data_models_reason: 'UI only.', demo: { dir: demo, chapters: ['Before'], page: sent } }) as { demo: { page?: unknown } }).demo.page;
   };
   const before = new FakeRuntime();
   const canvas = new CanvasRuntime({ repos: [{ path: shop }] }, { store, home, runtime: new FakeRuntime(), workerRuntime: before, forge: { ...noForge, visibility: async () => 'public' } });

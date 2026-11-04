@@ -201,7 +201,7 @@ node ${CLAUDE_SKILL_DIR}/lib/schema.ts <demo dir>/schema-models.json <demo dir>/
 
 Look at the page in the browser: does it show what the migration does, nothing more and nothing
 less? Under Obeya, name it first in `ready_for_review`'s `files` by its absolute path, with a
-caption. Without Obeya, link it from the summary.
+caption, and give `data_models: 'changed'`. Without Obeya, link it from the summary.
 
 ## 5. Render
 

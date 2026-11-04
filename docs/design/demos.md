@@ -546,6 +546,20 @@ the change's files, and keeps naming it after landing while the demo directory h
 must not be the path of a file of the change, which the list and the served address would mistake
 for it. It does not go onto a shared demo page, which shows no named files.
 
+Obeya does not leave the page to the worker's memory. Every build card's task names it beside the
+demo, whatever the demo's kind, and its handover declares `data_models`: `changed`, which is refused
+until a schema page (an HTML file with "schema" in its name) is among the files named now or
+before, or `unchanged` with a one-line reason. Beside that declaration a tripwire reads the
+branch's diff for generic signs of a model change: DDL in added lines (`CREATE`/`ALTER`/`DROP`
+`TABLE`/`VIEW`/`INDEX`, `ADD`/`DROP`/`RENAME COLUMN`, `FOREIGN KEY`), the usual migration calls of
+ORMs (`add_column`, `createTable(`, Django's `migrations.AddField` and the like), and paths
+(`*.sql`, a `migrations`/`migrate`/`alembic` directory, `*.prisma`, `schema.rb`, `models.py`,
+`*.entity.ts`); prose files (Markdown, text) count for their path only. Where it fires on
+`unchanged`, the handover is refused once, naming the files and what gave each away; the same
+declaration again for the same files stands, and the card then shows the owner the worker's reason
+beside the handover. Files that show signs only later are refused once more. Review cards (a
+contributor's pull request) and folders without git have no declaration.
+
 ### UI checks
 
 Workers check web UIs with the plugin's skill `browser` (`obeya:browser`): a headless browser driven
@@ -588,6 +602,13 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
   its own kind of page). Only persisted models count (owner). The page lies in the demo directory,
   not in git (owner, 2026-11-03): committed, every data-model change would add a generated page to
   the project's history.
+- **The handover asks for the schema page: a declaration plus a tripwire** (owner, 2026-11-04): a
+  worker that made an HTML artifact never opened the demo skill, where the page was described, and
+  said a check works better than instructions. A refused `unchanged` stands on the second call, as
+  the signals cannot tell a migration from a test fixture that mentions SQL. Rejected: a wording
+  change alone; a setting per project that lists its model files (it fails where nobody set it,
+  and adds a setting); Obeya running migrations or diffing a database (project-specific); a block
+  with no way past (false alarms would trap workers).
 - **A question can bring a demo** (owner, 2026-11-03): drafts to choose a direction from (three
   designs, say) were a path in the question's text, which the owner had to open by hand. Rejected:
   handing over with the drafts and the demo report's question, which puts work that has only begun

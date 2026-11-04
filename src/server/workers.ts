@@ -38,6 +38,7 @@ import { gitAsync, gitOrNull } from './workspaces';
 import { defaultBranchCommit } from './read-tree';
 import type { CardRow } from './db';
 import { workConfig } from './feedback';
+import { type DataSignal, dataModelSignals, isSchemaPage, SIGNALS_NAMED } from './data-models';
 import { type Forge, parsePrUrl, sameRepo } from './forge';
 import { clip, messageOf } from '../core/text';
 import { holdsNotes } from '../core/queue';
@@ -638,6 +639,8 @@ export class Workers {
   private pushingMain = new Map<string, ReturnType<typeof setTimeout> | true>();
   /** Merged cards whose branch git reads the added plan docs of: their workspace goes once it has (`finish`). */
   private reading = new Map<string, Promise<void>>();
+  /** The files whose signs of a data-model change a card's handover was refused for once (`dataModels`): the next 'unchanged' for them stands. */
+  private dataBounced = new Map<string, Set<string>>();
   /**
    * Cards whose workspace git is making ready before their worker goes on (`whenReady`), with the
    * machine it is on: the server answers meanwhile, the card holds a slot there, and a restart waits.
@@ -2323,6 +2326,36 @@ export class Workers {
    * workspace (or folder), or as files in `demoDir`, the directory of the demo it hands over (else
    * the one on the card), by their absolute paths; what is wrong instead, for the worker to fix.
    */
+  /**
+   * What a handover says of the data its change persists, against what its branch shows: 'changed'
+   * needs the schema-change page among the files (named now, else those named before); 'unchanged'
+   * where the branch shows signs of a model change is refused once for those files, and taken the
+   * next time, with its reason for the owner (`unchanged`). Without a declaration (a session from
+   * before the field), only the signs count.
+   */
+  private dataModels(cardId: string, declared: unknown, why: unknown, named: CardFile[] | undefined, signals: DataSignal[]): { refused: string } | { unchanged?: string } {
+    const reason = clip(String(why ?? '').replace(/\s+/g, ' ').trim(), 300);
+    const section = `${this.demoSkill(cardId)}, its section "A change to persisted data models"`;
+    if (declared === 'unchanged' && !reason) return { refused: "Not handed over: data_models 'unchanged' takes its reason, in one line (data_models_reason). Call ready_for_review again with it." };
+    if (declared === 'changed') {
+      const stored = this.o.board.row(cardId).files;
+      const files = named ?? (stored ? (JSON.parse(stored) as CardFile[]) : []);
+      if (files.some((f) => isSchemaPage(f.path))) return {};
+      return {
+        refused: `Not handed over: your change alters persisted data models, and no schema-change page is among the files. Render it as ${section} says, name it first in files by its absolute path in your demo's directory, then call ready_for_review again.`,
+      };
+    }
+    if (!signals.length) return {};
+    const tripped = signals.map((s) => s.file);
+    const bounced = this.dataBounced.get(cardId);
+    if (declared === 'unchanged' && bounced && tripped.every((f) => bounced.has(f))) return { unchanged: reason };
+    this.dataBounced.set(cardId, new Set([...(bounced ?? []), ...tripped]));
+    const listed = signals.slice(0, SIGNALS_NAMED).map((s) => `${s.file} (${s.why})`);
+    return {
+      refused: `Not handed over: your branch looks like it alters persisted data models: ${listed.join(', ')}${signals.length > SIGNALS_NAMED ? `, and ${signals.length - SIGNALS_NAMED} more` : ''}. If it does, render the schema-change page as ${section} says, name it first in files, and call ready_for_review again with data_models 'changed'. If it does not, call ready_for_review again with data_models 'unchanged' and the reason in data_models_reason: the card shows it to the owner.`,
+    };
+  }
+
   private async namedFiles(cardId: string, files: { path: string; caption: string }[], demoDir?: string): Promise<CardFile[] | string> {
     const row = this.o.board.row(cardId);
     const ws = (row.workspace ?? '').replace(/^ssh:\/\/[^/]+/, '');
@@ -4578,10 +4611,20 @@ export class Workers {
             .max(MAX_RESULT_FILES)
             .optional()
             .describe(
-              `the files ${this.folder ? 'in the folder' : 'of your branch'} that are the result for the owner (a document, a report, a spreadsheet, a page; not the code or configuration behind it), each with its path and a one-line caption in ${language}. The card shows them beside the demo: Markdown formatted, a PDF in the browser's viewer, any other file to open on the owner's computer. A page you rendered for review only lies in your demo's directory instead, named by its absolute path there. When your change alters persisted data models (tables, columns, indexes, relations, migrations, ORM models), the first file is the schema-change page the demo skill renders, with a caption. Without them, the ones named at your last handover stand.`,
+              `the files ${this.folder ? 'in the folder' : 'of your branch'} that are the result for the owner (a document, a report, a spreadsheet, a page; not the code or configuration behind it), each with its path and a one-line caption in ${language}. The card shows them beside the demo: Markdown formatted, a PDF in the browser's viewer, any other file to open on the owner's computer. A page you rendered for review only lies in your demo's directory instead, named by its absolute path there.${this.folder || review ? '' : ' With data_models changed, the first file is the schema-change page the demo skill renders, with a caption.'} Without them, the ones named at your last handover stand.`,
             ),
+          ...(this.folder || review
+            ? {}
+            : {
+                data_models: z
+                  .enum(['changed', 'unchanged'])
+                  .describe(
+                    "whether your branch alters the data the app persists (tables, columns, indexes, relations, migrations, ORM models; not API types or config schemas): 'changed' brings the schema-change page among files, 'unchanged' its reason in data_models_reason",
+                  ),
+                data_models_reason: z.string().optional().describe(`with data_models 'unchanged': why, in one line in ${language} (the card may show it to the owner)`),
+              }),
         },
-        run: ({ summary, demo, files, review: results, pr_draft: draft }) => {
+        run: ({ summary, demo, files, review: results, pr_draft: draft, data_models: declared, data_models_reason: why }) => {
           // a stopped pull this worker resolved lands as it hands it over, without the owner
           const resolving = landedOf(this.o.board.row(cardId))?.resolve;
           if (resolving) return this.landResolved(cardId, resolving);
@@ -4594,7 +4637,17 @@ export class Workers {
             review
               ? this.ownCommits(cardId, review).then((mine) => (typeof mine === 'string' ? mine : handOverNow(d, named, shows, true, undefined, mine)))
               : Promise.all([this.o.workspaces.hasWork(cardId), this.landingOf(cardId)]).then(async ([work, { own }]) =>
-                  handOverNow(d, named, shows, work, own, undefined, work && !this.folder ? await this.o.workspaces.changedFiles(cardId) : undefined),
+                  handOverNow(
+                    d,
+                    named,
+                    shows,
+                    work,
+                    own,
+                    undefined,
+                    work && !this.folder ? await this.o.workspaces.changedFiles(cardId) : undefined,
+                    // what the branch shows of a data-model change, unless the worker says it has one
+                    work && !this.folder && declared !== 'changed' ? dataModelSignals((await this.o.workspaces.diff(cardId, true))?.patch ?? '') : [],
+                  ),
                 );
           const handOverNow = (
             d: Demo | undefined,
@@ -4604,6 +4657,7 @@ export class Workers {
             own: CardLanding | undefined,
             mine?: OwnCommits,
             changed?: string[],
+            signals: DataSignal[] = [],
           ): string => {
             // reading what the change shows takes a while, in which the owner may stop or replace the session
             if (this.live.get(cardId) !== live && !live.standIn) return 'This session has ended. Stop working and end your turn.';
@@ -4629,6 +4683,8 @@ export class Workers {
             // in a folder without git the card's change list shows what changed, where often nothing can be shown on screen
             if (!d && !kept && !approved && !this.folder)
               return `Not handed over: every handover brings a demo${row.demo ? ' (the one you showed with your question is not one)' : ''}. Record it with ${this.demoSkill(cardId)}, or make an HTML artifact when the result is something to look at, then call ready_for_review again with it.`;
+            const models = review || this.folder || approved ? undefined : this.dataModels(cardId, declared, why, named, signals);
+            if (models && 'refused' in models) return models.refused;
             let demoJson: string | undefined;
             if (d) {
               const kind = d.kind ?? 'video';
@@ -4682,7 +4738,12 @@ export class Workers {
               ...(approved ? { status_line: this.o.board.t.worker.landing } : { state: 'waiting', need: d || kept ? 'demo' : 'review', status_line: null }),
               // approving work that changes nothing makes the card done, which the owner sees before approving; where work
               // lands that its own branch decides, likewise
-              detail: JSON.stringify({ summary: report, ...(work ? (own ? { lands: own } : {}) : { noChange: true }), ...(answered && !approved ? { answered: true } : {}) }),
+              detail: JSON.stringify({
+                summary: report,
+                ...(work ? (own ? { lands: own } : {}) : { noChange: true }),
+                ...(answered && !approved ? { answered: true } : {}),
+                ...(models?.unchanged ? { modelsUnchanged: models.unchanged } : {}),
+              }),
               ...(demoJson ? { demo: demoJson } : asked ? { demo: null } : {}),
               ...(demos ? { demos } : {}),
               // the files named stand until a later handover names others (an empty list named clears them); a folder's card handed
@@ -5186,6 +5247,7 @@ ${idea.idea.brief}` : '',
         `When the result is something to look at rather than something that happens (drafts of a logo or a layout side by side, a comparison of variants, an analysis, an answer), make an HTML artifact instead: an index.html in a new directory under ${this.demosDir(card.id)} (never in git), self-contained or with the files it loads beside it, made for the owner to decide on, and hand it over with kind 'html' (drafts the owner is to choose from before you go on come with ask's demo instead). It shows in a sandboxed frame on the card, about 800 px wide, without Obeya's API.`,
         'Where either would do, record the video: watching the work happen is what the owner enjoys most.',
         "Where the work itself is a file for the owner (a document, a report, a spreadsheet in the repository), name it in ready_for_review's files: the card shows it beside the demo.",
+        `Where your change alters the data the app persists (tables, columns, indexes, relations, migrations, ORM models; not API types or config schemas), the owner also gets a schema-change page beside the demo, a video or an HTML artifact alike: render it as ${this.demoSkill(card.id)}'s section "A change to persisted data models" says, and name it first in ready_for_review's files, with data_models 'changed'.`,
       ].join(' '),
     );
     return parts.join('\n\n');

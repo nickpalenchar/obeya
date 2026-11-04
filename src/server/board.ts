@@ -3204,7 +3204,7 @@ const pullRequest = (pr: PrState): PullRequest => ({
 
 /** The fields a worker adds to a card. */
 function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
-  const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string; noChange?: boolean; lands?: Item['lands']; answering?: boolean; answered?: boolean }) : {};
+  const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string; noChange?: boolean; lands?: Item['lands']; modelsUnchanged?: string; answering?: boolean; answered?: boolean }) : {};
   const demo = r.demo ? shownDemo(JSON.parse(r.demo) as StoredDemo) : undefined;
   const earlier = demo ? earlierDemos(r) : [];
   const handed = r.need === 'review' || r.need === 'demo';
@@ -3246,6 +3246,7 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
     ...(landed && (r.workspace || landed.needsClone) ? { finishing: true, ...(landed.followUp && !landed.resolve ? { followUp: true } : {}), ...(landed.needsClone && !r.workspace ? { waitsForClone: true } : {}) } : {}),
     ...(detail.noChange && handed ? { noChange: true } : {}),
     ...(detail.lands && handed ? { lands: detail.lands } : {}),
+    ...(detail.modelsUnchanged && handed ? { modelsUnchanged: detail.modelsUnchanged } : {}),
     ...(r.paused ? { paused: true } : {}),
     ...(r.pausing && !r.paused ? { pausing: true } : {}),
     ...(r.snoozed ? { snoozed: JSON.parse(r.snoozed) as Snooze } : {}),

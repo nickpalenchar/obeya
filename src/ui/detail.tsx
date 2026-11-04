@@ -745,6 +745,7 @@ export function Detail(p: Props) {
       )}
       {item.state === 'planned' && !worked && !item.queue && fresh && <p className="hint">{fresh.hint}</p>}
       {review && item.noChange && !item.prototypeOf && <p className="hint">{inFolder ? t.folder.noChangeHint : t.noChangeHint}</p>}
+      {review && item.modelsUnchanged && <p className="hint">{t.modelsUnchanged(item.modelsUnchanged)}</p>}
       {review && direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
     </CardRefs.Provider>
   );

@@ -727,7 +727,7 @@ describe('handing over with a demo', () => {
     const tool = runtime.last.spec.tools!.find((t) => t.name === 'ready_for_review')!;
     const page = { title: 'Zählerstände als CSV', text: 'Vermieter laden die Zählerstände jetzt als CSV herunter.' };
     // the agent's runtime checks the call against the tool's schema, which drops the page it does not know
-    const args = z.object(tool.schema as z.ZodRawShape).parse({ summary: 'S', demo: { ...demo(demoDir()), page } });
+    const args = z.object(tool.schema as z.ZodRawShape).parse({ summary: 'S', data_models: 'unchanged', data_models_reason: 'UI only.', demo: { ...demo(demoDir()), page } });
     expect(await tool.run(args)).toContain('End your turn');
     expect(state(c.id)).toBe('waiting:demo');
   });
