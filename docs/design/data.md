@@ -24,7 +24,8 @@ Persistent (SQLite):
   from it;
   proposals waiting for the owner; the new repository a card is to be built in, and that Obeya made
   it; an idea's brief, open questions and picks; a prototype's idea
-  and outcome; a project's plan doc as last read and the plan docs its landed work added; its short
+  and outcome; a project's plan doc as last read and the plan docs its landed work added; the priority the owner
+  gave it (`priority`: `trivial`, `low`, `medium`, `high`, `veryHigh` or `critical`, null for none); its short
   code for addresses (see Addresses in The canvas), unique across the database;
 - each session that worked on a card, with the harness, resolved model and effort it ran on (see
   Models and effort in Agents and workspaces), and the owner's responses on approved work: the

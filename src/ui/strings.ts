@@ -549,6 +549,12 @@ const de = {
     },
   },
   /** Tags on the cards around the one the pointer is on: it waits for them, or they wait for it. */
+  priority: {
+    label: 'Priorität',
+    set: 'Priorität setzen',
+    none: 'Keine',
+    names: { trivial: 'Trivial', low: 'Niedrig', medium: 'Mittel', high: 'Hoch', veryHigh: 'Sehr hoch', critical: 'Kritisch' },
+  },
   deps: {
     connect: 'Mit einer wartenden Karte verbinden',
     remove: 'Abhängigkeit entfernen',
@@ -2631,6 +2637,12 @@ const en: Strings = {
       waitedOn: (title: string) => `Not behind “${title}”: it waits for this task.`,
       checking: (title: string) => `Not past “${title}”: Obeya is checking it right now.`,
     },
+  },
+  priority: {
+    label: 'Priority',
+    set: 'Set priority',
+    none: 'None',
+    names: { trivial: 'Trivial', low: 'Low', medium: 'Medium', high: 'High', veryHigh: 'Very high', critical: 'Critical' },
   },
   deps: {
     connect: 'Connect to a card that waits for this one',

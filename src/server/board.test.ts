@@ -92,6 +92,19 @@ describe('plan docs', () => {
     expect(onCanvas(items)).toHaveLength(4);
   });
 
+  test('the owner gives any card a priority, changes it and takes it off again', () => {
+    const [p, , w2] = board.snapshot().items;
+    const c = board.create({ title: 'Own', x: 0, y: 0 });
+    board.patch(c.id, { priority: 'critical' });
+    board.patch(p!.id, { priority: 'trivial' });
+    board.patch(w2!.id, { priority: 'veryHigh' });
+    const at = (id: string) => board.snapshot().items.find((i) => i.id === id)!;
+    expect([at(c.id).priority, at(p!.id).priority, at(w2!.id).priority]).toEqual(['critical', 'trivial', 'veryHigh']);
+    expect(() => board.patch(c.id, { priority: 'urgent' as never })).toThrow(BadRequest);
+    board.patch(c.id, { priority: null });
+    expect(at(c.id).priority).toBeUndefined();
+  });
+
   test('a removed doc takes its project into the archive; its return brings it back to its place', () => {
     const p = board.snapshot().items[0]!;
     board.patch(p.id, { x: -500, y: 42 });

@@ -18,6 +18,7 @@ import { know, known } from './known';
 import { Branch } from './diff';
 import { ResultFiles } from './files';
 import { DiscardChanges, FolderBox, FolderLine, useFolderDiff } from './folder';
+import { PriorityMark, PriorityPick } from './priority';
 import { CardFace, cardClass, landedRef, PauseMark, PlayMark, shownTitle } from './parts';
 import { asksAhead, holdsNotes } from '../core/queue';
 import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitText, type Behind } from './queue';
@@ -177,7 +178,10 @@ export function Detail(p: Props) {
   if (item.kind === 'question' && item.thread)
     return (
       <>
-        <div className="p-kind">{[repo, t.kind.question].filter(Boolean).join(' · ')}</div>
+        <div className="p-kind">
+          {[repo, t.kind.question].filter(Boolean).join(' · ')}
+          {!item.archivedAt && <PriorityPick item={item} />}
+        </div>
         <div className="p-title">
           <Inline md={item.title} />
         </div>
@@ -188,7 +192,7 @@ export function Detail(p: Props) {
   if (item.state === 'idea' && item.idea)
     return (
       <>
-        {kind && <div className="p-kind">{kind}</div>}
+        <KindLine kind={kind} item={item} />
         {item.archivedAt ? <div className="p-title">{shownTitle(item)}</div> : <ManualTitle item={item} onEdit={p.onEdit} />}
         <SupersededBox item={item} all={all} act={act} onDelete={p.onDelete} />
         <RepoDownBox item={item} />
@@ -443,7 +447,7 @@ export function Detail(p: Props) {
 
   return (
     <>
-      {kind && <div className="p-kind">{kind}</div>}
+      <KindLine kind={kind} item={item} />
       {editable ? <ManualTitle item={item} onEdit={p.onEdit} /> : <div className="p-title">{shownTitle(item)}</div>}
       <div className={['p-state', finishingUp(item) && 'finishing', (item.paused || item.snoozed) && 'paused'].filter(Boolean).join(' ')}>
         ● {stateLabel(item)}
@@ -1254,6 +1258,16 @@ function PrototypeStart({ item, act }: { item: Item; act: (a: CardAction, done: 
 }
 
 /** A workstream as the owner picks it: its label and title. */
+/** The unfolded card's kind line, with its priority to set beside it; an archived card only shows its priority. */
+function KindLine({ kind, item }: { kind: string; item: Item }) {
+  return (
+    <div className="p-kind">
+      {kind}
+      {item.archivedAt ? item.priority && <PriorityMark priority={item.priority} /> : <PriorityPick item={item} />}
+    </div>
+  );
+}
+
 const workstreamName = (w: Item) => `${w.label ? `${w.label} ` : ''}${plain(w.title)}`;
 
 /** The demos of an idea's prototypes, each under its title and how it stands; the latest one open. */

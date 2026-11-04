@@ -12,6 +12,7 @@ import type { Shape } from './groups';
 import { Doc, excerpt, Inline, plain } from './markdown';
 import { Body } from './message';
 import { waitedOn, waitReason } from './queue';
+import { PriorityMark, PriorityPick } from './priority';
 import { ClockMark, snoozeWho } from './snooze';
 import { becomesLabel, clock, shortDay, snoozeWhen, stateLabel, t } from './strings';
 
@@ -199,9 +200,10 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
     (item.idea ? firstLine(item.idea.brief) || firstLine(item.body) : firstLine(item.body));
   return (
     <>
-      {label && (
+      {(label || item.priority) && (
         <div className="kind">
-          <span>{label}</span>
+          {item.priority && <PriorityMark priority={item.priority} />}
+          {label && <span>{label}</span>}
         </div>
       )}
       <div className={item.title ? 'ttl' : 'ttl untitled'}>
@@ -888,6 +890,7 @@ export const ProjectView = memo(
           </button>
           <span className="ttl">{plain(item.title)}</span>
           <span className="kind">{t.kind.project}</span>
+          {item.priority && <PriorityMark priority={item.priority} />}
           <span className="progress">{t.progress(live, kids.length)}</span>
           {/* collapsed, its workstreams are not on the canvas to arrange; its sheet still has the button */}
           {!collapsed && (item.arranging || arrangeable(kids)) && (
@@ -1225,7 +1228,10 @@ export function Sheet({
       )}
       {project?.plan && !reading && (
         <>
-          <div className="p-kind">{project.archivedAt ? t.archivedProject : t.planSheet}</div>
+          <div className="p-kind">
+            {project.archivedAt ? t.archivedProject : t.planSheet}
+            {!project.archivedAt && <PriorityPick item={project} />}
+          </div>
           <h2>{plain(project.title)}</h2>
           {project.archivedAt && <p className="hint">{t.archive.projectGone(new Date(project.archivedAt))}</p>}
           <div className="goal">

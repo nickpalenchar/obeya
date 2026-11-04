@@ -162,6 +162,18 @@ is refused the same way, saying the plan doc gives their order. A deleted or arc
 back brings them back, except one that would now close a cycle. How an arrow holds a card's start:
 see Scheduling.
 
+#### Priorities
+
+The owner gives any card a priority: Trivial, Low, Medium, High, Very high or Critical („Trivial“,
+„Niedrig“, „Mittel“, „Hoch“, „Sehr hoch“, „Kritisch“). A card has none until then. The unfolded card
+(a project: its sheet) shows the priority in its kind line, or „Priorität setzen“ while it has
+none. A click there lists the six priorities, highest first, and „Keine“ to take it off; the pick
+takes effect at once, without an undo. On the canvas, the card's face shows the priority before its kind as a flag
+and its name, in a colour that rises from grey to red; Critical is set in white on red. A project's
+head shows it in place of the word „Projekt“. A priority is a label for the owner only: it changes
+neither the queue's order nor what starts first, and agents are not told of it. It is stored in
+this Obeya, as collapsing is, so a workstream's priority stays out of its plan doc.
+
 #### A project arranged by its dependencies
 
 A project's workstreams can stand in columns by what builds on what: leftmost what can start at
@@ -413,6 +425,10 @@ code, a generic one otherwise.
 - **The usage limits outlast the last page by half a minute** (2026-10-29). Rejected: closing the
   session and forgetting the numbers with the last page, which left the bar without them for the
   seconds a new session takes after every switch of canvas.
+- **A card's priority is a label, not an order** (2026-11-03): six levels, from Trivial to
+  Critical, that the owner sets and reads on the cards; the queue keeps its own order (see The
+  queue's order in The Koordinator). Rejected: priorities that also order the queue (the owner chose a
+  label only).
 - **The bar measures what fits** (2026-10-12). Rejected: container queries on the bar's width, which
   let a long branch or a large pool push buttons under the sheet.
 - **An unfolded card is as large as its content, up to the room it has** (2026-10-08, 2026-10-21).

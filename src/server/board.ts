@@ -30,6 +30,8 @@ import {
   type Demo,
   type DemoKind,
   type PageTags,
+  PRIORITIES,
+  type Priority,
   type EarlierDemo,
   type ErrorCode,
   type Group,
@@ -2336,7 +2338,7 @@ export class Board {
 
   patch(id: string, p: CardPatch) {
     const row = this.own(id);
-    const allowed = row.plan_ref ? (row.kind === 'project' ? ['x', 'y', 'collapsed'] : ['x', 'y', 'state', 'need']) : ['x', 'y', 'title', 'body', 'state', 'need', 'repo', 'images', 'newRepo'];
+    const allowed = [...(row.plan_ref ? (row.kind === 'project' ? ['x', 'y', 'collapsed'] : ['x', 'y', 'state', 'need']) : ['x', 'y', 'title', 'body', 'state', 'need', 'repo', 'images', 'newRepo']), 'priority'];
     const bad = Object.keys(p).filter((k) => !allowed.includes(k));
     if (bad.length) throw new BadRequest('invalid', `cannot change ${bad.join(', ')} on this card`);
     if (p.x !== undefined) checkNumber(p.x, 'x');
@@ -2347,6 +2349,7 @@ export class Board {
     if (p.images !== undefined) this.checkImages(p.images);
     if (p.state !== undefined && !STATES.includes(p.state)) throw new BadRequest('invalid', `state must be one of ${STATES.join(', ')}`);
     if (p.need !== undefined && p.need !== null && p.need !== 'demo' && p.need !== 'question') throw new BadRequest('invalid', 'need must be demo, question or null');
+    if (p.priority !== undefined && p.priority !== null && !PRIORITIES.includes(p.priority)) throw new BadRequest('invalid', `priority must be one of ${PRIORITIES.join(', ')} or null`);
     const { repo, images, collapsed, newRepo, ...fields } = p;
     if (newRepo !== undefined) this.checkNewRepo(row, newRepo);
     // a planned card of the owner's may become an idea again, to be discussed first
@@ -3005,6 +3008,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         ...(r.retro ? { retro: r.retro } : {}),
         ...(r.proposal ? (r.state === 'proposal' ? { proposal: storedProposal(r)! } : { proposed: true as const, ...supersededOf(r) }) : {}),
         ...(r.group_id ? { group: r.group_id } : {}),
+        ...priorityOf(r),
         ...newRepoOf(r),
       });
       continue;
@@ -3029,6 +3033,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         ...(r.collapsed ? { collapsed: true } : {}),
         ...(r.from_id ? { origin: r.from_id } : {}),
         ...(r.group_id ? { group: r.group_id } : {}),
+        ...priorityOf(r),
       });
       continue;
     }
@@ -3064,6 +3069,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         ...(r.built_on ? { builtOn: r.built_on } : {}),
         ...(buildsOn.length ? { buildsOn } : {}),
         ...(groupOf.get(r.parent_id) ? { group: groupOf.get(r.parent_id)! } : {}),
+        ...priorityOf(r),
       },
     });
   }
@@ -3077,6 +3083,9 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
   );
   return [...projects, ...ordered, ...manual];
 }
+
+/** The card's priority, where the owner gave it one. */
+const priorityOf = (r: CardRow): { priority?: Priority } => (r.priority ? { priority: r.priority as Priority } : {});
 
 /** How long a workstream stays away from a doc in a plan folder outside the repository before its card leaves the project: such a doc is written in place, an item moved in two edits. */
 export const LEAVE_AFTER_MS = 5 * 60_000;

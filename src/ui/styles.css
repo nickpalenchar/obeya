@@ -2393,3 +2393,32 @@ button.link:hover { text-decoration: underline; }
 
 .notify-ask { pointer-events: auto; width: min(460px, calc(100vw - 32px)); padding: 14px 16px; border-radius: 4px; border: 1px solid var(--line); background: var(--card); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); font-size: 14.5px; display: flex; flex-direction: column; gap: 8px; }
 .notify-ask-actions { display: flex; gap: 8px; align-items: center; }
+
+/* a card's priority: a flag and its name, in a colour that rises from pencil grey to red */
+.prio { --p: var(--muted); display: inline-flex; align-items: center; gap: 3px; flex: none; color: var(--p); font-weight: 600;
+  text-transform: none; letter-spacing: .01em; }
+.prio svg { display: block; flex: none; }
+.prio-trivial { --p: var(--planned); font-weight: 500; }
+.prio-low { --p: var(--question); }
+.prio-medium { --p: var(--inPr); }
+.prio-high { --p: var(--waiting); }
+.prio-veryHigh { --p: var(--error); }
+.prio-critical { --p: var(--error); }
+.prio-critical { color: var(--on-ink); background: var(--error); border-radius: 3px; padding: 0 5px 0 4px; }
+.prio-none { font-weight: 500; }
+.p-kind { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: 22px; }
+.prio-pick { position: relative; display: inline-flex; font-size: 12px; }
+.prio-btn { border: 1px solid transparent; background: none; padding: 1px 6px; border-radius: 3px; cursor: pointer; font: inherit; line-height: 18px; }
+.prio-btn:not(.set) { border-color: var(--line); }
+.prio-btn:hover { border-color: var(--line); background: var(--chip); }
+.prio-btn.set:has(.prio-critical) { padding: 1px; }
+.prio-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; min-width: 140px; padding: 4px; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 4px; box-shadow: var(--lift); }
+.prio-menu button { display: flex; align-items: center; border: 0; background: none; padding: 5px 8px; border-radius: 3px; cursor: pointer;
+  font: inherit; font-size: 13px; text-align: left; color: var(--ink); text-transform: none; letter-spacing: 0; }
+.prio-menu button:hover { background: var(--chip); }
+.prio-menu button.on { box-shadow: inset 2px 0 0 var(--ink); background: var(--chip); }
+.prio-menu button.none { color: var(--muted); border-top: 1px solid var(--line); border-radius: 0 0 3px 3px; margin-top: 2px; }
+.project > .head .prio { font-size: 11px; }
+/* the frame already says it is a project: its word gives way to the priority, so the title keeps its room */
+.project > .head:has(.prio) .kind { display: none; }

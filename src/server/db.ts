@@ -127,6 +127,8 @@ export interface CardRow {
   new_repo: string | null;
   /** What the card's worker last heard of its demo's page (`PageHeard` in workers.ts), so it hears of a change with its next step. */
   page_heard: string | null;
+  /** The priority the owner gave the card (`Priority`), null while none. */
+  priority: string | null;
   /** The card's code in addresses (`/c/<canvas>/card/<code>`): the start of its id's hex digits, unique among all cards (`SHORT`). */
   short: string;
 }
@@ -531,6 +533,8 @@ export const MIGRATIONS = [
        CASE WHEN x.own THEN json_extract(c.s, CASE c.h WHEN 'codex' THEN '$.codex.model' ELSE '$.model' END) END, x.at
        FROM (SELECT i.*, n.k = 1 AND i.h = c.h AND c.session_id IS NOT NULL AS own FROM i JOIN n USING (card_id) JOIN c ON c.id = i.card_id) x
        JOIN c ON c.id = x.card_id;`,
+  // the priority the owner gave a card (`Priority`), a label only
+  'ALTER TABLE cards ADD COLUMN priority TEXT;',
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, agent, token, made';

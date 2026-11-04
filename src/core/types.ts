@@ -507,7 +507,13 @@ export interface Item {
   collapsed?: true;
   /** The group the card belongs to (a `Group` id); a workstream's is its project's. */
   group?: string;
+  /** The priority the owner gave the card, a label only: it changes no order. None until set. */
+  priority?: Priority;
 }
+
+/** A card's priorities, from the lowest to the highest. */
+export const PRIORITIES = ['trivial', 'low', 'medium', 'high', 'veryHigh', 'critical'] as const;
+export type Priority = (typeof PRIORITIES)[number];
 
 /** A year: no card is snoozed longer, nor set to start later than that. */
 export const SNOOZE_LIMIT = 366 * 24 * 60 * 60_000;
@@ -1532,6 +1538,8 @@ export interface CardPatch {
   images?: string[];
   /** Before work begins: a repository to create for the card (`by` is the owner's), or none (null). */
   newRepo?: Pick<NewRepo, 'path' | 'canvas'> | null;
+  /** The card's priority, or none (null). */
+  priority?: Priority | null;
 }
 
 /** Owner actions on a card's work, posted to `/api/c/:canvas/cards/:id/act`. */
