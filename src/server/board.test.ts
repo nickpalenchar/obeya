@@ -105,6 +105,69 @@ describe('plan docs', () => {
     expect(at(c.id).priority).toBeUndefined();
   });
 
+  test('the owner sets category, sub-category and complexity on any card, each on its own, and takes them off again', () => {
+    const [p, , w2] = board.snapshot().items;
+    const c = board.create({ title: 'Own', x: 0, y: 0 });
+    const at = (id: string) => board.snapshot().items.find((i) => i.id === id)!;
+    // a card from before the labels has none
+    expect(at(c.id)).not.toHaveProperty('category');
+    expect(at(c.id)).not.toHaveProperty('suggested');
+    board.patch(c.id, { category: 'backend', complexity: 3 });
+    board.patch(p!.id, { subcategory: 'bugFix' });
+    board.patch(w2!.id, { category: 'dataMigration', subcategory: 'refactor', complexity: 8 });
+    expect(at(c.id)).toMatchObject({ category: 'backend', complexity: 3 });
+    expect(at(c.id).subcategory).toBeUndefined();
+    expect(at(p!.id)).toMatchObject({ subcategory: 'bugFix' });
+    expect(at(p!.id).category).toBeUndefined();
+    expect(at(w2!.id)).toMatchObject({ category: 'dataMigration', subcategory: 'refactor', complexity: 8 });
+    expect(() => board.patch(c.id, { category: 'design' as never })).toThrow(BadRequest);
+    expect(() => board.patch(c.id, { subcategory: 'chore' as never })).toThrow(BadRequest);
+    expect(() => board.patch(c.id, { complexity: 4 as never })).toThrow(BadRequest);
+    expect(() => board.patch(c.id, { complexity: '3' as never })).toThrow(BadRequest);
+    board.patch(c.id, { category: null, complexity: null });
+    expect(at(c.id).category).toBeUndefined();
+    expect(at(c.id).complexity).toBeUndefined();
+  });
+
+  test("Obeya's suggestion fills only empty labels the owner never set, marked until the owner touches them", () => {
+    const c = board.create({ title: 'Own', x: 0, y: 0 });
+    const at = (id: string) => board.snapshot().items.find((i) => i.id === id)!;
+    board.patch(c.id, { priority: 'high' });
+    expect(board.suggestLabels(c.id, { category: 'frontend', subcategory: 'newFeature', complexity: 5, priority: 'low' })).toEqual(['category', 'subcategory', 'complexity']);
+    // the owner's priority stands
+    expect(at(c.id)).toMatchObject({ category: 'frontend', subcategory: 'newFeature', complexity: 5, priority: 'high', suggested: ['category', 'subcategory', 'complexity'] });
+    // a second suggestion overwrites none of the first
+    expect(board.suggestLabels(c.id, { category: 'backend', complexity: 2 })).toEqual([]);
+    expect(at(c.id)).toMatchObject({ category: 'frontend', complexity: 5 });
+    // the owner picks the same value: the mark goes, the value stays
+    board.patch(c.id, { category: 'frontend' });
+    expect(at(c.id)).toMatchObject({ category: 'frontend', suggested: ['subcategory', 'complexity'] });
+    // another value
+    board.patch(c.id, { complexity: 1 });
+    expect(at(c.id)).toMatchObject({ complexity: 1, suggested: ['subcategory'] });
+    // none: the label is empty, and Obeya does not suggest it again
+    board.patch(c.id, { subcategory: null });
+    expect(at(c.id).subcategory).toBeUndefined();
+    expect(at(c.id)).not.toHaveProperty('suggested');
+    expect(board.suggestLabels(c.id, { subcategory: 'bugFix' })).toEqual([]);
+    expect(at(c.id).subcategory).toBeUndefined();
+    // the owner's priority taken off is not suggested again either
+    board.patch(c.id, { priority: null });
+    expect(board.suggestLabels(c.id, { priority: 'medium' })).toEqual([]);
+    expect(at(c.id).priority).toBeUndefined();
+  });
+
+  test("a suggestion fills a plan doc's cards too, skips values that are not on the lists, and leaves the plan doc alone", () => {
+    const [p, , w2] = board.snapshot().items;
+    const at = (id: string) => board.snapshot().items.find((i) => i.id === id)!;
+    expect(board.suggestLabels(w2!.id, { category: 'docs', complexity: 7 as never, priority: 'medium' })).toEqual(['category', 'priority']);
+    expect(at(w2!.id)).toMatchObject({ category: 'docs', priority: 'medium', suggested: ['category', 'priority'] });
+    expect(at(w2!.id).complexity).toBeUndefined();
+    expect(board.suggestLabels(p!.id, { subcategory: 'configuration' })).toEqual(['subcategory']);
+    expect(at(p!.id)).toMatchObject({ subcategory: 'configuration', suggested: ['subcategory'] });
+    expect(docs[0]!.markdown).toBe('# A\n\n## Goal\n\nGoal A\n');
+  });
+
   test('a removed doc takes its project into the archive; its return brings it back to its place', () => {
     const p = board.snapshot().items[0]!;
     board.patch(p.id, { x: -500, y: 42 });

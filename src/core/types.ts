@@ -3,6 +3,7 @@
 import type { DemoSettings, NarrationLanguage, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
 import type { SetupId, SetupItem } from '../../plugin/skills/demo/lib/setup.ts';
 import type { CardFile } from './files';
+import type { Category, Complexity, Label, Priority, Subcategory } from './labels';
 import type { Language } from './locale';
 import { MESSAGES } from './messages';
 import type { OutdatedBy } from './page-changes';
@@ -11,6 +12,7 @@ import type { Wish } from './wish';
 
 export type { DemoSettings, NarrationLanguage, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
 export type { Language } from './locale';
+export { PRIORITIES, type Priority } from './labels';
 export type { SetupCheck, SetupId, SetupItem } from '../../plugin/skills/demo/lib/setup.ts';
 
 /**
@@ -507,13 +509,17 @@ export interface Item {
   collapsed?: true;
   /** The group the card belongs to (a `Group` id); a workstream's is its project's. */
   group?: string;
-  /** The priority the owner gave the card, a label only: it changes no order. None until set. */
+  /** The card's priority, a label only: it changes no order. None until set. */
   priority?: Priority;
+  /** The card's category (`labels.ts`), none until set. */
+  category?: Category;
+  /** The card's sub-category, with or without a category; none until set. */
+  subcategory?: Subcategory;
+  /** The card's complexity, none until set. */
+  complexity?: Complexity;
+  /** The labels Obeya set as its suggestion, which the owner has not touched since. */
+  suggested?: Label[];
 }
-
-/** A card's priorities, from the lowest to the highest. */
-export const PRIORITIES = ['trivial', 'low', 'medium', 'high', 'veryHigh', 'critical'] as const;
-export type Priority = (typeof PRIORITIES)[number];
 
 /** A year: no card is snoozed longer, nor set to start later than that. */
 export const SNOOZE_LIMIT = 366 * 24 * 60 * 60_000;
@@ -1538,8 +1544,14 @@ export interface CardPatch {
   images?: string[];
   /** Before work begins: a repository to create for the card (`by` is the owner's), or none (null). */
   newRepo?: Pick<NewRepo, 'path' | 'canvas'> | null;
-  /** The card's priority, or none (null). */
+  /** The card's priority, or none (null); the owner's, as is each label set here: its suggested mark goes. */
   priority?: Priority | null;
+  /** The card's category, or none (null). */
+  category?: Category | null;
+  /** The card's sub-category, or none (null). */
+  subcategory?: Subcategory | null;
+  /** The card's complexity, or none (null). */
+  complexity?: Complexity | null;
 }
 
 /** Owner actions on a card's work, posted to `/api/c/:canvas/cards/:id/act`. */

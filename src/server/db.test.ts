@@ -102,6 +102,7 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     s.db.run('DROP TABLE agent_runs');
     s.db.run('DROP TABLE feedback');
     s.db.run('ALTER TABLE cards DROP COLUMN priority');
+    for (const c of ['category', 'subcategory', 'complexity', 'suggested_labels', 'owner_labels']) s.db.run(`ALTER TABLE cards DROP COLUMN ${c}`);
     s.db.run(`PRAGMA user_version = ${RELEASED}`);
     s.db.close();
 
@@ -153,6 +154,7 @@ test('the migration gives the cards there are codes of their own, longer where t
     s.db.run('DROP TABLE agent_runs');
     s.db.run('DROP TABLE feedback');
     s.db.run('ALTER TABLE cards DROP COLUMN priority');
+    for (const c of ['category', 'subcategory', 'complexity', 'suggested_labels', 'owner_labels']) s.db.run(`ALTER TABLE cards DROP COLUMN ${c}`);
     s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.findIndex((m) => m.includes('ADD COLUMN short'))}`);
     s.db.close();
     const after = new Store(path);
@@ -178,6 +180,7 @@ test('the sessions of cards from before runs were recorded: the last as pinned, 
     s.db.run('DROP TABLE agent_runs');
     s.db.run('DROP TABLE feedback');
     s.db.run('ALTER TABLE cards DROP COLUMN priority');
+    for (const c of ['category', 'subcategory', 'complexity', 'suggested_labels', 'owner_labels']) s.db.run(`ALTER TABLE cards DROP COLUMN ${c}`);
     s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.findIndex((m) => m.includes('CREATE TABLE agent_runs'))}`);
     s.db.close();
 

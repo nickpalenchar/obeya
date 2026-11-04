@@ -6,6 +6,7 @@
 // into the archive with it, and comes back to its place when the doc returns. A workstream that
 // leaves its doc stays stored but is not shown.
 
+import { isLabelValue, type Label, LABELS, LABEL_VALUES, type Labels } from '../core/labels';
 import { createHash } from 'node:crypto';
 import type { AgentAt, AgentIdentity, Feedback, WorkConfig } from '../core/types';
 import { existsSync } from 'node:fs';
@@ -30,8 +31,6 @@ import {
   type Demo,
   type DemoKind,
   type PageTags,
-  PRIORITIES,
-  type Priority,
   type EarlierDemo,
   type ErrorCode,
   type Group,
@@ -2338,7 +2337,7 @@ export class Board {
 
   patch(id: string, p: CardPatch) {
     const row = this.own(id);
-    const allowed = [...(row.plan_ref ? (row.kind === 'project' ? ['x', 'y', 'collapsed'] : ['x', 'y', 'state', 'need']) : ['x', 'y', 'title', 'body', 'state', 'need', 'repo', 'images', 'newRepo']), 'priority'];
+    const allowed = [...(row.plan_ref ? (row.kind === 'project' ? ['x', 'y', 'collapsed'] : ['x', 'y', 'state', 'need']) : ['x', 'y', 'title', 'body', 'state', 'need', 'repo', 'images', 'newRepo']), ...LABELS];
     const bad = Object.keys(p).filter((k) => !allowed.includes(k));
     if (bad.length) throw new BadRequest('invalid', `cannot change ${bad.join(', ')} on this card`);
     if (p.x !== undefined) checkNumber(p.x, 'x');
@@ -2349,7 +2348,7 @@ export class Board {
     if (p.images !== undefined) this.checkImages(p.images);
     if (p.state !== undefined && !STATES.includes(p.state)) throw new BadRequest('invalid', `state must be one of ${STATES.join(', ')}`);
     if (p.need !== undefined && p.need !== null && p.need !== 'demo' && p.need !== 'question') throw new BadRequest('invalid', 'need must be demo, question or null');
-    if (p.priority !== undefined && p.priority !== null && !PRIORITIES.includes(p.priority)) throw new BadRequest('invalid', `priority must be one of ${PRIORITIES.join(', ')} or null`);
+    for (const l of LABELS) if (p[l] !== undefined && p[l] !== null && !isLabelValue(l, p[l])) throw new BadRequest('invalid', `${l} must be one of ${LABEL_VALUES[l].join(', ')} or null`);
     const { repo, images, collapsed, newRepo, ...fields } = p;
     if (newRepo !== undefined) this.checkNewRepo(row, newRepo);
     // a planned card of the owner's may become an idea again, to be discussed first
@@ -2370,8 +2369,34 @@ export class Board {
         : {}),
       ...(images !== undefined ? { images: images.length ? JSON.stringify(images) : null } : {}),
       ...(collapsed !== undefined ? { collapsed: collapsed ? 1 : 0 } : {}),
+      ...this.ownerLabels(row, LABELS.filter((l) => p[l] !== undefined)),
     });
     this.changed();
+  }
+
+  /** The owner set these labels, to a value or to none: their suggested mark goes, and Obeya suggests none of them again. */
+  private ownerLabels(row: CardRow, set: Label[]) {
+    if (!set.length) return {};
+    const suggested = labelList(row.suggested_labels).filter((l) => !set.includes(l));
+    const owner = [...new Set([...labelList(row.owner_labels), ...set])];
+    return { suggested_labels: suggested.length ? JSON.stringify(suggested) : null, owner_labels: JSON.stringify(owner) };
+  }
+
+  /**
+   * Obeya's suggestion of a card's labels: it fills only those that are empty and the owner has
+   * never set (not even to none), and marks them as suggested. The labels it filled.
+   */
+  suggestLabels(id: string, labels: Labels): Label[] {
+    const row = this.own(id);
+    const owner = labelList(row.owner_labels);
+    const filled = LABELS.filter((l) => labels[l] !== undefined && isLabelValue(l, labels[l]) && row[l] === null && !owner.includes(l));
+    if (!filled.length) return [];
+    this.store.update(id, {
+      ...Object.fromEntries(filled.map((l) => [l, labels[l]])),
+      suggested_labels: JSON.stringify([...new Set([...labelList(row.suggested_labels), ...filled])]),
+    });
+    this.changed();
+    return filled;
   }
 
   private checkNewRepo(row: CardRow, n: unknown) {
@@ -3008,7 +3033,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         ...(r.retro ? { retro: r.retro } : {}),
         ...(r.proposal ? (r.state === 'proposal' ? { proposal: storedProposal(r)! } : { proposed: true as const, ...supersededOf(r) }) : {}),
         ...(r.group_id ? { group: r.group_id } : {}),
-        ...priorityOf(r),
+        ...labelsOf(r),
         ...newRepoOf(r),
       });
       continue;
@@ -3033,7 +3058,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         ...(r.collapsed ? { collapsed: true } : {}),
         ...(r.from_id ? { origin: r.from_id } : {}),
         ...(r.group_id ? { group: r.group_id } : {}),
-        ...priorityOf(r),
+        ...labelsOf(r),
       });
       continue;
     }
@@ -3069,7 +3094,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         ...(r.built_on ? { builtOn: r.built_on } : {}),
         ...(buildsOn.length ? { buildsOn } : {}),
         ...(groupOf.get(r.parent_id) ? { group: groupOf.get(r.parent_id)! } : {}),
-        ...priorityOf(r),
+        ...labelsOf(r),
       },
     });
   }
@@ -3084,8 +3109,15 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
   return [...projects, ...ordered, ...manual];
 }
 
-/** The card's priority, where the owner gave it one. */
-const priorityOf = (r: CardRow): { priority?: Priority } => (r.priority ? { priority: r.priority as Priority } : {});
+/** The card's labels that are set, and which of them are Obeya's suggestion. */
+const labelsOf = (r: CardRow): Labels & { suggested?: Label[] } => {
+  const set = Object.fromEntries(LABELS.filter((l) => r[l] !== null && isLabelValue(l, r[l])).map((l) => [l, r[l]])) as Labels;
+  const suggested = labelList(r.suggested_labels).filter((l) => set[l] !== undefined);
+  return { ...set, ...(suggested.length ? { suggested } : {}) };
+};
+
+/** A stored list of labels (`suggested_labels`, `owner_labels`). */
+const labelList = (json: string | null): Label[] => (json ? (JSON.parse(json) as Label[]) : []);
 
 /** How long a workstream stays away from a doc in a plan folder outside the repository before its card leaves the project: such a doc is written in place, an item moved in two edits. */
 export const LEAVE_AFTER_MS = 5 * 60_000;

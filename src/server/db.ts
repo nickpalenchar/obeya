@@ -129,6 +129,16 @@ export interface CardRow {
   page_heard: string | null;
   /** The priority the owner gave the card (`Priority`), null while none. */
   priority: string | null;
+  /** The card's category (`Category`), null while none. */
+  category: string | null;
+  /** The card's sub-category (`Subcategory`), null while none. */
+  subcategory: string | null;
+  /** The card's complexity (`Complexity`), null while none. */
+  complexity: number | null;
+  /** JSON: the labels Obeya set as its suggestion and the owner has not touched since (`Label[]`); null while none. */
+  suggested_labels: string | null;
+  /** JSON: the labels the owner has set, to a value or to none (`Label[]`): Obeya suggests none of them again. Null while none. */
+  owner_labels: string | null;
   /** The card's code in addresses (`/c/<canvas>/card/<code>`): the start of its id's hex digits, unique among all cards (`SHORT`). */
   short: string;
 }
@@ -535,6 +545,12 @@ export const MIGRATIONS = [
        JOIN c ON c.id = x.card_id;`,
   // the priority the owner gave a card (`Priority`), a label only
   'ALTER TABLE cards ADD COLUMN priority TEXT;',
+  // the card's other labels beside its priority, which of them are Obeya's suggestion, and which the owner has set
+  `ALTER TABLE cards ADD COLUMN category TEXT;
+   ALTER TABLE cards ADD COLUMN subcategory TEXT;
+   ALTER TABLE cards ADD COLUMN complexity INTEGER;
+   ALTER TABLE cards ADD COLUMN suggested_labels TEXT;
+   ALTER TABLE cards ADD COLUMN owner_labels TEXT;`,
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, agent, token, made';

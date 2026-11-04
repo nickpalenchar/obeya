@@ -1,0 +1,64 @@
+// A card's built-in labels, the owner's (design: The canvas): the fixed lists and the complexity
+// scale, one place for the server, the UI and the skill that suggests them.
+
+/** A card's priorities, from the lowest to the highest. */
+export const PRIORITIES = ['trivial', 'low', 'medium', 'high', 'veryHigh', 'critical'] as const;
+export type Priority = (typeof PRIORITIES)[number];
+
+/** What part of the software a card is about. */
+export const CATEGORIES = ['frontend', 'backend', 'dataMigration', 'docs', 'tooling'] as const;
+export type Category = (typeof CATEGORIES)[number];
+
+/** What kind of change a card is, with or without a category. */
+export const SUBCATEGORIES = ['refactor', 'newFeature', 'bugFix', 'configuration'] as const;
+export type Subcategory = (typeof SUBCATEGORIES)[number];
+
+/** How big a card's work is, on Fibonacci steps. */
+export const COMPLEXITIES = [1, 2, 3, 5, 8] as const;
+export type Complexity = (typeof COMPLEXITIES)[number];
+
+/** The names of the categories and sub-categories, as the suggestion's model reads them. */
+export const LABEL_NAMES: Record<Category | Subcategory, string> = {
+  frontend: 'Frontend',
+  backend: 'Backend',
+  dataMigration: 'Data Migration',
+  docs: 'Docs',
+  tooling: 'Tooling',
+  refactor: 'Refactor',
+  newFeature: 'New feature',
+  bugFix: 'Bug fix',
+  configuration: 'Configuration',
+};
+
+/** Each complexity step in a line: the picker's tooltip and the suggestion read the same scale. */
+export const COMPLEXITY_DESCRIPTIONS: Record<Complexity, string> = {
+  1: 'A one-line or wording fix.',
+  2: 'A small change in one place.',
+  3: 'A change across a few files, with tests.',
+  5: 'A feature that touches both server and UI.',
+  8: 'A change that spans several areas or wants a plan doc.',
+};
+
+/** The complexity scale as a list, for a prompt. */
+export const complexityScale = () => COMPLEXITIES.map((c) => `- ${c}: ${COMPLEXITY_DESCRIPTIONS[c]}`).join('\n');
+
+/** A card's labels, each empty until the owner or Obeya's suggestion sets it. */
+export interface Labels {
+  category?: Category;
+  subcategory?: Subcategory;
+  complexity?: Complexity;
+  priority?: Priority;
+}
+export type Label = keyof Labels;
+export const LABELS: readonly Label[] = ['category', 'subcategory', 'complexity', 'priority'];
+
+/** The values each label may take. */
+export const LABEL_VALUES: { [L in Label]: readonly NonNullable<Labels[L]>[] } = {
+  category: CATEGORIES,
+  subcategory: SUBCATEGORIES,
+  complexity: COMPLEXITIES,
+  priority: PRIORITIES,
+};
+
+/** Whether a value is one a label may take. */
+export const isLabelValue = <L extends Label>(label: L, v: unknown): v is NonNullable<Labels[L]> => (LABEL_VALUES[label] as readonly unknown[]).includes(v);
