@@ -19,8 +19,8 @@ machine is logged in with, the session's (five hours) and the week's, each a sho
 percentage, the most used limit of each group, coloured in the grade the plan's usage endpoint gives
 it (warning, critical). A click lists every limit (the session, the week for all models,
 the week for a single model) with when it starts anew, where the numbers come from and as of when,
-and „Ausblenden“, which turns the setting off; „Nutzungslimits in der Menüzeile“ under Einstellungen →
-Benachrichtigungen und Limits (see The logo's menu) turns it on again (on until then). The phone view shows the same at the right of its bar.
+and „Ausblenden“, which turns the setting off; „Nutzungslimits in der Menüzeile“ under Konfiguration →
+Benachrichtigungen und Limits turns it on again (on until then). The phone view shows the same at the right of its bar.
 The numbers come from the data behind Claude Code's `/usage`: one idle Claude Code session, which
 sends no prompt and so uses none of the limits, is asked a little over every minute (it keeps an
 answer for a minute) while the setting is on and a page of Obeya is open, and closed once neither
@@ -49,18 +49,14 @@ favicon and the app icon's source (`scripts/logo.tsx`).
 
 A click on the logo lists what belongs to Obeya as a whole rather than to one canvas, in three groups:
 views („Agentenleistung“, which opens the performance dashboard over the page; „Feedback-Log“, the
-log's page; „Von anderen Geräten“), preferences („Sprache und Darstellung“, „Benachrichtigungen und
-Limits“), and help („Bedienung: Maus und Tasten“, the legend `?` shows; „Wunsch oder Fehler melden“;
-„Über Obeya“). A click beside it or Esc closes it, as with the bar's other lists. The chevron is
+log's page), „Einstellungen“, and help („Bedienung: Maus und Tasten“, the legend `?` shows; „Wunsch
+oder Fehler melden“). A click beside it or Esc closes it, as with the bar's other lists. The chevron is
 there because the logo alone does not look clickable. The phone view has no such menu: it shows none
 of these.
 
-Each settings entry opens „Einstellungen“, a dialog in the style of the Konfiguration (see The
-Konfiguration dialog in Repositories and configuration), at its section: Sprache und Darstellung
-(languages, light or dark), Benachrichtigungen und Limits (notifications on this computer, the usage
-limits in the bar, feedback after approval with „Bewertungen vergleichen“), Von anderen Geräten (see
-Other devices in Running Obeya) and Über Obeya (version and the server's own settings). Each setting
-saves on its own; the dialog comes back after the reload a new language causes, at the section it
+„Einstellungen“ is a dialog in the style of the Konfiguration (see The Konfiguration dialog in
+Repositories and configuration) with two sections: Sprache und Darstellung (languages, light or
+dark) and Über Obeya (version and the server's own settings). Each setting saves on its own; the dialog comes back after the reload a new language causes, at the section it
 showed, and a link in it opens the Konfiguration.
 
 ### The navigation
@@ -465,8 +461,9 @@ code, a generic one otherwise.
   queue's order in The Koordinator). Rejected: priorities that also order the queue (the owner chose a
   label only).
 - **The logo opens a plain dropdown for Obeya as a whole** (2026-11-04, the owner): views about no
-  one canvas and app-wide preferences sit behind the logo, and the Konfiguration keeps what sets up
-  the work (canvases, agents, voice, demos). Rejected for now: a pinnable slide-out, since none of
+  one canvas and a single „Einstellungen“ entry sit behind the logo; the menu names the dialog, not
+  each of its sections. The Konfiguration keeps what sets up the work, notifications, usage limits
+  and other devices included; only language, theme and the server moved out. Rejected for now: a pinnable slide-out, since none of
   its entries is a view kept open beside the canvas yet; a pin can follow if one becomes that.
 - **The bar measures what fits** (2026-10-12). Rejected: container queries on the bar's width, which
   let a long branch or a large pool push buttons under the sheet.

@@ -359,10 +359,10 @@ button, and shows only while the pointer or the focus is on its entry (a canvas:
 always where nothing hovers (touch). An unsaved draft survives per tab, also a reload or
 restart. Its sections, listed on the left and shown one at a time (the last one chosen per tab):
 Leinwände, a heading with each canvas indented under it as a section of its own and „+ Leinwand“
-last (see Leinwände), Modelle und Effort, Spracheingabe and Demos: what sets up the work. The app-wide
-preferences (languages, light or dark, notifications, the usage limits in the bar, feedback after
-approval, other devices, the server) are in „Einstellungen“ behind the logo (see The logo's menu in
-The canvas). Below the sections „Einrichtung prüfen“ and „Wunsch oder Fehler
+last (see Leinwände), Modelle und Effort, Spracheingabe, Demos, Benachrichtigungen und Limits
+(notifications on this computer, the usage limits in the bar, feedback after approval) and Von
+anderen Geräten (see Other devices). Languages, light or dark and the server are in „Einstellungen“
+behind the logo (see The logo's menu in The canvas). Below the sections „Einrichtung prüfen“ and „Wunsch oder Fehler
 melden“ (see Wishes for Obeya's makers). Each canvas in the list marks its unsaved changes and
 counts its problems in red; the heading counts the problems of no one canvas (none at all, say). Each section names the file it is saved in; settings are rows of label and control, no boxes in
 boxes. What to know about a field sits behind an info icon at its label, shown only while the pointer
@@ -451,8 +451,8 @@ a git repository). The dialog says so under its title, with „Obeya fragen“, 
 and opens Obeya's conversation (Space for voice does not reach Obeya while the dialog is open).
 The other sections save on their own, restarting nothing: the demo settings into `demo.json` (see
 The demo settings and voices), the personal demo site below them into `personal-site.json` (see The
-personal site in Sharing demos) and models into `settings.json` in Obeya's home, as the
-preferences of the logo's „Einstellungen“ do: languages, theme, whether the bar shows the usage limits
+personal site in Sharing demos), and into `settings.json` in Obeya's home models, notifications, and
+(as the logo's „Einstellungen“ do with languages and theme) whether the bar shows the usage limits
 (`usageMeter: false` when not) and whether approving asks for feedback (`feedbackPrompt: false` when
 not) into `settings.json` in Obeya's home.
 

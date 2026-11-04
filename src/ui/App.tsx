@@ -19,8 +19,8 @@ import { replyOn, setReply } from './reply';
 import { ArchivePill } from './archive';
 import { useBarFit } from './barFit';
 import { UsagePill } from './usage';
-import { ConfigDialog, Problem, showCanvasesSection, showDemosSection, showRepoClones } from './config';
-import { AppMenu, PrefsDialog, showPrefsSection } from './prefs';
+import { ConfigDialog, Problem, showCanvasesSection, showDemosSection, showDevicesSection, showRepoClones } from './config';
+import { AppMenu, PrefsDialog } from './prefs';
 import { PhoneDialog } from './access';
 import { OpenPerformance, PerformanceDialog } from './performance';
 import { FeedbackLog } from './feedbackLog';
@@ -378,12 +378,11 @@ function Canvas({
   const [helpOn, setHelpOn] = useState(false);
   // the app-wide preferences, a dialog over the page as the configuration is, opened from the logo's menu
   const [prefsOn, setPrefsOn] = useState(false);
-  const openPrefs = (s: Parameters<typeof showPrefsSection>[0]) => {
-    showPrefsSection(s);
+  const openPrefs = () => {
     setCOn(false);
     setPrefsOn(true);
   };
-  // „Telefon verbinden“, from the section „Von anderen Geräten“ of the preferences
+  // „Telefon verbinden“, from the section „Von anderen Geräten“ of the configuration
   const [phoneOn, setPhoneOn] = useState(false);
   // the performance dashboard, over the page as the configuration is; opened from the logo's menu,
   // the feedback setting or a rated card, and open at once coming back from the feedback log (`?performance`), with its filters
@@ -2047,6 +2046,7 @@ function Canvas({
           onTalk={talkFromConfig}
           onProblems={setConfigProblems}
           revs={configRevs}
+          onConnect={() => (setCOn(false), setPhoneOn(true))}
           onAsk={(text, canvas) => void told.tell(t.voice.reading(t.voice.koordinator), undefined, () => (canvas ? api.commandOn(canvas, text) : api.command(text, null, { place: placeNow() })))}
         />
         <PrefsDialog
@@ -2056,7 +2056,6 @@ function Canvas({
             setPrefsOn(false);
             setCOn(true);
           }}
-          onConnect={() => (setPrefsOn(false), setPhoneOn(true))}
         />
         {setupOn && <Setup onClose={() => setSetupOn(false)} />}
         {phoneOn && (
@@ -2064,7 +2063,8 @@ function Canvas({
             onClose={() => setPhoneOn(false)}
             onSection={() => {
               setPhoneOn(false);
-              openPrefs('devices');
+              showDevicesSection();
+              setCOn(true);
             }}
           />
         )}

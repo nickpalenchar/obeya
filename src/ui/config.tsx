@@ -1,8 +1,8 @@
 // Obeya's configuration, in a dialog over the page with its sections listed on the left: the
 // canvases it serves and their repositories, edited and saved together (Obeya then starts again
-// with them), and the settings saved on their own (models, voice, demos). The app-wide preferences
-// (language, theme, notifications, the server) are blocks of this file shown in the logo's
-// preferences dialog (prefs.tsx).
+// with them), and the settings saved on their own (models, voice, demos, notifications, other
+// devices). Language, theme and the server are blocks of this file shown in the logo's preferences
+// dialog (prefs.tsx).
 
 import { type CSSProperties, Fragment, type ReactNode, useContext, useEffect, useId, useRef, useState } from 'react';
 import { OpenPerformance } from './performance';
@@ -10,6 +10,7 @@ import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentM
 import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { LANGUAGES } from '../core/locale';
+import { AccessSection } from './access';
 import { api, reload, type SiteHow } from './api';
 import { keepConfigDraft, keptConfigDraft } from './configDraft';
 import { keep } from './keep';
@@ -41,8 +42,8 @@ type Checked = Pick<ConfigChecked, 'resolved' | 'problems'>;
 type Ask = (text: string, canvas?: string) => void;
 
 /** The dialog's sections, in the order its list shows them. */
-type Section = 'canvases' | 'agents' | 'voice' | 'demos';
-const SECTIONS: Section[] = ['canvases', 'agents', 'voice', 'demos'];
+type Section = 'canvases' | 'agents' | 'voice' | 'demos' | 'notices' | 'devices';
+const SECTIONS: Section[] = ['canvases', 'agents', 'voice', 'demos', 'notices', 'devices'];
 // the section shown, per tab: a save that restarts Obeya reloads the page, and the dialog comes back at it
 const SECTION_KEY = 'obeya-config-section';
 
@@ -68,6 +69,9 @@ export const showDemosSection = () => {
 };
 /** The personal demo site is to be scrolled to once the dialog shows it. */
 const PERSONAL_SHOW_KEY = 'obeya-config-personal';
+
+/** Opens the dialog at „Von anderen Geräten“ next time, as from „Telefon verbinden“. */
+export const showDevicesSection = () => sessionStorage.setItem(SECTION_KEY, 'devices');
 
 /** The section this tab showed last, if any. */
 const keptSection = () => {
@@ -130,7 +134,7 @@ function checkedMoved(c: Checked, n: number, from: number, to: number): Checked 
   };
 }
 
-export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProblems, revs }: { on: boolean; /** The canvas the page shows: the one Leinwände shows first. */ page?: string; onClose: () => void; onSetup: () => void; onAsk: Ask; onTalk: () => void; onProblems: (n: number) => void; revs: string }) {
+export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProblems, onConnect, revs }: { on: boolean; /** The canvas the page shows: the one Leinwände shows first. */ page?: string; onClose: () => void; onSetup: () => void; onAsk: Ask; onTalk: () => void; onProblems: (n: number) => void; onConnect: () => void; revs: string }) {
   const [view, setView] = useState<ConfigView | null>(null);
   const [draft, setDraft] = useState<CanvasConfig[]>([]);
   const [checked, setChecked] = useState<Checked | null>(null);
@@ -451,6 +455,15 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
           <section className="cfg-sec" hidden={section !== 'demos'}>
             <DemoBlock on={on} />
             <PersonalSiteBlock on={on && section === 'demos'} />
+          </section>
+          <section className="cfg-sec" hidden={section !== 'notices'}>
+            <Head title={c.sections.notices} />
+            <NotificationsBlock on={on} />
+            <UsageBlock on={on} />
+            <FeedbackBlock on={on} />
+          </section>
+          <section className="cfg-sec" hidden={section !== 'devices'}>
+            <AccessSection on={on && section === 'devices'} onConnect={onConnect} />
           </section>
         </div>
       </div>
@@ -797,7 +810,7 @@ export function ThemeBlock({ on }: { on: boolean }) {
 }
 
 /** Whether the bar shows the plan's usage limits: saved on its own, and the bar follows at once. */
-export function UsageBlock({ on }: { on: boolean }) {
+function UsageBlock({ on }: { on: boolean }) {
   const [view, setView] = useState<UsageMeterView | null>(null);
   const [status, setStatus] = useState('');
   useEffect(() => {
@@ -828,7 +841,7 @@ export function UsageBlock({ on }: { on: boolean }) {
 }
 
 /** Whether this machine's pages notify on the desktop when a card needs the owner: saved on its own; turning on asks the system for its permission. */
-export function NotificationsBlock({ on }: { on: boolean }) {
+function NotificationsBlock({ on }: { on: boolean }) {
   const [view, setView] = useState<NotificationsView | null>(null);
   const [perm, setPerm] = useState<Permission>('granted');
   const [status, setStatus] = useState('');
@@ -866,7 +879,7 @@ export function NotificationsBlock({ on }: { on: boolean }) {
 }
 
 /** Whether approving work asks for feedback on it: saved on its own, and every open page follows at once. */
-export function FeedbackBlock({ on }: { on: boolean }) {
+function FeedbackBlock({ on }: { on: boolean }) {
   const [view, setView] = useState<FeedbackPromptView | null>(null);
   const openPerformance = useContext(OpenPerformance);
   const [status, setStatus] = useState('');

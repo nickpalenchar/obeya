@@ -1,7 +1,7 @@
 // The plan's usage limits in the bar: the session's and the week's, each as a short meter with how
 // much of it is used, in the grade the usage endpoint gives it. A click (a tap on the phone) lists
 // every limit with when it starts anew, where the numbers come from, and the button
-// that hides them again (the setting in the logo menu's preferences shows them again).
+// that hides them again (the setting in Konfiguration → Benachrichtigungen und Limits shows them again).
 
 import { useEffect, useRef, useState } from 'react';
 import type { Usage, UsageLimit } from '../core/types';
