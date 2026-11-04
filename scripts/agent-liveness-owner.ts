@@ -57,7 +57,7 @@ export function superviseAgent(
     });
     if (!batch.length) return;
     if (first) { first = false; resolveAgent(batch[0]!); }
-    try { tracker?.adopt(batch); } catch (error) { failure ??= error; }
+    tracker?.adopt(batch).catch((error: unknown) => { failure ??= error; });
   }
   reports.setEncoding('utf8').on('data', receive);
   const reportsClosed = new Promise<void>((resolve) => reports.once('close', resolve));
@@ -70,7 +70,8 @@ export function superviseAgent(
       const closed = await Promise.race([reportsClosed.then(() => true), Bun.sleep(1000).then(() => false)]);
       if (!closed) { failure ??= new Error('The supervisor\'s report pipe stayed open after its exit'); reports.destroy(); }
       if (first) rejectAgent(new Error('The supervisor reported no agent'));
-      try { tracker?.kill(); } catch (error) { failure ??= error; }
+      // Queued after every adoption, so it signals all that were reported.
+      await tracker?.kill().catch((error: unknown) => { failure ??= error; });
       (supervisor.stdio[3] as Writable).destroy();
       if (failure === undefined) resolve(); else reject(failure);
     });

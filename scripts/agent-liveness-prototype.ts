@@ -40,15 +40,15 @@ const child = spawn('/bin/sh', ['-c', 'IFS= read -r gate <&3 || exit 125; exec 3
   stdio: ['inherit', 'inherit', 'inherit', 'pipe'], detached: true, env,
 });
 const tracker = child.pid ? new AgentProcesses(child.pid) : undefined;
-let finished = false;
+let cleaning: Promise<void> | undefined;
 let failed = false;
 let timer: ReturnType<typeof setInterval> | undefined;
 const recorded = new Map<string, ProcessIdentity>();
 const reported = new Set<string>();
 
-function snapshot() {
-  tracker?.track();
+async function snapshot() {
   if (!tracker) return;
+  await tracker.track();
   if (reportFd !== undefined) for (const observed of tracker.observed()) {
     const key = `${observed.pid}:${observed.born}`;
     if (reported.has(key)) continue;
@@ -68,11 +68,13 @@ function snapshot() {
 }
 
 function cleanup() {
-  if (finished) return;
-  finished = true;
+  return cleaning ??= ending();
+}
+
+async function ending() {
   if (timer) clearInterval(timer);
-  try { snapshot(); } catch (e) { failed = true; console.error('liveness snapshot:', e); }
-  try { tracker?.kill(); } catch (e) { failed = true; console.error('liveness cleanup:', e); }
+  try { await snapshot(); } catch (e) { failed = true; console.error('liveness snapshot:', e); }
+  try { await tracker?.kill(); } catch (e) { failed = true; console.error('liveness cleanup:', e); }
   // The child leads its own group: a same-group process it started before the first snapshot is
   // reached only this way. Signalled once, here. While the leader or another member lives, the
   // number cannot have been given to another process; once the group has emptied, it can, and this
@@ -88,12 +90,13 @@ function cleanup() {
 
 const pipe = createReadStream('', { fd: 3, autoClose: true });
 pipe.on('data', () => {}); // The caller sends no data; EOF is the only meaningful event.
-pipe.on('end', cleanup);
-pipe.on('error', (e) => { failed = true; console.error('liveness pipe:', e); cleanup(); });
-child.on('error', (e) => { failed = true; console.error('agent spawn:', e); cleanup(); });
-child.on('exit', () => { cleanup(); pipe.destroy(); });
-child.on('close', (code) => {
-  cleanup(); pipe.destroy();
+pipe.on('end', () => void cleanup());
+pipe.on('error', (e) => { failed = true; console.error('liveness pipe:', e); void cleanup(); });
+child.on('error', (e) => { failed = true; console.error('agent spawn:', e); void cleanup(); });
+child.on('exit', () => { void cleanup(); pipe.destroy(); });
+child.on('close', async (code) => {
+  pipe.destroy();
+  await cleanup();
   try { registry?.close(); } catch (e) { failed = true; console.error('registry close:', e); }
   // Exit explicitly: on Linux a pending read of the liveness pipe keeps the process alive until the
   // caller closes it, which is not the caller's job once the agent has ended.
@@ -101,13 +104,17 @@ child.on('close', (code) => {
 });
 try {
   if (!tracker) throw new Error('Cannot establish agent process ownership');
-  snapshot();
+  await snapshot();
   if (registry && ![...recorded.values()].some((p) => p.pid === child.pid)) throw new Error('Cannot record agent identity');
   const gate = child.stdio[3];
   if (!gate || !('end' in gate)) throw new Error('Cannot open launch gate');
   gate.on('error', (e) => { failed = true; console.error('launch gate:', e); cleanup(); });
   gate.end('go\n');
+  // A snapshot still running when the next one is due is not joined by another.
+  let sampling = false;
   timer = setInterval(() => {
-    try { snapshot(); } catch (e) { failed = true; console.error('liveness snapshot:', e); cleanup(); }
+    if (sampling || cleaning) return;
+    sampling = true;
+    snapshot().catch((e: unknown) => { failed = true; console.error('liveness snapshot:', e); void cleanup(); }).finally(() => { sampling = false; });
   }, 100);
-} catch (e) { failed = true; console.error('liveness startup:', e); cleanup(); }
+} catch (e) { failed = true; console.error('liveness startup:', e); void cleanup(); }
