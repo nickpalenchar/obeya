@@ -294,7 +294,7 @@ export class Koordinator {
       tools: (finish) => [
         {
           name: 'dependencies',
-          description: 'Report every open workstream once: its tag and the tags of the workstreams it builds on (empty when it builds on none).',
+          description: 'Report every workstream once: its tag and the tags of the workstreams it builds on (empty when it builds on none).',
           schema: { workstreams: z.array(z.object({ card: z.string(), builds_on: z.array(z.string()) })) },
           run: (a) => {
             if (on) return 'Already reported.';
@@ -308,7 +308,7 @@ export class Koordinator {
               });
             }
             const missing = kids.filter((k) => !finished(k.state) && !(keys.get(k.id)! in found));
-            if (missing.length) return `Every open workstream once, please: missing ${missing.map((k) => tagOf(tags, k.id)).join(', ')}. Call dependencies again with all of them.`;
+            if (missing.length) return `Every open workstream at least, please: missing ${missing.map((k) => tagOf(tags, k.id)).join(', ')}. Call dependencies again with all of them.`;
             on = found;
             return finish('Recorded. End your turn now.');
           },
@@ -1303,11 +1303,11 @@ Keep it quick: this runs every time a card starts.
 `.trim();
 
 const DEPS_SYSTEM = `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. The owner wants the workstreams of a project arranged by what builds on what: what can start at once on the left, what builds on it to the right of it. Read the plan doc (and the repository only where the doc leaves it open; you cannot change files) and say for each open workstream which workstreams it builds on.
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. The owner wants the workstreams of a project arranged by what builds on what: what can start at once on the left, what builds on it to the right of it. Read the plan doc (and the repository only where the doc leaves it open; you cannot change files) and say for each workstream, delivered ones too, which workstreams it builds on.
 
 A workstream builds on another when it needs code, an API, data, a document or a decision that the other one introduces, or when the plan says it comes after it, needs it or waits for it. Name only direct dependencies: when C builds on B and B on A, C names B, not A. Two workstreams that merely touch the same files, or that the plan lists one after the other without saying one needs the other, do not build on each other. A workstream may build on a delivered one.
 
-Call dependencies exactly once, with every open workstream once.
+Call dependencies exactly once, with every workstream once.
 `.trim();
 
 /**

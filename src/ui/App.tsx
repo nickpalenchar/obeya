@@ -29,7 +29,7 @@ import { Setup } from './setup';
 import { Phone, phoneView } from './phone';
 import { KoordinatorSheet } from './koordinator';
 import { forcedText, QueuePill } from './queue';
-import { depsOf, handleAt, manualPrerequisites, nearestHandle, type Side, SIDES, waitsAmong } from './deps';
+import { depsOf, handleAt, manualPrerequisites, nearestHandle, settledAmong, type Side, SIDES, waitsAmong } from './deps';
 import { anchoredPath, nearestEdge } from './manualLinks';
 import type { ManualAnchor } from '../core/types';
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
@@ -1751,6 +1751,7 @@ function Canvas({
   const sheetKids = !sheetProject ? [] : sheetProject.archivedAt ? archived.filter((i) => i.parent === sheetProject.id) : (kidsOf.get(sheetProject.id) ?? []);
   const deps = useMemo(() => (hoverId && !panning && !dragId ? depsOf(hoverId, items) : undefined), [hoverId, panning, dragId, items]);
   const waits = useMemo(() => waitsAmong(items), [items]);
+  const settled = useMemo(() => settledAmong(items), [items]);
   const waitKeys = useMemo(() => new Set(waits.map(([from, to]) => `${from}:${to}`)), [waits]);
   // the waits shown as lines: those the owner is removing go at once
   const shownWaits = waits.filter(([from, to]) => !removing.some((x) => x.key === `${from}:${to}`));
@@ -1813,7 +1814,7 @@ function Canvas({
           <div id="world" style={{ transform: `translate(${cam.x}px,${cam.y}px) scale(${cam.s})` }}>
             <TerritoryLayer {...territories} selected={placed.filter((p) => (ring ? ring.ids : marked).includes(p.item.id)).map((p) => p.b)} />
             <Links placed={placed} waits={shownWaits} standsFor={standsForId} />
-            <DepLinks placed={placed} waits={shownWaits} lit={deps?.edges ?? []} standsFor={standsForId} routeOf={routeOf} s={cam.s}>
+            <DepLinks placed={placed} waits={shownWaits} lit={deps?.edges ?? []} settled={settled} hover={!panning && !dragId ? hoverId : null} standsFor={standsForId} routeOf={routeOf} s={cam.s}>
               {/* an arrow the owner drew: under the pointer, a trash button that removes it, where no card
                   covers it; the button and the band that shows it keep their size on screen at every zoom */}
               {placed.flatMap(({ item, b }) => (connectable(item) ? item.manualDependsOn ?? [] : []).filter((from) => waitKeys.has(`${from}:${item.id}`) && !removing.some((x) => x.key === `${from}:${item.id}`)).flatMap((from) => {

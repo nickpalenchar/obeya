@@ -24,7 +24,7 @@
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --planned: #a0978a; --working: #1d5fe0; --waiting: #f27405; --approved: #3d9a1f; --inPr: #08888e; --live: #b4ab98; --proposal: #7b4fd6; --idea: #dc2f5e; --question: #4f7896; --asking: #a88400;
   --waiting-rgb: 242,116,5; --on-ink: #fff; --error: #c42b1c; --warn: #a3520a;
-  --dep-line: #aaa190; --container: rgba(255,252,242,.45); --container-line: rgba(120,105,75,.22);
+  --dep-line: #aaa190; --unlock: #8ea6d4; --unlock-lit: #2f63d0; --done-dep: #a3c48f; --container: rgba(255,252,242,.45); --container-line: rgba(120,105,75,.22);
   --dim: rgba(40,32,18,.34); --panel: #fdfbf5; --chip: #f0ebdf;
   --s: 1;
   /* native controls, and the pages in a frame (prefers-color-scheme), take the look chosen */
@@ -37,7 +37,7 @@
   --lift: inset 0 1px 0 rgba(255,250,235,.06), 0 1px 0 rgba(0,0,0,.7), 3px 7px 0 rgba(0,0,0,.45), 0 18px 30px -10px rgba(0,0,0,.7);
   --planned: #8a8274; --working: #5b95ff; --waiting: #ff8a1c; --approved: #78c448; --inPr: #27b9b6; --live: #5f594e; --proposal: #a587ff; --idea: #ff6289; --question: #8db3cf; --asking: #e0b62e;
   --waiting-rgb: 255,138,28; --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a;
-  --dep-line: #5c564c; --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
+  --dep-line: #5c564c; --unlock: #4a6290; --unlock-lit: #6f9fff; --done-dep: #4d7239; --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
   --dim: rgba(0,0,0,.55); --panel: #1f1d1a; --chip: #2c2925;
   color-scheme: dark;
 } }
@@ -47,7 +47,7 @@
   --lift: inset 0 1px 0 rgba(255,250,235,.06), 0 1px 0 rgba(0,0,0,.7), 3px 7px 0 rgba(0,0,0,.45), 0 18px 30px -10px rgba(0,0,0,.7);
   --planned: #8a8274; --working: #5b95ff; --waiting: #ff8a1c; --approved: #78c448; --inPr: #27b9b6; --live: #5f594e; --proposal: #a587ff; --idea: #ff6289; --question: #8db3cf; --asking: #e0b62e;
   --waiting-rgb: 255,138,28; --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a;
-  --dep-line: #5c564c; --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
+  --dep-line: #5c564c; --unlock: #4a6290; --unlock-lit: #6f9fff; --done-dep: #4d7239; --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
   --dim: rgba(0,0,0,.55); --panel: #1f1d1a; --chip: #2c2925;
   color-scheme: dark;
 }
@@ -161,6 +161,8 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .card.chip .meta, .card.chip .state, .card.chip .kind { display: none; }
 .card.chip .ttl { font-size: 14.5px; font-weight: 500; }
 /* a delivered workstream keeps its label (W3) before its title, in the face of the kind line it no longer has */
+/* done in its project: muted green stock rather than the yellowed grey of other finished cards */
+.card.chip:is(.s-live, .s-done) { --c: color-mix(in srgb, var(--approved) 60%, var(--card)); opacity: .9; background-color: color-mix(in srgb, var(--approved) 13%, var(--card)); }
 .card.chip .ws-no { font-family: var(--cond); font-size: 12.5px; font-weight: 600; letter-spacing: .01em; color: var(--muted); margin-right: 6px; }
 
 .s-planned { --c: var(--planned); } .s-working { --c: var(--working); } .s-waiting { --c: var(--waiting); }
@@ -1852,6 +1854,14 @@ button.link:hover { text-decoration: underline; }
 #deps .lit { fill: none; stroke: var(--waiting); }
 #deps marker.faint path { fill: var(--dep-line); }
 #deps marker.lit path { fill: var(--waiting); }
+/* in a project, a finished card's dependencies stay: muted blue to what it unlocks, deeper under the
+   pointer, muted green once that card is finished too */
+#deps .unlock { fill: none; stroke: var(--unlock); }
+#deps .unlock-lit { fill: none; stroke: var(--unlock-lit); }
+#deps .done-dep { fill: none; stroke: var(--done-dep); }
+#deps marker.unlock path { fill: var(--unlock); }
+#deps marker.unlock-lit path { fill: var(--unlock-lit); }
+#deps marker.done-dep path { fill: var(--done-dep); }
 .card.dep-self, .card.dep-before, .card.dep-after { box-shadow: 0 0 0 2.5px var(--waiting), var(--lift); }
 /* over a snoozed card's own shadow, hovered or not, in any state (the last `:is` weighs as its heaviest selector, and `*` matches all) */
 .card.snoozed:is(.dep-self, .dep-before, .dep-after):is(:hover, .s-waiting, .s-idea.your-turn, *) { box-shadow: 0 0 0 2.5px var(--waiting), var(--lift); }

@@ -1572,7 +1572,7 @@ describe('Koordinator arranges a project by what builds on what', () => {
     expect(brief).toContain('- K1 (delivered): W1 "Titel W1"');
     expect(brief).toContain('- K3: W3 "Titel W3" — Text W3');
     // W2 builds on W4, W3 on W2 and on the delivered W1
-    await read({ K2: ['K4'], K3: ['K2', 'K1'], K4: [] });
+    await read({ K1: [], K2: ['K4'], K3: ['K2', 'K1'], K4: [] });
     expect(item(p.id).arranging).toBeUndefined();
     expect(item(w2.id).buildsOn).toEqual([w4.id]);
     expect(item(w3.id).buildsOn).toEqual([w2.id, w1.id]);
@@ -1582,10 +1582,18 @@ describe('Koordinator arranges a project by what builds on what', () => {
     expect(item(w1.id).y).toBeLessThan(item(w4.id).y);
   });
 
-  test('every open workstream once: a reading that leaves one out is asked again', async () => {
+  test('every open workstream at least: a reading that leaves one out is asked again', async () => {
     project();
     await settle();
     expect(readings()[0]!.call('dependencies', { workstreams: [{ card: 'K2', builds_on: [] }] })).toContain('missing K3, K4');
+  });
+
+  test('a delivered workstream keeps what it builds on, so its arrow can show what it unlocked', async () => {
+    docs = [{ file: 'docs/plan/p.md', title: 'P', goal: 'Ziel P', workstreams: [ws('W1', true), ws('W2', true), ws('W3'), ws('W4')], markdown: '' }];
+    board.docsChanged();
+    const [, w1, w2] = board.snapshot().items;
+    await read({ K2: ['K1'], K3: ['K2'], K4: [] });
+    expect(item(w2!.id).buildsOn).toEqual([w1!.id]);
   });
 
   test('a card the owner moved before the reading came keeps its place; the reading is kept', async () => {

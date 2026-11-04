@@ -1107,13 +1107,17 @@ export const depHead = (s: number) => 6 * depWidth(s);
 /**
  * Every direct wait between cards on the canvas as a faint line, from the card waited for to the
  * card waiting; while the pointer is on a card, the waits around it (`lit`) in the waiting colour
- * instead. A workstream of a collapsed project stands for its project (`standsFor`). `children` go on
- * top: what the pointer can reach on a line.
+ * instead. A workstream of a collapsed project stands for its project (`standsFor`). A dependency in
+ * a project whose prerequisite is finished (`settled`) stays as a muted blue line to what it unlocks,
+ * deeper while the pointer is on either card (`hover`), and muted green once both are finished.
+ * `children` go on top: what the pointer can reach on a line.
  */
 export function DepLinks({
   placed,
   waits,
   lit,
+  settled = [],
+  hover,
   standsFor,
   routeOf,
   s,
@@ -1122,6 +1126,8 @@ export function DepLinks({
   placed: { item: Item; b: Bounds }[];
   waits: [string, string][];
   lit: [string, string][];
+  settled?: { from: string; to: string; done: boolean }[];
+  hover?: string | null;
   standsFor: (id: string) => string;
   /** A wait's own route where it has one (an arrow the owner drew at chosen edges), else none. */
   routeOf?: (from: string, to: string, a: Bounds, b: Bounds, head: number) => string | undefined;
@@ -1139,6 +1145,11 @@ export function DepLinks({
     );
   const hot = shown(lit);
   const faint = [...shown(waits)].filter(([k]) => !hot.has(k));
+  const taken = new Set([...hot.keys(), ...faint.map(([k]) => k)]);
+  const settledOf = (keep: (d: { from: string; to: string; done: boolean }) => boolean) => [...shown(settled.filter(keep).map((d) => [d.from, d.to]))].filter(([k]) => !taken.has(k));
+  const done = settledOf((d) => d.done);
+  const unlocks = settledOf((d) => !d.done);
+  const near = ([, [from, to]]: [string, [string, string]]) => !!hover && (standsFor(hover) === from || standsFor(hover) === to);
   const path = (cls: string) => ([k, [from, to]]: [string, [string, string]]) => (
     <path key={`${cls} ${k}`} className={cls} d={routeOf?.(from, to, byId.get(from)!, byId.get(to)!, depHead(s)) ?? linkPath(byId.get(from)!, byId.get(to)!, depHead(s))} strokeWidth={depWidth(s)} markerEnd={`url(#${cls}-arrow)`} />
   );
@@ -1147,13 +1158,16 @@ export function DepLinks({
       <defs>
         {/* The line stops at the head's base (refX 0, a hair inside so no seam shows) and the head points
             on to the card; measured in the line's width, as `depHead` is. */}
-        {['lit', 'faint'].map((cls) => (
+        {['lit', 'faint', 'unlock', 'unlock-lit', 'done-dep'].map((cls) => (
           <marker key={cls} id={`${cls}-arrow`} className={cls} viewBox="0 0 9 8" refX="0.3" refY="4" markerUnits="strokeWidth" markerWidth={6} markerHeight={(6 * 8) / 9} orient="auto">
             <path d="M0,0 L9,4 L0,8 z" />
           </marker>
         ))}
       </defs>
+      {done.map(path('done-dep'))}
+      {unlocks.filter((e) => !near(e)).map(path('unlock'))}
       {faint.map(path('faint'))}
+      {unlocks.filter(near).map(path('unlock-lit'))}
       {[...hot].map(path('lit'))}
       {children}
     </svg>

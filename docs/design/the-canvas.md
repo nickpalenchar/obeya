@@ -117,7 +117,7 @@ with "Got it") and goes for good (per browser) once a card has been created by d
 ### Cards on the canvas
 
 Cards have one fixed size; a delivered workstream shrinks to a chip (`W3` and its title) once its
-agent is done. A project wraps its workstreams, which cannot be dragged out; new projects go below
+agent is done, on muted green stock where other finished cards are greyed. A project wraps its workstreams, which cannot be dragged out; new projects go below
 the existing ones. A proposal or follow-up goes below its card, or, when that spot is taken (for a
 workstream: by its own project), to the nearest spot clear of everything. The dashed line from a
 proposal, follow-up or prototype to its card joins the facing sides and runs above projects but
@@ -153,7 +153,11 @@ Every wait between cards on the canvas shows at all times as a thin, solid, grey
 waited for to the card waiting, under the cards and above projects like the dashed line: only direct
 waits, not the chain. All kinds of wait look alike (a card queued behind another, a workstream and
 those it builds on, a card snoozed until another, an arrow the owner drew); a wait ends once the card
-waited for is finished, so finished cards keep no lines. A workstream of a collapsed project shows
+waited for is finished. Within a project, a finished card's dependencies stay instead, from it to
+the cards that build on it or that the owner drew an arrow to: in muted blue while that card is
+still open, which shows what the delivered work unlocks, deeper blue while the pointer is on either
+of the two, and in muted green once that card is finished too. Outside projects finished cards keep
+no lines. A workstream of a collapsed project shows
 its waits at the project's head. The lines stay thin on screen however far the view zooms out.
 Under the pointer a card shows the waits around it over every step instead, in the waiting colour
 (see Scheduling); a wait shows once, never as both. Only the colour changes: line, head and course
@@ -204,8 +208,8 @@ workstreams stay in rows of chips above. Within a column cards follow what they 
 cross little, else the plan's order; a column holds four cards and overflows into one beside it.
 
 Plan docs state dependencies in prose ("Needs W1", "after W2", or only implicitly), so the
-Koordinator reads them in a turn of its own: for each open workstream the ones it builds on
-directly. The reading is kept for the doc as it stood; under the pointer a workstream shows the open
+Koordinator reads them in a turn of its own: for each workstream, delivered ones too, the ones it
+builds on directly (it must name every open one). The reading is kept for the doc as it stood; under the pointer a workstream shows the open
 ones it builds on as waits (see Scheduling), and the project's sheet lists the workstreams in this
 order with what each builds on.
 
@@ -404,6 +408,10 @@ code, a generic one otherwise.
   There is no switch to hide them. Rejected: stubs at the cards' edges only (they say there is a
   dependency but not the picture), and a layer behind a button (it does not keep the waits in
   mind).
+- **A project keeps the dependencies of its delivered work** (owner, 2026-11-04): with a finished
+  card's lines gone, a project lost the picture of what its delivered workstreams unlock next. Blue
+  says "can go now", green "both delivered", against the grey and orange of waits; delivered chips
+  went from grey to muted green to match. Rejected: keeping them grey, which reads as one more wait.
 - **The owner may draw dependencies between task cards** (2026-11-02), beside the waits Obeya
   infers: single cards have no plan doc to say what comes first, and the owner sometimes knows an
   order that a conflict check cannot see, without wanting to turn the cards into a project.

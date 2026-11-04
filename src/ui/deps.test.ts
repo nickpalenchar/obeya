@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { Item } from '../core/types';
-import { depsOf, nearestHandle, waitsAmong } from './deps';
+import { depsOf, nearestHandle, settledAmong, waitsAmong } from './deps';
 
 const card = (id: string, ...behind: string[]) =>
   ({ id, kind: 'task', state: behind.length ? 'planned' : 'working', title: id, body: '', x: 0, y: 0, source: 'manual', repo: 'r', ...(behind.length && { queue: { behind, reason: '' } }) }) as Item;
@@ -90,4 +90,24 @@ test('with an edge reach, a dot also shows near any point of its edge, the neare
   expect(nearestHandle(cards, { x: 30, y: -7 }, 18, 6)).toBeNull();
   expect(nearestHandle(cards, { x: 150, y: -18 }, 18, 6)).toEqual({ id: 'A', side: 'top' });
   expect(nearestHandle(cards, { x: 2, y: 3 }, 18, 6)).toEqual({ id: 'A', side: 'left' });
+});
+
+test("in a project, a finished card's dependencies stay as what it unlocked, done once both are finished", () => {
+  const ws = (id: string, state: Item['state'], extra: Partial<Item> = {}) => ({ ...card(id), kind: 'workstream', state, parent: 'P', ...extra }) as Item;
+  const items = [
+    ws('W1', 'live'),
+    ws('W2', 'live', { buildsOn: ['W1'] }),
+    ws('W3', 'planned', { buildsOn: ['W2'] }),
+    ws('W4', 'planned', { manualDependsOn: ['W1', 'W3'] }),
+    // a finished card outside the project counts for nothing
+    { ...card('X'), state: 'done' } as Item,
+    ws('W5', 'planned', { manualDependsOn: ['X'] }),
+  ];
+  expect(settledAmong(items)).toEqual([
+    { from: 'W1', to: 'W2', done: true },
+    { from: 'W2', to: 'W3', done: false },
+    { from: 'W1', to: 'W4', done: false },
+  ]);
+  // they are no waits
+  expect(waitsAmong(items)).toEqual([['W3', 'W4']]);
 });

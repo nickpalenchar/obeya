@@ -33,6 +33,21 @@ export function waitsAmong(items: Item[]): [from: string, to: string][] {
   return items.flatMap((i) => waitsFor(i, byId).map((b): [string, string] => [b, i.id]));
 }
 
+/**
+ * The dependencies within a project whose prerequisite is finished, which hold nothing any more and
+ * so are no waits: from the finished card to the one that builds on it or that the owner drew an
+ * arrow to, `done` once that one is finished too. They show what a delivered workstream unlocks.
+ */
+export function settledAmong(items: Item[]): { from: string; to: string; done: boolean }[] {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  return items.flatMap((i) =>
+    [...new Set([...(i.buildsOn ?? []), ...(i.manualDependsOn ?? [])])].flatMap((from) => {
+      const f = byId.get(from);
+      return f && i.parent && f.parent === i.parent && finished(f.state) ? [{ from, to: i.id, done: finished(i.state) }] : [];
+    }),
+  );
+}
+
 /** The waits around `id` among `items`, both ways; undefined when there are none or `id` is gone
  *  (a card archived under the pointer stays hovered). */
 export function depsOf(id: string, items: Item[]): Deps | undefined {
