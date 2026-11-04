@@ -1840,7 +1840,7 @@ export class Board {
           this.store.update(kid.id, { x: kid.x, y: kid.y });
         }
         const others = items.filter((i) => !i.parent && i.id !== project.id).map((i) => boundsOf(i, items));
-        const place = freeSpotNear(project, projectSize(kids), others);
+        const place = freeSpotNear(project, sizeOf(project, items), others);
         this.store.update(project.id, place);
         Object.assign(project, place);
       }

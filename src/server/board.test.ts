@@ -72,6 +72,18 @@ describe('plan docs', () => {
     expect(board.snapshot().items.map((i) => [i.id, i.x, i.y])).toEqual(repaired.map((i) => [i.id, i.x, i.y]));
   });
 
+  test('refitting hidden completed cards keeps a collapsed project beside its neighbours', () => {
+    docs = [{ ...docA, workstreams: [ws('W1', true), ws('W2', true), ws('W3')] }];
+    const [project, w1, w2, w3] = board.snapshot().items;
+    store.update(w1!.id, { x: 30, y: 78 });
+    store.update(w2!.id, { x: 246, y: 78 });
+    store.update(w3!.id, { x: 30, y: 162 });
+    board.patch(project!.id, { collapsed: true });
+    board.create({ title: 'Neighbour', x: project!.x + 500, y: project!.y });
+    board.docsChanged();
+    expect(board.snapshot().items.find((i) => i.id === project!.id)).toMatchObject({ x: project!.x, y: project!.y, collapsed: true });
+  });
+
   test('a new workstream is placed below the existing ones', () => {
     const before = board.snapshot().items;
     const lowest = Math.max(...before.filter((i) => i.parent).map((i) => i.y));
