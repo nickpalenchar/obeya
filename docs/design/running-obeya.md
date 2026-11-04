@@ -85,7 +85,7 @@ own for it and is never on the open internet. „Von anderen Geräten erreichbar
   interfaces (another VPN's). The section says a phone's browser allows microphone and push only over
   HTTPS.
 
-The configuration's section „Von anderen Geräten“ and the dialog „Telefon verbinden“ show what the
+The section „Von anderen Geräten“ of the Einstellungen (the logo's menu) and the dialog „Telefon verbinden“ show what the
 network lacks, each with its one step: Tailscale missing (how to install it per platform), not
 running, logged out, HTTPS off in the tailnet (a link to the admin console's DNS page), on Linux the
 operator right `tailscale serve` needs (`sudo tailscale set --operator=$USER`), all three ports
@@ -302,10 +302,10 @@ window is not focused. Several at once make one notification. In the app (Tauri)
 the system's, shown by the shell; in a browser it is the page's own, and clicking it opens the card.
 
 Whether it happens is the owner's choice and per machine: „Benachrichtigungen am Rechner“ in the
-Konfiguration (Allgemein), saved in the home's settings. It is undecided until the owner has been
+Einstellungen (Benachrichtigungen und Limits, from the logo's menu), saved in the home's settings. It is undecided until the owner has been
 asked; the first page asks once, in a box above the confirmations, with „Einschalten“ (which asks the
 system for its permission) and „Nein, danke“. The setting is on only if the system granted the
-permission; where it is on but the system refuses, the Konfiguration says so. The phone view has its
+permission; where it is on but the system refuses, the Einstellungen say so. The phone view has its
 own switch (see above).
 
 #### Stalls

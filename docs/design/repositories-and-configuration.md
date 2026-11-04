@@ -359,8 +359,10 @@ button, and shows only while the pointer or the focus is on its entry (a canvas:
 always where nothing hovers (touch). An unsaved draft survives per tab, also a reload or
 restart. Its sections, listed on the left and shown one at a time (the last one chosen per tab):
 Leinwände, a heading with each canvas indented under it as a section of its own and „+ Leinwand“
-last (see Leinwände), Modelle und Effort, Spracheingabe, Demos, Von anderen Geräten (see Other devices) and Allgemein
-(languages, light or dark, the usage limits in the bar, feedback after approval, the server); below them „Einrichtung prüfen“ and „Wunsch oder Fehler
+last (see Leinwände), Modelle und Effort, Spracheingabe and Demos: what sets up the work. The app-wide
+preferences (languages, light or dark, notifications, the usage limits in the bar, feedback after
+approval, other devices, the server) are in „Einstellungen“ behind the logo (see The logo's menu in
+The canvas). Below the sections „Einrichtung prüfen“ and „Wunsch oder Fehler
 melden“ (see Wishes for Obeya's makers). Each canvas in the list marks its unsaved changes and
 counts its problems in red; the heading counts the problems of no one canvas (none at all, say). Each section names the file it is saved in; settings are rows of label and control, no boxes in
 boxes. What to know about a field sits behind an info icon at its label, shown only while the pointer
@@ -440,7 +442,7 @@ repositories on the command line, Obeya saves with „Speichern und neu starten�
 configuration it restarts with once no worker is mid-turn, and the page reloads.
 
 The server's own settings (port, data directory, the agents' permission mode) come from the command
-line and environment (`OBEYA_PORT`, `OBEYA_HOME`) and show read-only. The Koordinator reads the
+line and environment (`OBEYA_PORT`, `OBEYA_HOME`) and show read-only, under Einstellungen → Über Obeya. The Koordinator reads the
 configuration (`config`) and changes it on the owner's word (`configure`, checked like the dialog's,
 see Confirmation and undo). `configure` takes the whole list in the shape of the file, every field of
 it, so what the owner did not ask to change passes through as it was: a field it left out would
@@ -449,7 +451,8 @@ a git repository). The dialog says so under its title, with „Obeya fragen“, 
 and opens Obeya's conversation (Space for voice does not reach Obeya while the dialog is open).
 The other sections save on their own, restarting nothing: the demo settings into `demo.json` (see
 The demo settings and voices), the personal demo site below them into `personal-site.json` (see The
-personal site in Sharing demos), languages, theme, models and whether the bar shows the usage limits
+personal site in Sharing demos) and models into `settings.json` in Obeya's home, as the
+preferences of the logo's „Einstellungen“ do: languages, theme, whether the bar shows the usage limits
 (`usageMeter: false` when not) and whether approving asks for feedback (`feedbackPrompt: false` when
 not) into `settings.json` in Obeya's home.
 

@@ -19,7 +19,8 @@ import { replyOn, setReply } from './reply';
 import { ArchivePill } from './archive';
 import { useBarFit } from './barFit';
 import { UsagePill } from './usage';
-import { ConfigDialog, Problem, showCanvasesSection, showDemosSection, showDevicesSection, showRepoClones } from './config';
+import { ConfigDialog, Problem, showCanvasesSection, showDemosSection, showRepoClones } from './config';
+import { AppMenu, PrefsDialog, showPrefsSection } from './prefs';
 import { PhoneDialog } from './access';
 import { OpenPerformance, PerformanceDialog } from './performance';
 import { FeedbackLog } from './feedbackLog';
@@ -32,7 +33,7 @@ import { depsOf, handleAt, manualPrerequisites, nearestHandle, type Side, SIDES,
 import { anchoredPath, nearestEdge } from './manualLinks';
 import type { ManualAnchor } from '../core/types';
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
-import { Sign, Wordmark } from './logo';
+import { Sign } from './logo';
 import { DOUBLE_CLICK_KNOWN, Help, HelpButton, HELP_KEY_KNOWN, NewCardHint } from './help';
 import { know, known } from './known';
 import { addAll, MARK_KNOWN, markable, MOVE_MARKED_KNOWN, movesWith, shifted, toggle } from './selection';
@@ -47,7 +48,7 @@ import { CardView, cardClass, shownState, DepLinks, depHead, depWidth, linkPath,
 import { clampWidth, loadWidths, saveWidths, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { failText, t } from './strings';
 import { loadPinned, NAV_CANVAS_MIN, NAV_W, NavPill, NavSheet, savePinned } from './nav';
-import { canvasPath, cardPath, named, queryWithout, readAddress } from './address';
+import { canvasPath, cardPath, feedbackLogPath, named, queryWithout, readAddress } from './address';
 import { type QuickReply, sendReply } from './quickReply';
 import { beingWritten, split, talkAlone } from './talk';
 import { ACK_MS, noticeLine, tellers, useAck, voiceTarget } from './tell';
@@ -368,21 +369,29 @@ function Canvas({
   };
   const toggleArchive = () => setAOn(!aOnRef.current);
   // the configuration is a dialog over the page: what is open behind it stays as it was
-  const toggleConfig = () => setCOn(!cOnRef.current);
+  const toggleConfig = () => (setPrefsOn(false), setCOn(!cOnRef.current));
   // asking Obeya about the configuration: its conversation in place of the dialog, ready to type into
   const talkFromConfig = () => {
     setCOn(false);
     if (!kOn) talkKoordinator();
   };
   const [helpOn, setHelpOn] = useState(false);
-  // „Telefon verbinden“, from the section „Von anderen Geräten“ of the configuration
+  // the app-wide preferences, a dialog over the page as the configuration is, opened from the logo's menu
+  const [prefsOn, setPrefsOn] = useState(false);
+  const openPrefs = (s: Parameters<typeof showPrefsSection>[0]) => {
+    showPrefsSection(s);
+    setCOn(false);
+    setPrefsOn(true);
+  };
+  // „Telefon verbinden“, from the section „Von anderen Geräten“ of the preferences
   const [phoneOn, setPhoneOn] = useState(false);
-  // the performance dashboard, over the page as the configuration is; opened from there or from a
-  // rated card, and open at once coming back from the feedback log (`?performance`), with its filters
+  // the performance dashboard, over the page as the configuration is; opened from the logo's menu,
+  // the feedback setting or a rated card, and open at once coming back from the feedback log (`?performance`), with its filters
   const [perfAtStart] = useState(() => (new URLSearchParams(location.search).has('performance') ? readLogQuery(location.search).filter : undefined));
   const [perfOn, setPerfOn] = useState(!!perfAtStart);
   const openPerformance = useCallback(() => {
     setCOn(false);
+    setPrefsOn(false);
     setPerfOn(true);
   }, []);
   const wishOn = useWish().open;
@@ -692,6 +701,7 @@ function Canvas({
       ...(project ? { project, reading: !!readingRef.current } : {}),
       ...(sheet ? { sheet } : {}),
       ...(cOn ? { config: true } : {}),
+      ...(prefsOn ? { prefs: true } : {}),
       ...collect(),
     });
   };
@@ -732,6 +742,7 @@ function Canvas({
     if (k.sheet === 'koordinator') setKOn(true);
     else if (k.sheet === 'archive') setAOn(true);
     if (k.config) setCOn(true);
+    if (k.prefs) setPrefsOn(true);
     await openAgain(k, true);
     restore(k);
   }
@@ -1639,6 +1650,14 @@ function Canvas({
       }
       return;
     }
+    // so do the preferences
+    if (prefsOn) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setPrefsOn(false);
+      }
+      return;
+    }
     // so does the performance dashboard
     if (perfOn) {
       if (e.key === 'Escape') {
@@ -1903,10 +1922,15 @@ function Canvas({
         {/* in the app on a Mac the bar is the window's title bar: it moves the window (app/src/main.rs); beside the pinned navigation, the traffic lights sit in that */}
         <header id="bar" ref={barRef} {...(window.obeyaApp?.platform === 'macos' ? { className: side.left ? 'titlebar beside-nav' : 'titlebar', 'data-tauri-drag-region': '' } : {})}>
           {extensions.map((e, i) => { const Slot = e.slots?.topBar; return Slot ? <Slot key={i} /> : null; })}
-          <Wordmark height={22} />
-          <span className="bar-sign">
-            <Sign size={24} />
-          </span>
+          <AppMenu
+            onPerformance={openPerformance}
+            onFeedbackLog={() => location.assign(feedbackLogPath(snapshot.canvas.id))}
+            onPrefs={openPrefs}
+            onHelp={() => {
+              setHelpNote(undefined);
+              setHelpOn(true);
+            }}
+          />
           {/* beside the pinned navigation the bar heads the canvas with its name, which the navigation's button gave before */}
           {side.left ? (
             <h1 className="bar-canvas" title={snapshot.canvas.name} {...(window.obeyaApp?.platform === 'macos' ? { 'data-tauri-drag-region': '' } : {})}>
@@ -2023,8 +2047,16 @@ function Canvas({
           onTalk={talkFromConfig}
           onProblems={setConfigProblems}
           revs={configRevs}
-          onConnect={() => (setCOn(false), setPhoneOn(true))}
           onAsk={(text, canvas) => void told.tell(t.voice.reading(t.voice.koordinator), undefined, () => (canvas ? api.commandOn(canvas, text) : api.command(text, null, { place: placeNow() })))}
+        />
+        <PrefsDialog
+          on={prefsOn}
+          onClose={() => setPrefsOn(false)}
+          onConfig={() => {
+            setPrefsOn(false);
+            setCOn(true);
+          }}
+          onConnect={() => (setPrefsOn(false), setPhoneOn(true))}
         />
         {setupOn && <Setup onClose={() => setSetupOn(false)} />}
         {phoneOn && (
@@ -2032,8 +2064,7 @@ function Canvas({
             onClose={() => setPhoneOn(false)}
             onSection={() => {
               setPhoneOn(false);
-              showDevicesSection();
-              setCOn(true);
+              openPrefs('devices');
             }}
           />
         )}

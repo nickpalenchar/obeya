@@ -429,7 +429,17 @@ button.pill:hover { box-shadow: var(--lift); }
 .pill.workspaces .ws-menu { grid-column: 2; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin: 4px 0 2px; padding: 8px 10px; border-radius: 3px; background: var(--chip); }
 .pill.workspaces .ws-menu .btn.ws-take { margin-left: 0; background: var(--panel); }
 .pill.workspaces .ws-menu .hint { font-size: 12px; line-height: 1.4; }
-#bar > svg { flex: none; margin-right: 4px; }
+/* the logo opens Obeya's own menu (prefs.tsx); its chevron says it is a button */
+.app-logo { display: flex; align-items: center; gap: 5px; height: 34px; margin-right: 4px; padding: 0 6px; margin-left: -6px; border: 0; border-radius: 3px;
+  background: none; color: var(--ink); cursor: pointer; }
+.app-logo:hover, .app-logo.on { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.app-logo .bar-word { display: block; line-height: 0; }
+.app-logo .chev { flex: none; color: var(--muted); }
+.app-logo.on .chev { transform: rotate(180deg); }
+.bar-menu.app-menu-list { width: 240px; list-style: none; margin: 0; }
+.app-menu-list button { width: 100%; padding: 7px 10px; border: 0; border-radius: 2px; background: none; font: inherit; font-size: 14px; color: var(--ink); text-align: left; cursor: pointer; }
+.app-menu-list button:hover, .app-menu-list button:focus-visible { background: var(--chip); outline: none; }
+.app-menu-list .sep { margin: 5px 4px; border-top: 1px solid var(--line); }
 /* the open canvas's name, heading the bar beside the pinned navigation; set lower than the buttons' baseline so its capitals sit centred in the bar */
 .bar-canvas { margin: 0 6px 0 0; padding-left: 14px; border-left: 1px solid var(--line); max-width: 26ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   box-sizing: border-box; height: 34px; padding-top: 5px; font: 600 21px/29px var(--serif); }
@@ -444,7 +454,7 @@ button.pill:hover { box-shadow: var(--lift); }
    then all but the sheets' buttons and the restart's text */
 #bar > *, #bar .right > * { flex: none; }
 .bar-sign, .bar-icon { display: none; }
-#bar[data-fit~="1"] > svg, #bar[data-fit~="1"] .nav-pill .lbl, #bar[data-fit~="1"] .pill.restart .hint { display: none; }
+#bar[data-fit~="1"] .bar-word, #bar[data-fit~="1"] .nav-pill .lbl, #bar[data-fit~="1"] .pill.restart .hint { display: none; }
 #bar[data-fit~="1"] .bar-sign { display: block; line-height: 0; }
 #bar[data-fit~="2"] :is(#workspaces, #usage, .config) .lbl, #bar[data-fit~="3"] :is(.archive, .new-card) .lbl,
   #bar[data-fit~="4"] .queue .lbl { display: none; }
@@ -1437,8 +1447,8 @@ ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
 /* Obeya's configuration: a dialog over the page, nearly as large as the window, its sections listed
    on the left and the one chosen on the right; settings as rows of label and control, without boxes */
 .btn.small { padding: 5px 11px; font-size: 12.5px; font-weight: 500; margin-top: 8px; }
-#config { position: fixed; inset: 0; z-index: 55; background: var(--dim); display: none; padding: 28px; }
-#config.on { display: flex; animation: fade .15s ease-out; }
+#config, #prefs { position: fixed; inset: 0; z-index: 55; background: var(--dim); display: none; padding: 28px; }
+:is(#config, #prefs).on { display: flex; animation: fade .15s ease-out; }
 .cfg-box { flex: 1; display: grid; grid-template-columns: 230px minmax(0, 1fr); min-width: 0; background: var(--panel); border-radius: 3px;
   box-shadow: var(--lift); overflow: hidden; position: relative; }
 .cfg-nav { display: flex; flex-direction: column; padding: 22px 14px 18px; background: var(--chip); overflow-y: auto; }
@@ -1469,9 +1479,9 @@ ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
 .cfg-close { position: absolute; right: 22px; top: 14px; border: 0; background: var(--chip); color: var(--ink); width: 32px; height: 32px; border-radius: 3px; cursor: pointer; z-index: 2; }
 .cfg-sec { max-width: 1180px; padding-bottom: 32px; }
 .cfg-sec[hidden] { display: none; }
-#config code, #phone code { font: 12px var(--mono); overflow-wrap: anywhere; }
-#config .warn { color: var(--warn); }
-#config .p-error { margin: 6px 0 0; font-size: 13px; }
+:is(#config, #prefs) code, #phone code { font: 12px var(--mono); overflow-wrap: anywhere; }
+:is(#config, #prefs) .warn { color: var(--warn); }
+:is(#config, #prefs) .p-error { margin: 6px 0 0; font-size: 13px; }
 /* a repository's commands that wait for the owner's trust: each group's lines as a diff, the button below */
 .c-trust { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 8px; }
 .c-trust-group { align-self: stretch; }
@@ -1479,23 +1489,23 @@ ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
 .c-trust .d-lines { border-top: 1px solid var(--line); }
 /* fields sunk a little into the sheet, a shade darker than it with a firmer edge, so the page's structure
    reads at a glance; the one being typed in comes up to the sheet's own colour */
-#config input, #config select, #config textarea { font: inherit; font-size: 13px; padding: 6px 9px; border-radius: 2px;
+:is(#config, #prefs) input, :is(#config, #prefs) select, :is(#config, #prefs) textarea { font: inherit; font-size: 13px; padding: 6px 9px; border-radius: 2px;
   border: 1px solid color-mix(in srgb, var(--ink) 16%, var(--panel)); background: color-mix(in srgb, var(--ink) 5%, var(--panel));
   box-shadow: inset 0 1px 2px color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); outline: none; }
-#config input:hover, #config textarea:hover, #config select:hover { border-color: color-mix(in srgb, var(--ink) 28%, var(--panel)); }
-#config input:focus, #config textarea:focus, #config select:focus { border-color: var(--muted); background-color: var(--panel); }
+:is(#config, #prefs) input:hover, :is(#config, #prefs) textarea:hover, :is(#config, #prefs) select:hover { border-color: color-mix(in srgb, var(--ink) 28%, var(--panel)); }
+:is(#config, #prefs) input:focus, :is(#config, #prefs) textarea:focus, :is(#config, #prefs) select:focus { border-color: var(--muted); background-color: var(--panel); }
 /* a select's own arrow, drawn as two strokes in the muted ink, as far in from the right edge as the text is
    from the left; the browser's arrow sat almost on the edge and cannot be moved */
 #phone select { font: inherit; font-size: 13px; padding: 6px 9px; border-radius: 2px; border: 1px solid color-mix(in srgb, var(--ink) 16%, var(--panel));
   background: color-mix(in srgb, var(--ink) 5%, var(--panel)); color: var(--ink); }
-#config select { appearance: none; -webkit-appearance: none; padding-right: 30px;
+:is(#config, #prefs) select { appearance: none; -webkit-appearance: none; padding-right: 30px;
   --arrow: color-mix(in srgb, var(--ink) 70%, transparent);
   background-image: linear-gradient(45deg, transparent 50%, var(--arrow) 50%, var(--arrow) calc(50% + 1.3px), transparent calc(50% + 1.3px)),
     linear-gradient(-45deg, transparent 50%, var(--arrow) 50%, var(--arrow) calc(50% + 1.3px), transparent calc(50% + 1.3px));
   background-size: 6px 6px; background-repeat: no-repeat; background-position: calc(100% - 18px) 55%, calc(100% - 12px) 55%; }
-#config input::placeholder, #config textarea::placeholder { color: color-mix(in srgb, var(--muted) 80%, var(--panel)); }
-#config textarea { font: 12px var(--mono); resize: vertical; width: 100%; }
-#config input[type="checkbox"] { width: auto; margin: 0; padding: 0; box-shadow: none; }
+:is(#config, #prefs) input::placeholder, :is(#config, #prefs) textarea::placeholder { color: color-mix(in srgb, var(--muted) 80%, var(--panel)); }
+:is(#config, #prefs) textarea { font: 12px var(--mono); resize: vertical; width: 100%; }
+:is(#config, #prefs) input[type="checkbox"] { width: auto; margin: 0; padding: 0; box-shadow: none; }
 .cfg-head { margin-bottom: 14px; }
 .cfg-head h3 { margin: 0 48px 6px 0; font-size: 26px; line-height: 1.15; }
 .cfg-head.sub { margin-top: 30px; padding-top: 22px; border-top: 1px solid var(--line); }
@@ -1511,7 +1521,7 @@ ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
 .cfg-control > select, .cfg-control > .c-path { width: 100%; max-width: 420px; }
 .cfg-control > .seg { margin-top: 0; }
 .cfg-control .btn.small { margin-top: 6px; }
-#config label.c-check { display: flex; gap: 8px; align-items: center; margin: 8px 0 0; font-size: 13px; }
+:is(#config, #prefs) label.c-check { display: flex; gap: 8px; align-items: center; margin: 8px 0 0; font-size: 13px; }
 .cfg-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 0 56px; align-items: start; }
 .cfg-cols > .c-setup > .cfg-head.sub { margin-top: 0; padding-top: 0; border-top: 0; }
 /* the save buttons stay in view at the foot of the section */
@@ -1526,7 +1536,7 @@ ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
   cursor: help; line-height: 0; opacity: 0; transition: opacity .12s; }
 .cfg-has-info:hover .cfg-info, .cfg-has-info:focus-within .cfg-info { opacity: 1; }
 .cfg-has-info:is(:hover, :focus-within) .cfg-has-info:not(:hover, :focus-within) .cfg-info { opacity: 0; }
-.cfg-info:hover, .cfg-info.on, #config .cfg-info:focus-visible { opacity: 1; color: var(--ink); }
+.cfg-info:hover, .cfg-info.on, :is(#config, #prefs) .cfg-info:focus-visible { opacity: 1; color: var(--ink); }
 .cfg-info:focus-visible { outline: 1px solid var(--muted); outline-offset: 1px; border-radius: 50%; }
 .cfg-tip { position: fixed; z-index: 60; width: 340px; padding: 10px 14px; border-radius: 3px; background: var(--card); color: var(--ink);
   box-shadow: var(--lift); font-size: 13px; font-weight: 400; line-height: 1.45; white-space: normal; pointer-events: none; }
@@ -1560,7 +1570,7 @@ ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
 .cfg-group-head { margin: 0 0 2px; font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .cfg-group input[type=number] { width: 80px; }
 .cfg-existing { width: 100%; max-width: 640px; }
-#config .cfg-existing { resize: none; overflow-y: hidden; }
+:is(#config, #prefs) .cfg-existing { resize: none; overflow-y: hidden; }
 .cfg-wide .cfg-control { max-width: 900px; }
 .cfg-add-repo { margin-top: 22px !important; }
 .cfg-clone-leaving { margin: 5px 0 0; font-size: 12.5px; line-height: 1.45; }
@@ -1595,9 +1605,9 @@ ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
 .cfg-sub input, .cfg-sub textarea { width: 100%; }
 .cfg-host-rows { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.3fr) minmax(0, 1.5fr) auto auto 24px; gap: 6px 10px; align-items: center; }
 .cfg-host-rows input { min-width: 0; width: 100%; }
-#config .cfg-host-clones { display: flex; align-items: center; gap: 6px; }
+:is(#config, #prefs) .cfg-host-clones { display: flex; align-items: center; gap: 6px; }
 .cfg-host-clones > .hint { font-size: 11.5px; }
-#config .cfg-host-clones input { width: 64px; }
+:is(#config, #prefs) .cfg-host-clones input { width: 64px; }
 .cfg-hosts > .btn.small { margin-top: 0; }
 .cfg-host-rows + .btn.small { margin-top: 6px !important; }
 .cfg-agents { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(130px, .85fr) minmax(160px, 1fr) minmax(100px, .65fr); gap: 0 14px; align-items: center; max-width: 1000px; }
@@ -1606,7 +1616,7 @@ ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
 .cfg-agent { display: flex; flex-direction: column; padding: 9px 0; font-size: 14px; }
 .cfg-agent > .hint { font-size: 12px; }
 @media (max-width: 900px) {
-  #config { padding: 10px; }
+  :is(#config, #prefs) { padding: 10px; }
   .cfg-box { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
   .cfg-nav { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 12px; }
   .cfg-nav > .p-kind, .cfg-ask, .cfg-nav-foot { display: none; }
@@ -1662,8 +1672,8 @@ ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
 .c-setup ul { list-style: none; padding: 0; margin: 6px 0; }
 .c-setup li { display: grid; grid-template-columns: 16px auto 1fr; column-gap: 8px; align-items: baseline; padding: 3px 0; font-size: 13px; }
 .c-setup li .hint { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
-#config .c-setup li { padding: 5px 0; font-size: 13.5px; border-bottom: 1px solid var(--line); }
-#config .c-setup li:last-child { border-bottom: 0; }
+:is(#config, #prefs) .c-setup li { padding: 5px 0; font-size: 13.5px; border-bottom: 1px solid var(--line); }
+:is(#config, #prefs) .c-setup li:last-child { border-bottom: 0; }
 .c-mark { font-weight: 700; text-align: center; color: var(--approved); }
 .c-setup li.missing .c-mark { color: var(--error); }
 .c-setup li.later .c-mark { color: var(--muted); }
@@ -2422,7 +2432,7 @@ button.link:hover { text-decoration: underline; }
 .perf-empty h3 { font-family: var(--serif); font-weight: 500; font-size: 20px; margin: 0 0 6px; }
 .perf-empty .btn { margin-top: 8px; }
 .rate-compare { margin-top: 6px; font-size: 13px; }
-#config .cfg-perf { margin-top: 10px; }
+:is(#config, #prefs) .cfg-perf { margin-top: 10px; }
 @media (max-width: 700px) { #perf { padding: 10px; } .perf-main { padding: 20px 56px 24px 18px; } .perf-spread, .perf-dots { min-width: 100px; } }
 .perf-to-log { margin-left: auto; font-size: 13.5px; }
 a.link.perf-to-log, a.link.flog-back { color: var(--working); text-decoration: underline 1px currentColor; }

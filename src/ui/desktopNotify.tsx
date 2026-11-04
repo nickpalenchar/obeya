@@ -1,7 +1,7 @@
 // Desktop notifications (design: Notifications on the desktop): the canvas page tells the owner when
 // a card starts to wait for them while they are not looking at the page. In the app (Tauri) the
 // system's notification comes from the shell, in a browser from the page's own permission. Whether
-// it does is the owner's choice (Konfiguration → Allgemein), asked once at the first start.
+// it does is the owner's choice (the logo menu → Benachrichtigungen und Limits), asked once at the first start.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { MESSAGES } from '../core/messages';

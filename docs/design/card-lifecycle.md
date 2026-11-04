@@ -162,14 +162,14 @@ goes its own way: approval and landing never wait for it, and a refused save sho
 prompt, the approval standing. A response is about the latest handover (see Models and effort in
 Agents and workspaces); approved again for the same handover (a retried landing), nothing new is
 asked once answered; work handed over anew asks afresh. Review cards of contributors' pull requests
-and prototypes are not asked about. „Feedback nach der Freigabe“ in Konfiguration → Allgemein turns
+and prototypes are not asked about. „Feedback nach der Freigabe“ in Einstellungen → Benachrichtigungen und Limits (the logo's menu) turns
 the asking off and on for every open page at once; turned off, no card asks or shows a rating, and
 the responses given stay.
 
 #### Comparing ratings
 
-„Bewertungen vergleichen“ (beside „Feedback nach der Freigabe“ in Konfiguration → Allgemein, and
-under the stars of every rated card) opens „Agentenleistung“ over the page, as the configuration
+„Bewertungen vergleichen“ (beside „Feedback nach der Freigabe“ in the Einstellungen, and
+under the stars of every rated card; the logo's menu has it as „Agentenleistung“) opens „Agentenleistung“ over the page, as the configuration
 is: every response on every canvas (`/api/feedback`), grouped by whom it credits (see Models and
 effort in Agents and workspaces). Each harness heads its rows, one per model and effort, the model
 as the session resolved it and an unknown field named unknown; work by several configurations

@@ -179,7 +179,7 @@ export function AccessSection({ on, onConnect }: { on: boolean; onConnect: () =>
   const a = t.access;
   const [view, setView] = useAccess(on);
   const [status, setStatus] = useState('');
-  if (!view) return <Head title={t.config.sections.devices} hint={a.hint} />;
+  if (!view) return <Head title={t.prefs.sections.devices} hint={a.hint} />;
   const remove = async (id: string) => {
     setStatus('');
     try {
@@ -191,7 +191,7 @@ export function AccessSection({ on, onConnect }: { on: boolean; onConnect: () =>
   };
   return (
     <>
-      <Head title={t.config.sections.devices} hint={a.hint} file={view.file} />
+      <Head title={t.prefs.sections.devices} hint={a.hint} file={view.file} />
       <Reach view={view} onView={setView} />
       <Head sub title={a.devices} hint={a.devicesHint} />
       {view.devices.length ? (

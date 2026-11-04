@@ -15,6 +15,8 @@ export interface Kept {
   sheet?: SideSheet;
   /** The configuration's dialog was open over the page. */
   config?: boolean;
+  /** The preferences' dialog was open over the page. */
+  prefs?: boolean;
   /** Scrolled boxes, by `place`. */
   scroll: [string, number][];
   /** Text fields with a draft in them, by `place`. */
