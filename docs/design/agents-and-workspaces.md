@@ -122,7 +122,9 @@ identity and terminates them on app-server exit, including an unexpected exit. O
 process identities and their creation ticks from `/proc`, without depending on `ps`; it skips
 unreadable unrelated processes but fails if it cannot inspect one it already owns. This is cleanup,
 not an OS containment boundary: a process that detaches and loses its ancestry between observations
-may escape tracking. Windows and Linux native-PTY failure cleanup remain preview acceptance gates.
+may escape tracking. On Windows, a cold PowerShell/CIM process snapshot gets a longer startup
+allowance; a later snapshot that times out gets one longer retry. Ownership must still be established
+before the session proceeds. Windows and Linux native-PTY failure cleanup remain preview acceptance gates.
 What this tracking ends, and what outlives it, is set out in Lifetimes below.
 
 ### Models and effort

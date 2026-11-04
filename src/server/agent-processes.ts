@@ -4,6 +4,32 @@ import { readFileSync, readdirSync } from 'node:fs';
 
 export interface ProcessInfo { pid: number; parent: number; group: number; born: string }
 
+const windowsSnapshotCommand = 'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CreationDate | ConvertTo-Json -Compress';
+
+/** A cold PowerShell/CIM launch can exceed the normal snapshot budget on Windows. */
+export class WindowsProcessSnapshot {
+  private first = true;
+  constructor(private run: (timeout: number) => { status: number | null; stdout: string; error?: NodeJS.ErrnoException } = (timeout) =>
+    spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', windowsSnapshotCommand], { encoding: 'utf8', windowsHide: true, timeout })) {}
+
+  read(): ProcessInfo[] {
+    const r = this.run(this.first ? 15_000 : 3_000);
+    // A later snapshot can also be cold after PowerShell's startup cache is evicted.
+    const result = !this.first && r.error?.code === 'ETIMEDOUT' ? this.run(15_000) : r;
+    if (result.status !== 0) throw new Error('Cannot inspect agent process ownership');
+    const rows: unknown = JSON.parse(result.stdout);
+    this.first = false;
+    return (Array.isArray(rows) ? rows : [rows]).flatMap((row) => {
+      if (!row || typeof row !== 'object') return [];
+      const p = row as Record<string, unknown>;
+      return typeof p.ProcessId === 'number' && typeof p.ParentProcessId === 'number' && typeof p.CreationDate === 'string'
+        ? [{ pid: p.ProcessId, parent: p.ParentProcessId, group: p.ProcessId, born: p.CreationDate }] : [];
+    });
+  }
+}
+
+const windowsSnapshot = new WindowsProcessSnapshot();
+
 /** /proc/<pid>/stat's command is parenthesized and can itself contain spaces and parentheses. */
 export function linuxProcessStat(stat: string): ProcessInfo | undefined {
   const open = stat.indexOf(' (');
@@ -35,15 +61,7 @@ export function processes(required = new Set<number>()): ProcessInfo[] {
     });
   }
   if (process.platform === 'win32') {
-    const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CreationDate | ConvertTo-Json -Compress'], { encoding: 'utf8', windowsHide: true, timeout: 3000 });
-    if (r.status !== 0) throw new Error('Cannot inspect agent process ownership');
-    const rows: unknown = JSON.parse(r.stdout);
-    return (Array.isArray(rows) ? rows : [rows]).flatMap((row) => {
-      if (!row || typeof row !== 'object') return [];
-      const p = row as Record<string, unknown>;
-      return typeof p.ProcessId === 'number' && typeof p.ParentProcessId === 'number' && typeof p.CreationDate === 'string'
-        ? [{ pid: p.ProcessId, parent: p.ParentProcessId, group: p.ProcessId, born: p.CreationDate }] : [];
-    });
+    return windowsSnapshot.read();
   }
   const r = spawnSync('ps', ['-axo', 'pid=,ppid=,pgid=,lstart='], { encoding: 'utf8', timeout: 3000 });
   if (r.status !== 0) throw new Error('Cannot inspect agent process ownership');
