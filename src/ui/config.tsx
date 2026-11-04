@@ -1005,15 +1005,15 @@ function AgentsBlock({ on }: { on: boolean }) {
 function ArtifactChecks({ value, onChange }: { value: HandoverArtifact[]; onChange: (v: HandoverArtifact[]) => void }) {
   const names = t.config.demo.artifactNames;
   return (
-    <div className="cfg-sub">
+    <div>
       {HANDOVER_ARTIFACTS.map((a) => (
-        <label key={a} className="check">
+        <label key={a} className="c-check">
           <input
             type="checkbox"
             checked={value.includes(a)}
-            disabled={value.includes(a) && value.length - 1 > 0 && !allowsDemo(value.filter((x) => x !== a))}
+            disabled={a !== 'schema' && value.includes(a) && !allowsDemo(value.filter((x) => x !== a))}
             onChange={(e) => onChange(HANDOVER_ARTIFACTS.filter((x) => (x === a ? e.target.checked : value.includes(x))))}
-          />{' '}
+          />
           {names[a]}
         </label>
       ))}
