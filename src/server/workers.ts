@@ -4692,7 +4692,7 @@ export class Workers {
             if (d) {
               const allowed = this.artifacts();
               const kind = d.kind ?? (allowed.includes('video') ? 'video' : 'html');
-              if (!allowed.includes(kind)) return `Not handed over: this repository's settings do not allow a ${kind === 'video' ? 'video' : 'HTML artifact'} as a demo here. Hand over ${kind === 'video' ? "an HTML artifact (kind 'html')" : 'a video'} instead, then call ready_for_review again.`;
+              if (!allowed.includes(kind)) return `Not handed over: this repository's settings do not allow ${kind === 'video' ? 'a video' : 'an HTML artifact'} as a demo here. Hand over ${kind === 'video' ? "an HTML artifact (kind 'html')" : 'a video'} instead, then call ready_for_review again.`;
               // what the worker says of it beside the demo before, for the owner's buttons when the page shows that one
               const report = { ...(d.question?.text.trim() ? demoQuestion(d.question) : {}), ...(row.demo && (d.follows === 'replaces' || d.follows === 'supplements') ? { follows: d.follows } : {}) };
               const tags = vocabulary.length && d.page?.tags && typeof d.page.tags === 'object' ? (d.page.tags as PageTags) : undefined;

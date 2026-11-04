@@ -314,7 +314,7 @@ describe('handing over with a demo', () => {
     setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones', demo: { artifacts: ['video'] } }, demoArtifacts: () => ['html'] }));
     await workers.start(manual().id);
     expect(runtime.last.inbox[0]).not.toContain('make an HTML artifact instead');
-    expect(await runtime.last.call('ready_for_review', { summary: 'S', demo: { ...artifact(), kind: 'html' } })).toContain('do not allow a HTML artifact'.replace('a HTML', 'an HTML'));
+    expect(await runtime.last.call('ready_for_review', { summary: 'S', demo: { ...artifact(), kind: 'html' } })).toContain('do not allow an HTML artifact');
   });
 
   test('the card waits with the demo; its files are found; words under it answer its question and leave the demo', async () => {
