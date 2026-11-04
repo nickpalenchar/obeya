@@ -593,9 +593,12 @@ Each card kept one session (`agent_runs`: one Claude session id, one `codex:` th
 pause, both restarts and landing. The proxy also showed that `codex -c … app-server` ignores
 overrides given before the subcommand; its wrapper puts them after.
 
+The accented-letter task was repeated on 2026-11-04 with Claude Code (Sonnet, medium) after removing
+German examples from the worker's shared instructions and tool description. Its first question and
+its handover were in English; the slow check finished. This repeat checked the language, not the
+rate-limit, pause and restart sequence above.
+
 Seen besides, not fixed here:
-- The Claude worker wrote German on an English task in both runs, before any words of the owner;
-  the Codex worker on the same kind of task wrote English.
 - The process tracker's `ps` snapshot (`spawnSync`) stalled the server for 0.6 to 1.8 s four times
   while a Codex session ran.
 
