@@ -238,7 +238,7 @@ export function createCodexRuntime(connect: Connect = connectInstalled): AgentRu
           cursor = page.nextCursor;
         } while (cursor && !closing);
         if (closing) return;
-        connection.trackProcesses?.(pids);
+        await connection.trackProcesses?.(pids);
         const ended = background.filter((before) => !tasks.some((now) => now.id === before.id));
         const changed = JSON.stringify(tasks) !== JSON.stringify(background);
         if (changed) emit({ type: 'background', tasks });

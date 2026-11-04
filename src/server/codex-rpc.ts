@@ -7,12 +7,15 @@ import { OWN_GROUP } from './spawn';
 import { AgentProcesses } from './agent-processes';
 import { sessionRegistry } from './session-registry';
 
-const running = new Map<() => void, { done: Promise<void>; force: () => void }>();
-/** Ordinary shutdown waits for escalation; an explicit force signals without waiting. */
+const running = new Map<() => void, { done: Promise<void>; force: () => Promise<void> }>();
+/** Ordinary shutdown waits for escalation; an explicit force waits only for its signals to go out. */
 export async function endCodexHere(force = false) {
   const active = [...running];
-  for (const [close, entry] of active) force ? entry.force() : close();
-  if (!force) await Promise.allSettled(active.map(([, entry]) => entry.done));
+  if (force) await Promise.allSettled(active.map(([, entry]) => entry.force()));
+  else {
+    for (const [close] of active) close();
+    await Promise.allSettled(active.map(([, entry]) => entry.done));
+  }
 }
 
 export interface CodexHandlers {
@@ -27,7 +30,7 @@ export interface CodexConnection {
   notify(method: string, params: Record<string, unknown>): void;
   close(): void;
   /** Native PTY process ids, while still attributable to this app-server. */
-  trackProcesses?(pids: number[]): void;
+  trackProcesses?(pids: number[]): Promise<void>;
   /** Rejects on transport failure; resolves after an intentional close and subprocess exit. */
   done: Promise<void>;
 }
@@ -93,7 +96,8 @@ export function codexConnection(
   }
   function close() {
     if (closing) return;
-    try { terminals?.track(); } catch (error) { failure ??= new Error(messageOf(error)); }
+    // Queued before any kill, so the terminals seen now are ended with the rest.
+    void terminals?.track().catch((error: unknown) => { failure ??= new Error(messageOf(error)); });
     closing = true;
     rejectPending(new Error('Codex app-server connection closed'));
     // EOF lets Codex shut down its own terminals, including on Windows. Bound a stuck shutdown.
@@ -154,15 +158,19 @@ export function codexConnection(
   child.on('error', (error) => fail(error));
   // Observe while turns are active too: a foreground/native PTY can detach before the first
   // background-list response. Creation identities keep snapshots from targeting reused PIDs.
+  // A snapshot still running when the next one is due is not joined by another.
+  let observing = false;
   const observe = setInterval(() => {
-    try { terminals?.track(); } catch (error) { fail(new Error(messageOf(error))); }
+    if (observing || !terminals) return;
+    observing = true;
+    terminals.track().catch((error: unknown) => fail(new Error(messageOf(error)))).finally(() => { observing = false; });
   }, 500);
   observe.unref?.();
   child.on('exit', (code, exitSignal) => {
     clearInterval(observe);
     if (!closing) fail(new Error(`Codex app-server exited (${exitSignal ?? code})${stderr.trim() ? `: ${stderr.trim()}` : ''}`));
     // Do not wait for `close`: a child command may still hold the dead parent's pipes open.
-    try { terminals?.kill(); } catch (error) { failure ??= new Error(messageOf(error)); }
+    void terminals?.kill().catch((error: unknown) => { failure ??= new Error(messageOf(error)); });
     // The leader is gone, so any member still in its group keeps the number reserved: this is the
     // last point where signalling the group cannot reach a reused one.
     if (OWN_GROUP && child.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch { /* none left */ }
@@ -171,31 +179,33 @@ export function codexConnection(
     clearTimeout(terminate);
     clearTimeout(kill);
   });
-  running.set(close, { done, force: () => {
+  running.set(close, { done, force: async () => {
     close();
-    try { terminals?.kill(); } catch (error) { failure ??= new Error(messageOf(error)); }
+    await terminals?.kill().catch((error: unknown) => { failure ??= new Error(messageOf(error)); });
     signal('SIGKILL');
   } });
   child.on('close', (code, exitSignal) => {
     clearInterval(observe);
-    // Identities a refused signal left owed at `exit` are tried once more before the transport is gone.
-    let ended = true;
-    try { terminals?.kill(); } catch (error) { ended = false; failure ??= new Error(messageOf(error)); }
-    settleRecord(ended);
-    running.delete(close);
     clearTimeout(terminate);
     clearTimeout(kill);
     if (!closing) failure = new Error(`Codex app-server exited (${exitSignal ?? code})${stderr.trim() ? `: ${stderr.trim()}` : ''}`);
     closing = true;
     rejectPending(failure ?? new Error('Codex app-server connection closed'));
-    if (failure) rejectDone(failure);
-    else resolveDone();
+    // Identities a refused signal left owed at `exit` are tried once more before the transport is gone.
+    void (async () => {
+      let ended = true;
+      try { await terminals?.kill(); } catch (error) { ended = false; failure ??= new Error(messageOf(error)); }
+      settleRecord(ended);
+      running.delete(close);
+      if (failure) rejectDone(failure);
+      else resolveDone();
+    })();
   });
   // Refuse to proceed if the initial app-server identity could not be established.
-  try { terminals?.track(); } catch (error) { fail(new Error(messageOf(error))); }
+  terminals?.track().catch((error: unknown) => fail(new Error(messageOf(error))));
   return {
     pid: child.pid,
-    trackProcesses: (pids) => terminals?.track(pids),
+    trackProcesses: async (pids) => { await terminals?.track(pids); },
     request<T>(method: string, params: Record<string, unknown>): Promise<T> {
       return new Promise<T>((resolve, reject) => {
         if (closing) return reject(failure ?? new Error('Codex app-server connection closed'));

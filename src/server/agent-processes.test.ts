@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { codexConnection } from './codex-rpc';
-import { AgentProcesses, linuxProcessStat } from './agent-processes';
+import { AgentProcesses, linuxProcessStat, processes, processesAsync } from './agent-processes';
 
 const handlers = { notification() {}, request: async () => ({}) };
 const beat = (file: string) => { try { return Number(readFileSync(file, 'utf8')); } catch { return 0; } };
@@ -20,32 +20,62 @@ test('Linux stat parsing handles nested parentheses and uses exact process start
   expect(linuxProcessStat('42 (truncated) S 10')).toBeUndefined();
 });
 
-test('a missing initial root is reported, never trusted later', () => {
-  const tracker = new AgentProcesses(90001, () => []);
-  expect(() => tracker.track()).toThrow('Cannot establish agent process ownership');
+test('the snapshot leaves the event loop free and sees the same identities as the blocking one', async () => {
+  let ticks = 0;
+  const timer = setInterval(() => ticks++, 1);
+  try {
+    const own = (await processesAsync(new Set([process.pid]))).find((p) => p.pid === process.pid);
+    expect(ticks).toBeGreaterThan(0);
+    expect(own).toEqual(processes(new Set([process.pid])).find((p) => p.pid === process.pid)!);
+  } finally { clearInterval(timer); }
 });
 
-test('observed identities retain original births without exposing mutable tracker state', () => {
+test('a kill waits for the snapshot of a track queued before it, and ends what that track found', async () => {
+  const root = { pid: 90001, parent: process.pid, group: 90001, born: 'root' };
+  const child = { pid: 90002, parent: root.pid, group: 90002, born: 'child' };
+  let release!: () => void;
+  const slow = new Promise<void>((resolve) => { release = resolve; });
+  let calls = 0;
+  const tracker = new AgentProcesses(root.pid, async () => { if (++calls === 2) await slow; return [root, child]; });
+  const tracked = tracker.track();
+  const killed = tracker.kill();
+  await Bun.sleep(20);
+  expect(calls).toBe(2); // the kill has not taken its snapshot yet
+  const spy = spyOnKill();
+  try {
+    release();
+    await tracked;
+    await killed;
+    expect(spy.calls).toEqual([[-90002, 'SIGKILL']]);
+  } finally { spy.restore(); }
+});
+
+test('a missing initial root is reported, never trusted later', async () => {
+  const tracker = new AgentProcesses(90001, () => []);
+  await expect(tracker.track()).rejects.toThrow('Cannot establish agent process ownership');
+});
+
+test('observed identities retain original births without exposing mutable tracker state', async () => {
   const root = { pid: 90001, parent: process.pid, group: 90001, born: 'root' };
   const child = { pid: 90002, parent: root.pid, group: 90002, born: 'child' };
   let rows = [root, child];
   const tracker = new AgentProcesses(root.pid, () => rows);
-  tracker.track();
+  await tracker.track();
   rows = [root, { ...child, parent: process.pid, born: 'replacement' }];
-  tracker.track();
+  await tracker.track();
   const observed = tracker.observed();
   expect(observed).toEqual([{ pid: root.pid, born: 'root' }, { pid: child.pid, born: 'child' }]);
   observed[1]!.born = 'changed';
   expect(tracker.observed()[1]!.born).toBe('child');
 });
 
-test('a reported descendant retains its verified intermediate ancestors', () => {
+test('a reported descendant retains its verified intermediate ancestors', async () => {
   const root = { pid: 90001, parent: process.pid, group: 90001, born: 'root' };
   const intermediate = { pid: 90002, parent: root.pid, group: 90002, born: 'intermediate' };
   const leaf = { pid: 90003, parent: intermediate.pid, group: 90003, born: 'leaf' };
   const unrelated = { pid: 90004, parent: process.pid, group: 90004, born: 'unrelated' };
   const tracker = new AgentProcesses(root.pid, () => [root, intermediate, leaf, unrelated]);
-  tracker.track([leaf.pid, unrelated.pid]);
+  await tracker.track([leaf.pid, unrelated.pid]);
   expect(tracker.observed()).toEqual([
     { pid: root.pid, born: root.born },
     { pid: intermediate.pid, born: intermediate.born },
@@ -53,21 +83,21 @@ test('a reported descendant retains its verified intermediate ancestors', () => 
   ]);
 });
 
-test('a supervisor\'s reported identities are adopted only while their creation identity holds', () => {
+test('a supervisor\'s reported identities are adopted only while their creation identity holds', async () => {
   const supervisor = { pid: 90001, parent: process.pid, group: 90001, born: 'supervisor' };
   const agent = { pid: 90002, parent: 1, group: 90002, born: 'agent' }; // reparented: no ancestry left
   const reused = { pid: 90003, parent: 1, group: 90003, born: 'someone else' };
   const tracker = new AgentProcesses(supervisor.pid, () => [supervisor, agent, reused]);
-  tracker.adopt([{ pid: agent.pid, born: 'agent' }, { pid: reused.pid, born: 'leaf' }, { pid: supervisor.pid, born: 'supervisor' }]);
+  await tracker.adopt([{ pid: agent.pid, born: 'agent' }, { pid: reused.pid, born: 'leaf' }, { pid: supervisor.pid, born: 'supervisor' }]);
   expect(tracker.observed()).toEqual([{ pid: supervisor.pid, born: 'supervisor' }, { pid: agent.pid, born: 'agent' }]);
 });
 
-test('a reused app-server PID does not make an unrelated process its descendant', () => {
+test('a reused app-server PID does not make an unrelated process its descendant', async () => {
   const root = { pid: 90001, parent: process.pid, group: 90001, born: 'original' };
   let rows = [root];
   const tracker = new AgentProcesses(root.pid, () => rows);
   rows = [{ ...root, born: 'replacement' }, { pid: 90002, parent: root.pid, group: 90002, born: 'child' }];
-  tracker.track();
+  await tracker.track();
   expect((tracker as unknown as { owned: Map<number, unknown> }).owned.size).toBe(0);
 });
 
@@ -89,12 +119,12 @@ spawn(process.execPath,['-e',${JSON.stringify(app)}],{detached:true,stdio:'ignor
   const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
   try {
     await until(() => { appPid = filePid(appFile); leafPid = filePid(leafFile); return appPid > 1 && leafPid > 1; });
-    tracker.track([leafPid]);
+    await tracker.track([leafPid]);
     expect(tracker.observed().map((p) => p.pid)).toEqual([supervisor.pid!, appPid, leafPid]);
     const exited = new Promise<void>((resolve) => supervisor.once('exit', () => resolve()));
     supervisor.kill('SIGKILL');
     await exited;
-    tracker.kill();
+    await tracker.kill();
     await until(() => !alive(appPid) && !alive(leafPid));
     expect(alive(canary.pid!)).toBe(true);
   } finally {
@@ -117,7 +147,7 @@ setInterval(()=>{},1000);`;
   try {
     pid = await c.request<number>('spawn', {});
     await until(() => beat(file) > 2);
-    c.trackProcesses!([pid, process.pid, unrelated.pid!]);
+    await c.trackProcesses!([pid, process.pid, unrelated.pid!]);
     process.kill(c.pid!, 'SIGKILL');
     await expect(c.done).rejects.toThrow('exited');
     await Bun.sleep(100);
@@ -147,7 +177,7 @@ process.stdin.on('end',()=>{});process.on('SIGTERM',()=>{});setInterval(()=>{},1
   try {
     pid = await c.request<number>('spawn', {});
     await until(() => beat(file) > 2);
-    c.trackProcesses!([pid]);
+    await c.trackProcesses!([pid]);
     // A second stop can arrive after ordinary shutdown has already closed the session.
     c.close();
     const start = Date.now();
@@ -196,15 +226,15 @@ function spyOnKill(refuse: (pid: number) => boolean = () => false) {
   return { calls, restore: () => { process.kill = real; } };
 }
 
-test.skipIf(process.platform === 'win32')('a refused signal does not leave the other observed processes alive, and is retried later', () => {
+test.skipIf(process.platform === 'win32')('a refused signal does not leave the other observed processes alive, and is retried later', async () => {
   const root = { pid: 90001, parent: process.pid, group: 90001, born: 'root' };
   const a = { pid: 90002, parent: root.pid, group: 90002, born: 'a' };
   const b = { pid: 90003, parent: root.pid, group: 90003, born: 'b' };
   const tracker = new AgentProcesses(root.pid, () => [root, a, b]);
-  tracker.track();
+  await tracker.track();
   const spy = spyOnKill((pid) => pid === -90003);
   try {
-    expect(() => tracker.kill()).toThrow('not permitted');
+    await expect(tracker.kill()).rejects.toThrow('not permitted');
     expect(spy.calls.map(([pid]) => pid).sort()).toEqual([-90003, -90002].sort());
     // only the refused one is still owed a signal
     expect(tracker.observed().map((p) => p.pid)).toEqual([root.pid, b.pid]);

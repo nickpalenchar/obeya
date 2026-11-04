@@ -28,3 +28,17 @@ test('failed cold snapshots retain the longer budget', () => {
 test.skipIf(process.platform !== 'win32')('native Windows snapshot sees this process', () => {
   expect(processes(new Set([process.pid])).find((p) => p.pid === process.pid)).toMatchObject({ pid: process.pid });
 }, 30_000);
+
+test('the snapshot that leaves the event loop free keeps the same budgets', async () => {
+  const timeouts: number[] = [];
+  const output = JSON.stringify({ ProcessId: 42, ParentProcessId: process.pid, CreationDate: 'born' });
+  const answer = (timeout: number) => {
+    timeouts.push(timeout);
+    if (timeouts.length === 2) return { status: null, stdout: '', error: Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' }) };
+    return { status: 0, stdout: output };
+  };
+  const snapshot = new WindowsProcessSnapshot(answer, async (timeout) => answer(timeout));
+  expect(await snapshot.readAsync()).toEqual([{ pid: 42, parent: process.pid, group: 42, born: 'born' }]);
+  expect(await snapshot.readAsync()).toEqual([{ pid: 42, parent: process.pid, group: 42, born: 'born' }]);
+  expect(timeouts).toEqual([15_000, 3_000, 15_000]);
+});

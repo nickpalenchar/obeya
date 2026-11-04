@@ -118,7 +118,12 @@ terminals keep the worker active. Each completed background task wakes result in
 while another terminal keeps serving the app; unchanged status polls do not extend the worker's
 background timeout. Closing a session cleans its terminals before the server exits. Since native
 PTYs can leave the app-server's process group, Obeya also tracks observed descendants by process
-identity and terminates them on app-server exit, including an unexpected exit. On Linux it reads
+identity and terminates them on app-server exit, including an unexpected exit. Its process
+snapshots (every half second while a session runs) never hold the server's event loop: on a busy
+machine `ps` can take seconds, during which a blocking call would serve no pages and hear no agents
+(seen 2026-11, up to 1.8 s). Snapshots and the kills that follow them run one after the other, so a
+kill acts on everything an earlier snapshot registered. Only the sweep at start, before the server
+serves anyone, takes its snapshot blocking. On Linux it reads
 process identities and their creation ticks from `/proc`, without depending on `ps`; it skips
 unreadable unrelated processes but fails if it cannot inspect one it already owns. This is cleanup,
 not an OS containment boundary: a process that detaches and loses its ancestry between observations

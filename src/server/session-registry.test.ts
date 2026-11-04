@@ -216,7 +216,7 @@ require('node:fs').writeFileSync(${JSON.stringify(join(root, '..', 'leaf'))},Str
     const c = codexConnection({ command: process.execPath, args: ['-e', ${JSON.stringify(appCode)}], cwd: '/', env: process.env, label: 'Codex in /scratch' }, { notification() {}, request: async () => ({}) });
     let leaf = 0;
     while (!leaf) { try { leaf = Number(readFileSync(${JSON.stringify(join(root, '..', 'leaf'))}, 'utf8')); } catch {} await Bun.sleep(10); }
-    c.trackProcesses([leaf]);
+    await c.trackProcesses([leaf]);
     await Bun.write(${JSON.stringify(ready)}, JSON.stringify([c.pid, leaf]));
     setInterval(() => {}, 1000);`], { detached: true, stdio: 'inherit' });
   cleanup.push(() => { try { process.kill(host.pid!, 'SIGKILL'); } catch { /* gone */ } try { for (const pid of pidsOf(ready)) process.kill(pid, 'SIGKILL'); } catch { /* gone */ } });
