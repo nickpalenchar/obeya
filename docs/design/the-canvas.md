@@ -178,7 +178,9 @@ takes effect at once, without an undo. On the canvas, the card's face shows the 
 and its name, in a colour that rises from grey to red; Critical is set in white on red. A project's
 head shows it in place of the word „Projekt“. A priority is a label for the owner only: it changes
 neither the queue's order nor what starts first, and agents are not told of it. It is stored in
-this Obeya, as collapsing is, so a workstream's priority stays out of its plan doc.
+this Obeya, as collapsing is, so a workstream's priority stays out of its plan doc. Categories and a
+complexity beside it, suggested by Obeya where the owner leaves them empty, are planned in
+[Built-in card labels](../plan/card-labels.md).
 
 #### A project arranged by its dependencies
 
