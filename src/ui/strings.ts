@@ -566,7 +566,7 @@ const de = {
     before: 'kommt zuerst',
     after: 'wartet darauf',
     /** While the owner draws their first arrow: what it will do. */
-    pick: (from: string) => `Klick auf die Karte, die warten soll: Sie beginnt erst, wenn „${from}“ erledigt ist. Esc bricht ab.`,
+    pick: (from: string) => `Klick auf die Karte, die warten soll, oder auf eine freie Stelle für eine neue: Sie beginnt erst, wenn „${from}“ erledigt ist. Esc bricht ab.`,
     waits: (from: string, to: string) => `„${to}“ beginnt erst, wenn „${from}“ erledigt ist.`,
     /** The arrow refused because the two cards would wait for each other. */
     cycle: (from: string, to: string) => `Kein Pfeil: „${from}“ wartet schon auf „${to}“, direkt oder über andere Karten. Die beiden würden aufeinander warten.`,
@@ -2694,7 +2694,7 @@ const en: Strings = {
     removed: 'Dependency removed.',
     before: 'comes first',
     after: 'waits for it',
-    pick: (from: string) => `Click the card that is to wait: it starts only once “${from}” is done. Esc cancels.`,
+    pick: (from: string) => `Click the card that is to wait, or empty space for a new one: it starts only once “${from}” is done. Esc cancels.`,
     waits: (from: string, to: string) => `“${to}” starts only once “${from}” is done.`,
     cycle: (from: string, to: string) => `No arrow: “${from}” already waits for “${to}”, directly or through other cards. The two would wait for each other.`,
   },

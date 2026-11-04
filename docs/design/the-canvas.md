@@ -166,7 +166,9 @@ stay as they were, so that moving the pointer over the cards leaves the picture 
 The owner draws a dependency between two task cards: near the middle of a card's edge a dot appears
 in the card's colour once the pointer comes close to the dot or to that edge; a click on it starts an
 arrow that follows the pointer and snaps to the closest point on the nearest edge of the card under
-it or close to it, a click there connects the two at that point (Escape cancels). The arrow keeps
+it or close to it, a click there connects the two at that point (Escape cancels). A click on empty
+canvas instead makes a new card there, already connected as the one that waits, and opens it to be
+written; left empty, it goes again as any new card does, and its arrow with it. The arrow keeps
 the edges it was drawn between and its place along the waiting card's edge; arrows drawn before
 that choice was kept are routed between the cards as the other waits are. Until the owner has drawn
 their first arrow, a line beside the pointer says what it will do while they draw: which card is to
@@ -417,7 +419,9 @@ code, a generic one otherwise.
   order that a conflict check cannot see, without wanting to turn the cards into a project.
   Rejected: arrows to or from projects and workstreams, whose order the plan doc decides; a trash
   button on inferred waits, which Obeya would infer again at the next start; a confirmation dialog
-  before removing an arrow, where „Rückgängig“ does the same with one click fewer.
+  before removing an arrow, where „Rückgängig“ does the same with one click fewer. A click on empty
+  canvas while drawing makes the waiting card (2026-11-04): the next step often has no card yet,
+  and making one first, then drawing again, took a detour.
 - **Path addresses with short card codes** (owner, 2026-11-01): a card's address is a permalink
   that survives a reload and can be passed on, and paths leave room for views nested deeper. The
   code is stored, not derived from the cards there are at the time, so a later card whose id starts

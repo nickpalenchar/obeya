@@ -673,9 +673,11 @@ function Canvas({
     if (title) showAck(t.deleted(plain(title)), () => api.restore(i.id));
   }
 
-  async function createAt(world: Pos) {
+  /** A new card centred at `world`; `made` runs once it exists, before it opens. */
+  async function createAt(world: Pos, made?: (card: Item) => Promise<unknown>) {
     const [w, h] = CARD_SIZE.task;
     const card = await api.create({ title: '', x: Math.round(world.x - w / 2), y: Math.round(world.y - h / 2) });
+    await made?.(card);
     beingWritten.add(card.id);
     flushSync(() => {
       // the snapshot that carries it may have come first: then it is no longer pending
@@ -1366,11 +1368,27 @@ function Canvas({
     if (focusRef.current?.type === 'card' || e.button !== 0) return;
     if (connection) {
       e.stopPropagation();
-      if (connection.target) {
+      const { from, side } = connection;
+      const start = placed.find((p) => p.item.id === from)?.b;
+      // a click on the empty canvas makes the card that is to wait there, and connects it
+      if (!connection.target && start && !(e.target as Element).closest('.item, .plan-dir, button')) {
+        // the arrow's head stays where the owner clicked: the card lies behind it, its edge facing the arrow
+        const startAt = handleAt(start, side), at = toWorld(camRef.current, e.clientX, e.clientY);
+        const [w, h] = CARD_SIZE.task, dx = at.x - startAt.x, dy = at.y - startAt.y;
+        const across = Math.abs(dx) * h >= Math.abs(dy) * w;
+        const toSide: Side = across ? (dx < 0 ? 'right' : 'left') : (dy < 0 ? 'bottom' : 'top');
+        const centre = across ? { x: at.x + Math.sign(dx || 1) * w / 2, y: at.y } : { x: at.x, y: at.y + Math.sign(dy) * h / 2 };
+        createAt(centre, (card) => api.dependency(from, card.id, false, false, { fromSide: side, toSide, offset: 0.5 }).catch((err) => showAck(failText(err))))
+          .catch(console.error);
+        if (!depKnown) {
+          know(DEP_KNOWN);
+          setDepKnown(true);
+        }
+      } else if (connection.target) {
         // the arrow drawn again while its removal waits for „Rückgängig“ to run out: it simply stays
         if (pendingRemovals.current.has(`${connection.from}:${connection.target}`)) keepDependency(`${connection.from}:${connection.target}`);
         else {
-          const { from, target, anchor } = connection;
+          const { target, anchor } = connection;
           api.dependency(from, target, false, false, anchor).catch((err) => showAck(err instanceof ApiError && err.code === 'dependencyCycle' ? t.deps.cycle(titleOf(from), titleOf(target)) : failText(err)));
         }
         if (!depKnown) {
