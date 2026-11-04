@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { Item } from '../core/types';
 import { setCanvas } from './api';
 import { smartLink } from './cardLink';
-import { cardHref, cardRef, cardRefsIn, cardRefWord, cardSearchAt, matchingCards } from './cardRefs';
+import { cardHref, cardSearchAt, lines, linkText, matchingCards, type NodeLike, textOf } from './cardRefs';
 import { CardRefs, Inline } from './markdown';
 import { Cards } from './message';
 
@@ -35,21 +35,42 @@ test('every word of the search is in the title or is the short code; titles that
   expect(matchingCards(items, 'nothing')).toEqual([]);
 });
 
-test('a card picked is typed over the search as a link to its address, with a space unless one follows', () => {
-  const link = cardRef('obeya', card('abcd1234', 'Fix [the] login'));
-  expect(link).toBe('[Fix the login](/c/obeya/card/abcd)');
-  expect(cardRefWord('see /log', { start: 4, query: 'log' }, 8, link)).toEqual({ from: 4, to: 8, word: `${link} `, skip: 0 });
-  expect(cardRefWord('/log and more', { start: 0, query: 'log' }, 4, link)).toEqual({ from: 0, to: 4, word: link, skip: 1 });
+test('a card\'s title as the text of its link, without brackets', () => {
+  expect(linkText('Fix [the]  login')).toBe('Fix the login');
 });
 
-test('the links to cards in a text, each once; other links are none', () => {
+test('an address of a card names its canvas and code; another address none', () => {
   expect(cardHref('/c/my%20canvas/card/ab12')).toEqual({ canvas: 'my canvas', code: 'ab12' });
   expect(cardHref('https://x.org/c/a/card/b')).toBeNull();
-  const md = 'After [Login](/c/o/card/ab12) and [docs](https://x.org), again [Login again](/c/o/card/ab12), then [Dark](/c/o/card/cd34).';
-  expect(cardRefsIn(md)).toEqual([
-    { href: '/c/o/card/ab12', text: 'Login' },
-    { href: '/c/o/card/cd34', text: 'Dark' },
+});
+
+test('the field shows the text line by line, a link to a card as a pill and other markdown as written', () => {
+  expect(lines('See [Login](/c/o/card/ab12) and [docs](https://x.org).\n\n**end**')).toEqual([
+    ['See ', { href: '/c/o/card/ab12', text: 'Login' }, ' and [docs](https://x.org).'],
+    [],
+    ['**end**'],
   ]);
+});
+
+// a DOM as the browser leaves it in the field, built of plain objects
+const text = (v: string): NodeLike => ({ nodeType: 3, nodeName: '#text', nodeValue: v, childNodes: [] });
+const el = (name: string, kids: NodeLike[] = [], attrs: Record<string, string> = {}): NodeLike => ({ nodeType: 1, nodeName: name, nodeValue: null, childNodes: kids, getAttribute: (n) => attrs[n] ?? null });
+const pill = el('SPAN', [el('SPAN'), el('SPAN', [text('Login with Google')])], { 'data-href': '/c/o/card/ab12', 'data-text': 'Login' });
+
+test('the field\'s content reads back as the text: a pill as its link, a line per block, a placeholder line break as none', () => {
+  // as the field is filled: a block per line, an empty one holding a line break
+  expect(textOf(el('DIV', [el('DIV', [text('See '), pill, text('\u00a0now')]), el('DIV', [el('BR')]), el('DIV', [text('end')])]))).toBe('See [Login](/c/o/card/ab12) now\n\nend');
+  expect(textOf(el('DIV', [el('DIV', [text('a')]), el('DIV', [el('BR')])]))).toBe('a\n');
+  expect(textOf(el('DIV', [el('DIV', [el('BR')])]))).toBe('');
+  // as the browser types: the first line bare, the next ones in blocks, Shift+Enter a line break
+  expect(textOf(el('DIV', [text('a'), el('DIV', [text('b')])]))).toBe('a\nb');
+  expect(textOf(el('DIV', [text('a'), el('BR'), text('b'), el('BR'), el('BR')]))).toBe('a\nb\n');
+  expect(textOf(el('DIV', [el('BR')]))).toBe('');
+});
+
+test('what the field shows reads back as the text it was filled with', () => {
+  for (const md of ['', 'one line', 'a\n\nb', 'end with\n', 'See [Login](/c/o/card/ab12) and **this**'])
+    expect(textOf(el('DIV', lines(md).map((ps) => el('DIV', ps.length ? ps.map((p) => (typeof p === 'string' ? text(p) : el('SPAN', [], { 'data-href': p.href, 'data-text': p.text }))) : [el('BR')]))))).toBe(md);
 });
 
 test('in a shown text a link to a card is a smart link: its state, current title and priority; one not on the canvas keeps its text, muted', () => {

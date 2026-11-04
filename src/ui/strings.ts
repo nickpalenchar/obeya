@@ -2180,7 +2180,6 @@ const de = {
   /** The menu of the agent's skills that `/` opens in a field whose words go to a card's agent. */
   cardRefs: {
     menu: 'Karten auf der Fläche',
-    linked: 'Verknüpfte Karten',
     hint: '„/“ und Wörter aus dem Titel einer Karte verlinken sie.',
   },
   skills: {
@@ -4222,7 +4221,6 @@ const en: Strings = {
   /** The menu of the agent's skills that `/` opens in a field whose words go to a card's agent. */
   cardRefs: {
     menu: 'Cards on the canvas',
-    linked: 'Linked cards',
     hint: 'Type “/” and words of a card’s title to link it.',
   },
   skills: {

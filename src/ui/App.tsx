@@ -490,9 +490,13 @@ function Canvas({
     panel.classList.add('ready');
     // a card of the owner's without a title is written in its text first: Obeya names it from that
     const title = panel.querySelector<HTMLTextAreaElement>('textarea.p-title');
-    const body = panel.querySelector<HTMLTextAreaElement>('textarea.p-body');
+    const body = panel.querySelector<HTMLElement>('.p-body');
     if (title && !title.value) (body ?? title).focus();
-    body?.setSelectionRange(body.value.length, body.value.length);
+    // the cursor at the end of the text
+    if (body && body === document.activeElement) {
+      getSelection()?.selectAllChildren(body);
+      getSelection()?.collapseToEnd();
+    }
   }
 
   // a card that starts or finishes work while open changes its width and colour: resize in place
@@ -1624,7 +1628,7 @@ function Canvas({
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
   keys.current = (e: KeyboardEvent) => {
     const f = focusRef.current;
-    const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+    const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || (e.target instanceof HTMLElement && e.target.isContentEditable);
     // a field being edited handles its own keys (Esc cancels the edit there); any other field's Esc closes what it is in
     if (typing && (e.target as Element).closest('[data-esc]')) return;
     // the configuration over the page takes the keys until it closes, Esc closing it

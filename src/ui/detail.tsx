@@ -11,7 +11,7 @@ import { answerText, toggle } from './answer';
 import { ApiError, api, canvasOf, cardAt, type Field, holdRestart, onCardEvent, onCardEventGone, onReconnect } from './api';
 import { cardPath } from './address';
 import { Naming, smartLink } from './cardLink';
-import { useCardSearch } from './cardMenu';
+import { LinkField, type LinkFieldHandle } from './cardMenu';
 import { useCopy } from './copy';
 import { manualPrerequisites } from './deps';
 import { firstOpening } from './demoSeen';
@@ -26,7 +26,7 @@ import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueue
 import { dimensions, shownTags } from '../core/page-tags';
 import { CardRefs, Inline, plain } from './markdown';
 import { Body, Cards, goToMessage, Msg, Quote, Reading, useAnswer, useReportedHeight } from './message';
-import { appended, cardDraft, draftOf, dropDraft, giveBack, questionsKey, typeAtCursor, updateDraft, useDraft, useDraftField, useDrafting } from './draft';
+import { appended, cardDraft, draftOf, dropDraft, giveBack, questionsKey, updateDraft, useDraft, useDraftField, useDrafting } from './draft';
 import { eventQuote, type Reply, setReply } from './reply';
 import { CiteButton } from './cite';
 import { Composer } from './composer';
@@ -2934,46 +2934,41 @@ function ManualTitle({ item, onEdit }: { item: Item; onEdit: (p: CardPatch) => v
 /** `fresh`: the repository picker offers a new repository (not on a proposal, which starts where it is). */
 function ManualFields({ item, repos, choice, fresh, onEdit, grow }: { item: Item; repos: RepoRef[]; choice: RepoChoice; fresh?: boolean; onEdit: (p: CardPatch) => void; grow?: boolean }) {
   const [body, setBody] = useState(item.body);
-  // a proposal's text shows in full as far as the screen allows, the panel growing with it
-  const ref = useRef<HTMLTextAreaElement>(null);
-  useFitHeight(ref, body, grow);
+  const ref = useRef<LinkFieldHandle>(null);
   // a dropped file's path goes in as typed while the field has the cursor, else after the text
   // (the latest, which a path put in just before is part of before React has drawn it)
   const latest = useRef(body);
   latest.current = body;
   const put = (path: string) => {
-    const el = ref.current;
-    if (el && el === document.activeElement) return typeAtCursor(el, path);
+    const field = ref.current;
+    if (field?.el && field.el === document.activeElement) return field.type(` ${path} `);
     const next = (latest.current = appended(latest.current, path));
     setBody(next);
     onEdit({ body: next });
   };
   const shots = useShotInput({ initial: item.images, onChange: (images) => onEdit({ images }), put });
-  const cards = useCardSearch(ref, item, body);
   return (
     <>
       {!item.newRepo?.due && <RepoPick choice={choice} repos={repos} fresh={!!fresh} />}
       {/* the task's screenshots: the worker gets them with the task when it starts */}
       <div className={`p-body-field${shots.dropping ? ' dropping' : ''}`} {...shots.drop}>
         <ShotStrip shots={shots} />
-        <div className="c-field">
-          <textarea
+        {/* a proposal's text shows in full as far as the screen allows, the panel growing with it */}
+        <div className={grow ? 'c-field grow' : 'c-field'}>
+          <LinkField
             ref={ref}
+            self={item}
             className="p-body"
             value={body}
             placeholder={t.bodyPlaceholder}
-            maxLength={20000}
             onPaste={shots.onPaste}
-            onChange={(e) => {
-              setBody(e.target.value);
-              onEdit({ body: e.target.value });
+            onChange={(md) => {
+              setBody(md);
+              onEdit({ body: md });
             }}
-            {...cards.props}
           />
           <AttachButton shots={shots} />
-          {cards.menu}
         </div>
-        {cards.under}
         {shots.error && <p className="p-error c-error">{shots.error}</p>}
       </div>
     </>

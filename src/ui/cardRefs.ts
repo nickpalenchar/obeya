@@ -1,11 +1,11 @@
 // Other cards named in a card's text: `/` in its task field opens a menu of the canvas's cards whose
 // titles fit what follows, and the one picked stands in the text as a markdown link to its address
-// (`[Title](/c/<canvas>/card/<code>)`). Wherever the text is shown, such a link is a smart link: a
-// pill with the card's state, its current title and its priority (`SmartLink`). The agent reads the
-// link as it stands: the card's title, and where it lives.
+// (`[Title](/c/<canvas>/card/<code>)`); the field shows it as a pill (`cardMenu.tsx`), and so does
+// every place that shows the text: a smart link, with the card's state, its current title and its
+// priority (`SmartLink`). The agent reads the link as it stands: the card's title, and where it lives.
 
 import type { Item } from '../core/types';
-import { cardPath, named } from './address';
+import { named } from './address';
 import { know, known } from './known';
 
 /** Set once the owner has picked a card from the menu: its hint under the field goes. */
@@ -49,21 +49,8 @@ export function matchingCards(items: Item[], query: string, self?: string): Item
   return [...first, ...fit.filter((i) => !first.includes(i))].slice(0, SHOWN);
 }
 
-/** The markdown link to `card` on `canvas`, with its title as the link's text. */
-export function cardRef(canvas: string, card: Pick<Item, 'id' | 'short' | 'title'>): string {
-  // brackets in the title would end the link's text early
-  const title = card.title.replace(/[[\]]/g, '').replace(/\s+/g, ' ').trim();
-  return `[${title}](${cardPath(canvas, card)})`;
-}
-
-/**
- * What picking a card types over the `/` search (from its slash to the cursor): its link and a
- * space, or none where a space follows already, which the cursor then steps over (`skip`).
- */
-export function cardRefWord(text: string, search: CardSearch, caret: number, link: string): { from: number; to: number; word: string; skip: number } {
-  const spaced = /^\s/.test(text.slice(caret));
-  return { from: search.start, to: caret, word: `${link}${spaced ? '' : ' '}`, skip: spaced && text[caret] === ' ' ? 1 : 0 };
-}
+/** A card's title as the text of its link: brackets in it would end the link's text early. */
+export const linkText = (title: string) => title.replace(/[[\]]/g, '').replace(/\s+/g, ' ').trim();
 
 const HREF = /^\/c\/([^/]+)\/card\/([^/?#]+)$/;
 
@@ -84,15 +71,57 @@ export const referenced = (items: Item[], href: string): Item | undefined => {
   return at ? named(items, at.code) : undefined;
 };
 
-/** The links to cards in a text, each once, in the order they stand: their address and their text. */
-export function cardRefsIn(md: string): { href: string; text: string }[] {
-  const seen = new Set<string>();
-  const out: { href: string; text: string }[] = [];
-  for (const m of md.matchAll(/\[([^\]]+)\]\(([^)\s]+)\)/g)) {
-    const href = m[2]!;
-    if (!cardHref(href) || seen.has(href)) continue;
-    seen.add(href);
-    out.push({ href, text: m[1]! });
-  }
+/** A piece of a line of the task text: words, or a link to a card. */
+export type Piece = string | { href: string; text: string };
+
+/** The task text as the field shows it: line by line, each line its words and its links to cards (other markdown stays as written). */
+export function lines(md: string): Piece[][] {
+  return md.split('\n').map((line) => {
+    const out: Piece[] = [];
+    let last = 0;
+    for (const m of line.matchAll(/\[([^\]]+)\]\(([^)\s]+)\)/g)) {
+      if (!cardHref(m[2]!)) continue;
+      if (m.index > last) out.push(line.slice(last, m.index));
+      out.push({ href: m[2]!, text: m[1]! });
+      last = m.index + m[0].length;
+    }
+    if (last < line.length) out.push(line.slice(last));
+    return out;
+  });
+}
+
+/** As much of a DOM node as the field's text is read from. */
+export interface NodeLike {
+  nodeType: number;
+  nodeName: string;
+  nodeValue: string | null;
+  childNodes: ArrayLike<NodeLike>;
+  getAttribute?: (name: string) => string | null;
+}
+
+const BLOCKS = new Set(['DIV', 'P', 'LI']);
+
+/**
+ * The task text a field's content stands for: its words, a card's pill as its markdown link, and a
+ * line break where the browser put one: before each block (a line of its own) but the first, and
+ * for a `<br>`, except one that ends its block or the field, which only holds an empty line open.
+ */
+export function textOf(root: NodeLike): string {
+  let out = '';
+  const walk = (node: NodeLike) => {
+    const kids = Array.from(node.childNodes);
+    kids.forEach((n, k) => {
+      if (n.nodeType === 3) out += (n.nodeValue ?? '').replace(/\u00a0/g, ' ');
+      else if (n.nodeType !== 1) return;
+      else if (n.getAttribute?.('data-href')) out += `[${n.getAttribute('data-text') ?? ''}](${n.getAttribute('data-href')})`;
+      else if (n.nodeName === 'BR') {
+        if (k < kids.length - 1) out += '\n';
+      } else {
+        if (BLOCKS.has(n.nodeName) && k > 0) out += '\n';
+        walk(n);
+      }
+    });
+  };
+  walk(root);
   return out;
 }
