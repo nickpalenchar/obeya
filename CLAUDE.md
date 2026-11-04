@@ -15,7 +15,8 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
 - Bun + TypeScript throughout; tests with `bun test --parallel` (a file per process, from Bun 1.4 on;
   older Bun ignores the flag and runs them one after the other), types with `bun run typecheck`.
   When the suite fails only from machine load or timing, don't ask to rerun it: hand over and say
-  which failing tests were unrelated.
+  which failing tests were unrelated. When it hangs or stalls, stop it and go on to the demo and
+  handover without asking: say there that the tests were skipped.
 - `src/core/` is shared by server and UI (types, plan-doc parser, layout); `src/server/` is the
   Bun server with SQLite; `src/ui/` the React canvas; `src/adapters/` what Obeya knows of a repository (its defaults, its settings).
 - Code that drives agents is tested against the fake runtime in `src/server/testing.ts` and real
