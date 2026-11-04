@@ -132,7 +132,7 @@ What this tracking ends, and what outlives it, is set out in Lifetimes below.
 Every agent belongs to one of four groups: the Koordinator (voice commands, estimates and schedules,
 look-ups, project agents, learner, Rückschau, proposal rewrites), workers, ideas' exploration agents,
 and small jobs (the Arbeitsrückschau's notes and proposals, a shared demo page's text, a card's
-title). The Konfiguration dialog sets each group's model (Claude Code's default or an alias: Fable,
+title and its suggested labels). The Konfiguration dialog sets each group's model (Claude Code's default or an alias: Fable,
 Opus, Sonnet, Haiku) and effort (low to max) and marks the presets: Opus throughout, high effort for
 workers and exploration agents, medium otherwise. Stored in `settings.json` under `agents`, only
 where it differs from the preset. Saving restarts nothing; agents starting afterwards take it, a

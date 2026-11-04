@@ -631,6 +631,90 @@ describe('Koordinator names a card the owner left without a title', () => {
   });
 });
 
+describe('Koordinator suggests the labels the owner left empty', () => {
+  const namings = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'title'));
+  const labellings = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'labels'));
+  const task = (body: string) => board.create({ title: '', body, x: 0, y: 0 });
+  const params = (s: FakeSession, tool: string) => Object.keys(s.spec.tools.find((t) => t.name === tool)!.schema);
+
+  test('the naming call returns the title and the labels together, guided by the labels skill', async () => {
+    const a = task('The export button crashes the page.');
+    const naming = k.name(a.id);
+    const s = namings()[0]!;
+    expect(params(s, 'title')).toEqual(['title', 'category', 'subcategory', 'complexity', 'priority']);
+    expect(s.spec.system).toContain('Data Migration');
+    expect(s.spec.system).toContain('A one-line or wording fix.');
+    s.call('title', { title: 'Export no longer crashes', category: 'Frontend', subcategory: 'Bug fix', complexity: 2, priority: 'very high' });
+    s.emit({ type: 'idle' });
+    await naming;
+    expect(item(a.id)).toMatchObject({ title: 'Export no longer crashes', category: 'frontend', subcategory: 'bugFix', complexity: 2, priority: 'veryHigh' });
+    expect(item(a.id).suggested).toEqual(['category', 'subcategory', 'complexity', 'priority']);
+    // started later, it runs no second session
+    k.request(a.id);
+    await scope([]);
+    expect(labellings()).toHaveLength(0);
+    expect(item(a.id).state).toBe('working');
+  });
+
+  test('a titled card gets one short session at its start, which the start does not wait for', async () => {
+    const a = card('Add CSV export');
+    board.patch(a.id, { priority: 'high', category: null });
+    k.request(a.id);
+    await settle();
+    expect(item(a.id).state).toBe('working');
+    expect(labellings()).toHaveLength(1);
+    const s = labellings()[0]!;
+    expect(s.spec).toMatchObject({ readOnly: true, role: 'chores' });
+    expect(s.inbox[0]).toContain('Add CSV export');
+    // only what is empty and the owner never set (not even to none) is asked for
+    expect(params(s, 'labels')).toEqual(['subcategory', 'complexity']);
+    // the owner picks meanwhile: theirs stands
+    board.patch(a.id, { complexity: 8 });
+    s.call('labels', { subcategory: 'New feature', complexity: 3, category: 'Backend', priority: 'Low' });
+    s.emit({ type: 'idle' });
+    await settle();
+    expect(item(a.id)).toMatchObject({ subcategory: 'newFeature', complexity: 8, priority: 'high', suggested: ['subcategory'] });
+    expect(item(a.id).category).toBeUndefined();
+  });
+
+  test('a failed session leaves the labels empty and holds up nothing', async () => {
+    const a = card('Add CSV export');
+    k.request(a.id);
+    await settle();
+    labellings()[0]!.emit({ type: 'error', message: 'down' });
+    await settle();
+    expect(item(a.id)).toMatchObject({ state: 'working' });
+    expect(item(a.id).complexity).toBeUndefined();
+    expect(labellings()).toHaveLength(1);
+  });
+
+  test('the canvas toggles say what is asked for; nothing left, no session at all', async () => {
+    let toggles: { category?: boolean; complexity?: boolean; priority?: boolean } = { category: false };
+    k = new Koordinator({ board, runtime, home: () => dir, repoFor: () => ({ workers, workspaces, adapter: generic, path: dir }), holdMs: 0, suggests: () => toggles });
+    const a = card('A');
+    k.request(a.id);
+    await settle();
+    expect(params(labellings()[0]!, 'labels')).toEqual(['complexity', 'priority']);
+
+    toggles = { category: false, complexity: false, priority: false };
+    const b = task('Mach was.');
+    const naming = k.name(b.id);
+    expect(params(namings()[0]!, 'title')).toEqual(['title']);
+    expect(namings()[0]!.spec.system).not.toContain('Data Migration');
+    namings()[0]!.call('title', { title: 'B', complexity: 3 });
+    namings()[0]!.emit({ type: 'idle' });
+    await naming;
+    expect(item(b.id).complexity).toBeUndefined();
+
+    toggles = {};
+    const c = card('C');
+    board.patch(c.id, { category: 'docs', subcategory: null, complexity: 1, priority: 'low' });
+    k.request(c.id);
+    await settle();
+    expect(labellings()).toHaveLength(1);
+  });
+});
+
 describe('Koordinator waits for a free workspace', () => {
   let clones: string[];
 

@@ -2388,8 +2388,8 @@ export class Board {
    */
   suggestLabels(id: string, labels: Labels): Label[] {
     const row = this.own(id);
-    const owner = labelList(row.owner_labels);
-    const filled = LABELS.filter((l) => labels[l] !== undefined && isLabelValue(l, labels[l]) && row[l] === null && !owner.includes(l));
+    const open = this.openLabels(id);
+    const filled = LABELS.filter((l) => labels[l] !== undefined && isLabelValue(l, labels[l]) && open.includes(l));
     if (!filled.length) return [];
     this.store.update(id, {
       ...Object.fromEntries(filled.map((l) => [l, labels[l]])),
@@ -2397,6 +2397,13 @@ export class Board {
     });
     this.changed();
     return filled;
+  }
+
+  /** The labels a suggestion may fill on a card: empty, and never set by the owner (not even to none). */
+  openLabels(id: string): Label[] {
+    const row = this.own(id);
+    const owner = labelList(row.owner_labels);
+    return LABELS.filter((l) => row[l] === null && !owner.includes(l));
   }
 
   private checkNewRepo(row: CardRow, n: unknown) {

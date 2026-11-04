@@ -62,3 +62,21 @@ export const LABEL_VALUES: { [L in Label]: readonly NonNullable<Labels[L]>[] } =
 
 /** Whether a value is one a label may take. */
 export const isLabelValue = <L extends Label>(label: L, v: unknown): v is NonNullable<Labels[L]> => (LABEL_VALUES[label] as readonly unknown[]).includes(v);
+
+/** The names of the priorities, as the suggestion's model reads them. */
+export const PRIORITY_NAMES: Record<Priority, string> = {
+  trivial: 'Trivial',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  veryHigh: 'Very high',
+  critical: 'Critical',
+};
+
+/** What a canvas lets Obeya suggest, a toggle each: category goes with its sub-category. */
+export type SuggestToggles = { category: boolean; complexity: boolean; priority: boolean };
+export const SUGGEST_ALL: SuggestToggles = { category: true, complexity: true, priority: true };
+
+/** The labels the toggles let Obeya suggest; a toggle not given is on. */
+export const suggestable = (t: Partial<SuggestToggles> = {}): Label[] =>
+  LABELS.filter((l) => t[l === 'subcategory' ? 'category' : (l as keyof SuggestToggles)] !== false);

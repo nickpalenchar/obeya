@@ -14,6 +14,8 @@ import type { Workers } from './workers';
 import { type CardWorkspaces, type Change, RECHECK_MS, shortageOf } from './workspaces';
 import { LANGUAGE_NAMES } from '../core/locale';
 import { clip, messageOf } from '../core/text';
+import { type Label, type Labels, suggestable, type SuggestToggles } from '../core/labels';
+import { labelParams, labelsFrom, labelsGuide, labelWords } from './label-suggestion';
 
 /** A workstream as the Koordinator scheduled it, in its turn's order. */
 interface Planned {
@@ -77,6 +79,8 @@ export interface KoordinatorOptions {
   reviewEvery?: number;
   /** The files of screenshots by their ids. */
   imageFiles?: (ids?: string[]) => string[];
+  /** Which labels the canvas lets Obeya suggest; a toggle not given is on, as are all without this. */
+  suggests?: () => Partial<SuggestToggles>;
 }
 
 export class Koordinator {
@@ -93,6 +97,8 @@ export class Koordinator {
   private recheck?: ReturnType<typeof setTimeout>;
   /** Cards being named now: asked again, the same session answers. */
   private naming = new Map<string, Promise<void>>();
+  /** Cards whose labels a session was asked for: one call per card, whatever it answered. */
+  private labelled = new Set<string>();
 
   /** The projects whose plan doc it reads now for which workstream builds on which. */
   private readingDeps = new Map<string, Promise<void>>();
@@ -194,6 +200,7 @@ export class Koordinator {
     if (card.queue) throw new BadRequest('queued', 'the card is already with Obeya');
     this.o.board.work(cardId, { agent_setting: setting ? JSON.stringify(setting) : null });
     this.setQueue(cardId, { checking: true });
+    this.suggestAtStart(cardId);
     this.serial(() => this.decide(cardId));
   }
 
@@ -643,6 +650,7 @@ export class Koordinator {
   private async decide(cardId: string) {
     // a card started without a title gets one first: its worker, branch and the owner know it by it
     await this.name(cardId);
+    this.suggestAtStart(cardId);
     const card = this.o.board.item(cardId);
     // taken out of the queue or deleted while waiting for its turn
     if (!card || card.state !== 'planned' || !card.queue || !('checking' in card.queue)) return;
@@ -728,6 +736,7 @@ export class Koordinator {
     const t = this.o.board.t.koordinator;
     if (!batch.length) return;
     if (batch[0]!.repoDown) return batch.forEach((w) => this.repoGone(w));
+    for (const w of batch) this.suggestAtStart(w.id);
     if (batch.length === 1) {
       // one is judged as any card
       this.setQueue(batch[0]!.id, { checking: true });
@@ -959,10 +968,13 @@ export class Koordinator {
     if (!card || !nameless(card)) return Promise.resolve();
     let naming = this.naming.get(cardId);
     if (!naming) {
-      naming = this.writeTitle(card)
-        .then((title) => {
+      // the same call judges the labels left to suggest
+      const asked = this.labelsToAsk(cardId);
+      naming = this.writeTitle(card, asked)
+        .then(({ title, labels }) => {
           const now = this.o.board.item(cardId);
           if (now && !now.title.trim() && title) this.o.board.patch(cardId, { title });
+          if (now) this.o.board.suggestLabels(cardId, labels);
         })
         .finally(() => this.naming.delete(cardId));
       this.naming.set(cardId, naming);
@@ -970,22 +982,24 @@ export class Koordinator {
     return naming;
   }
 
-  private async writeTitle(card: Item): Promise<string> {
+  private async writeTitle(card: Item, asked: Label[]): Promise<{ title: string; labels: Labels }> {
     let title: string | null = null;
+    let labels: Labels = {};
     await readSession(this.o.runtime, {
       // a title reads as well from the home repository while the card's does not run
       cwd: card.repoDown ? this.o.home() : this.o.repoFor(card).path,
       role: 'chores',
       onLimit: (until) => this.o.board.waitsForLimit({ card: card.id }, until),
-      system: NAME_SYSTEM(this.language),
+      system: NAME_SYSTEM(this.language, asked),
       tools: (finish) => [
         {
           name: 'title',
-          description: `The card's title, in the language the task is written in (${this.language} where it tells none, as with screenshots alone).`,
-          schema: { title: z.string() },
+          description: `The card's title, in the language the task is written in (${this.language} where it tells none, as with screenshots alone)${asked.length ? `, and its ${labelWords(asked)}` : ''}.`,
+          schema: { title: z.string(), ...labelParams(asked) },
           run: (a) => {
             if (title !== null) return 'Already named.';
             title = String(a.title).replace(/\s+/g, ' ').trim().slice(0, 200);
+            labels = labelsFrom(a, asked);
             return finish('Recorded. End your turn now.');
           },
         },
@@ -993,7 +1007,58 @@ export class Koordinator {
       brief: card.body.trim() ? `The task:\n${card.body.trim()}` : 'The task is in the screenshots alone (shown below).',
       images: this.o.imageFiles?.(card.images) ?? [],
     });
-    return title || titleFrom(card.body);
+    return { title: title || titleFrom(card.body), labels };
+  }
+
+  // ---------------------------------------------------------------- labels
+
+  /**
+   * The labels to ask a session for on a card: empty, never set by the owner, and on the canvas's
+   * toggles; none once a session was asked for the card. Asking marks the card as asked.
+   */
+  private labelsToAsk(cardId: string): Label[] {
+    if (this.labelled.has(cardId)) return [];
+    const on = suggestable(this.o.suggests?.() ?? {});
+    const asked = this.o.board.openLabels(cardId).filter((l) => on.includes(l));
+    if (asked.length) this.labelled.add(cardId);
+    return asked;
+  }
+
+  /**
+   * A card that starts with a title of its own gets the labels left to suggest from one short session
+   * beside its start, which never waits for it; one without a title gets them with its title (`name`).
+   * A failed session leaves them empty; what the owner picks meanwhile stands.
+   */
+  private suggestAtStart(cardId: string) {
+    const card = this.o.board.item(cardId);
+    if (!card || nameless(card) || card.kind === 'project' || card.repoDown) return;
+    const asked = this.labelsToAsk(cardId);
+    if (!asked.length) return;
+    let labels: Labels = {};
+    void readSession(this.o.runtime, {
+      cwd: this.o.repoFor(card).path,
+      role: 'chores',
+      system: LABELS_SYSTEM(asked),
+      tools: (finish) => [
+        {
+          name: 'labels',
+          description: `The card's ${labelWords(asked)}.`,
+          schema: labelParams(asked),
+          run: (a) => {
+            labels = labelsFrom(a, asked);
+            return finish('Recorded. End your turn now.');
+          },
+        },
+      ],
+      brief: [`The card's title: ${card.title.trim()}`, card.body.trim() ? `Its text:\n${card.body.trim()}` : '', card.images?.length ? 'Its screenshots are below.' : '']
+        .filter(Boolean)
+        .join('\n\n'),
+      images: this.o.imageFiles?.(card.images) ?? [],
+    })
+      .then(() => {
+        if (this.o.board.item(cardId)) this.o.board.suggestLabels(cardId, labels);
+      })
+      .catch(() => {});
   }
 
   // ---------------------------------------------------------------- the estimate
@@ -1201,7 +1266,11 @@ export class Koordinator {
   }
 }
 
-const NAME_SYSTEM = (language: string) => `You name a card on Obeya, a canvas on which the owner directs coding agents. The owner wrote the card's task (below) without a title. Give it one with the tool title: in the language the task is written in (${language} where it tells none), short and precise like a ticket title (at most about 70 characters), saying what the task changes or achieves; no quotes, no full stop at the end. Then end your turn.`;
+const NAME_SYSTEM = (language: string, labels: Label[] = []) =>
+  `You name a card on Obeya, a canvas on which the owner directs coding agents. The owner wrote the card's task (below) without a title. Give it one with the tool title: in the language the task is written in (${language} where it tells none), short and precise like a ticket title (at most about 70 characters), saying what the task changes or achieves; no quotes, no full stop at the end.${labels.length ? ` In the same call, give its ${labelWords(labels)}, judged as the guide below says.` : ''} Then end your turn.${labels.length ? `\n\n${labelsGuide()}` : ''}`;
+
+const LABELS_SYSTEM = (labels: Label[]) =>
+  `You label a card on Obeya, a canvas on which the owner directs coding agents: its title, text and screenshots are below. Give its ${labelWords(labels)} with the tool labels, judged as the guide below says, from the card alone, without reading files. Then end your turn.\n\n${labelsGuide()}`;
 
 const SYSTEM = (language: string) => `
 You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. Your job here: before a card starts, estimate which files it will change, and judge whether running it next to the cards in progress is likely to end in merge conflicts. Only those keep it waiting, and for a workstream of a project what it builds on; everything else should run in parallel. Cards queued ahead of it count too: they came first and start before it, so a card likely to conflict with one of them waits behind it rather than overtaking it.
