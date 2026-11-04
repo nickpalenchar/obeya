@@ -157,13 +157,13 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .card .state .state-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card .state::after { flex: none; }
 .card.task { width: 300px; height: 136px; }
-.card.chip { width: 196px; height: 64px; padding-top: 11px; }
+.card.chip { width: 300px; height: 88px; }
 .card.chip::before { height: 3px; }
 .card.chip .meta, .card.chip .state, .card.chip .kind { display: none; }
-.card.chip .ttl { font-size: 14.5px; font-weight: 500; }
+.card.chip .ttl { -webkit-line-clamp: 3; font-weight: 500; }
 /* a delivered workstream keeps its label (W3) before its title, in the face of the kind line it no longer has */
 /* done in its project: muted green stock rather than the yellowed grey of other finished cards */
-.card.chip:is(.s-live, .s-done) { --c: color-mix(in srgb, var(--approved) 60%, var(--card)); opacity: .9; background-color: color-mix(in srgb, var(--approved) 13%, var(--card)); }
+.card.chip:is(.s-live, .s-done) { --c: color-mix(in srgb, var(--approved) 60%, var(--card)); opacity: 1; background-color: color-mix(in srgb, var(--approved) 13%, var(--card)); }
 .card.chip .ws-no { font-family: var(--cond); font-size: 12.5px; font-weight: 600; letter-spacing: .01em; color: var(--muted); margin-right: 6px; }
 
 .s-planned { --c: var(--planned); } .s-working { --c: var(--working); } .s-waiting { --c: var(--waiting); }
@@ -279,7 +279,7 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .z-far .card.task .ttl { font-size: 26px; line-height: 1.1; -webkit-line-clamp: 3; }
 .z-far .card.s-waiting:not(.underway):not(.answering), .z-far .card.s-idea.your-turn { box-shadow: 0 0 0 5px var(--waiting), var(--shadow); }
 .z-far .card.s-waiting.failed { box-shadow: 0 0 0 5px var(--error), var(--shadow); }
-.z-far .card.chip { opacity: .45; }
+.z-far .card.chip .ttl { font-size: 21px; line-height: 1.1; -webkit-line-clamp: 2; }
 
 /* ---------- chrome ---------- */
 /* a frosted strip the canvas slides under, so cards never run into the pills; it ends at the panels docked at the window's edges */

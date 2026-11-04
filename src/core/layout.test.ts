@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { type Arrangeable, arrangeWorkstreams, type Bounds, dependencyColumns, dependencyOrder, freeSpotNear, GAP, PROJECT_HEAD, PROJECT_PAD, shapeOf } from './layout';
+import { type Arrangeable, arrangeWorkstreams, type Bounds, CARD_SIZE, dependencyColumns, dependencyOrder, freeSpotNear, GAP, PROJECT_HEAD, PROJECT_PAD, shapeOf } from './layout';
 
 const clear = (a: Bounds, b: Bounds) => a.x + a.w + GAP <= b.x || b.x + b.w + GAP <= a.x || a.y + a.h + GAP <= b.y || b.y + b.h + GAP <= a.y;
 
@@ -102,10 +102,10 @@ describe('arranging workstreams by their dependencies', () => {
   });
 
   test('cards and chips never overlap', () => {
-    const all = [ws('d1', [], 'live'), ws('d2', [], 'done'), ws('a'), ws('b', ['a']), ws('c', ['a']), ws('d', ['b'])];
+    const all = [...Array.from({ length: 7 }, (_, n) => ws(`d${n}`, [], n % 2 ? 'live' : 'done')), ws('a'), ws('b', ['a']), ws('c', ['a']), ws('d', ['b'])];
     const pos = arrangeWorkstreams(all);
     const boxes = all.map((w) => {
-      const [width, height] = shapeOf(w) === 'chip' ? [196, 64] : [300, 136];
+      const [width, height] = CARD_SIZE[shapeOf(w) as 'chip' | 'task'];
       return { ...pos.get(w.id)!, w: width, h: height };
     });
     for (const [i, a] of boxes.entries()) for (const b of boxes.slice(i + 1)) expect(clear(a, b)).toBe(true);

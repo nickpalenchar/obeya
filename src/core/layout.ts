@@ -6,7 +6,7 @@ export type Shape = 'task' | 'chip' | 'project';
 
 export const CARD_SIZE: Record<Exclude<Shape, 'project'>, readonly [number, number]> = {
   task: [300, 136],
-  chip: [196, 64],
+  chip: [300, 88],
 };
 
 /** Inside a project: children start below the header, with this margin around them. */
@@ -15,13 +15,13 @@ export const PROJECT_HEAD = 78;
 const PROJECT_MIN: readonly [number, number] = [420, 150];
 /** A project the owner collapsed: its head, and a row of marks for its workstreams. */
 export const PROJECT_COLLAPSED: readonly [number, number] = [440, 84];
-const CHIPS_PER_ROW = 4;
+const CHIPS_PER_ROW = 3;
 const TASKS_PER_ROW = 3;
 export const GAP = 20;
 const PROJECT_GAP = 60;
 
 /**
- * A delivered workstream shrinks to a chip once its agent is done; every other card shows at the
+ * A delivered workstream becomes a shorter card once its agent is done; every other card shows at the
  * size of a task, so its state and status line show.
  */
 export function shapeOf(i: Pick<Item, 'kind' | 'state' | 'parent' | 'finishing'>): Shape {

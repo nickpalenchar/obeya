@@ -116,8 +116,10 @@ with "Got it") and goes for good (per browser) once a card has been created by d
 
 ### Cards on the canvas
 
-Cards have one fixed size; a delivered workstream shrinks to a chip (`W3` and its title) once its
-agent is done, on muted green stock where other finished cards are greyed. A project wraps its workstreams, which cannot be dragged out; new projects go below
+Cards have one fixed size; a delivered workstream becomes a shorter card (`W3` and its title) once its
+agent is done. It keeps the width and title size of an open card, on opaque muted green stock
+that stays opaque when zoomed out, with larger titles in the overview. Existing projects make
+room for these cards where their older layout would overlap. A project wraps its workstreams, which cannot be dragged out; new projects go below
 the existing ones. A proposal or follow-up goes below its card, or, when that spot is taken (for a
 workstream: by its own project), to the nearest spot clear of everything. The dashed line from a
 proposal, follow-up or prototype to its card joins the facing sides and runs above projects but

@@ -55,6 +55,23 @@ describe('plan docs', () => {
     expect(board.snapshot().items.find((i) => i.id === w2.id)).toMatchObject({ x: 700, y: 400, title: 'Renamed', state: 'live' });
   });
 
+  test('older packed completed cards get room, and the repaired layout survives another read', () => {
+    docs = [{ ...docA, workstreams: [ws('W1', true), ws('W2', true), ws('W3', true), ws('W4', true), ws('W5')] }];
+    const initial = board.snapshot().items;
+    const kids = initial.filter((i) => i.parent);
+    // The old four-chip row, with the open card immediately below it.
+    kids.forEach((k, n) => store.update(k.id, n < 4 ? { x: 30 + n * 216, y: 78 } : { x: 30, y: 162 }));
+    board.docsChanged();
+    const repaired = board.snapshot().items;
+    const boxes = repaired.filter((i) => i.parent).map((i) => boundsOf(i, repaired));
+    for (const [n, a] of boxes.entries()) for (const b of boxes.slice(n + 1)) {
+      expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y).toBe(true);
+    }
+    expect(repaired.filter((i) => i.parent).every((i) => i.x >= 30 && i.y >= 78)).toBe(true);
+    board.docsChanged();
+    expect(board.snapshot().items.map((i) => [i.id, i.x, i.y])).toEqual(repaired.map((i) => [i.id, i.x, i.y]));
+  });
+
   test('a new workstream is placed below the existing ones', () => {
     const before = board.snapshot().items;
     const lowest = Math.max(...before.filter((i) => i.parent).map((i) => i.y));

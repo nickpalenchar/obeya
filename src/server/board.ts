@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import type { AgentAt, AgentIdentity, Feedback, WorkConfig } from '../core/types';
 import { existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { arrangeWorkstreams, type Bounds, boundsOf, CARD_SIZE, freeSpotNear, GAP, MERGED_SIZE, type Place, PROJECT_HEAD, placeProjects, planDirNoteBox, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
+import { arrangeWorkstreams, type Bounds, boundsOf, CARD_SIZE, freeSpotNear, GAP, MERGED_SIZE, type Place, PROJECT_HEAD, placeProjects, planDirNoteBox, placeWorkstreams, projectSize, shapeOf, sizeOf, unionBounds } from '../core/layout';
 import type { CardFile } from '../core/files';
 import type { Language } from '../core/locale';
 import { MESSAGES, type Messages, snoozeTerm } from '../core/messages';
@@ -1818,6 +1818,32 @@ export class Board {
       this.tell();
       rows = this.store.cards(this.canvas.id);
       items = toItems(rows, docs, this.home, this.worked, this.themeNow);
+    }
+    if (read) {
+      // Older projects packed finished cards more tightly. Refit only projects whose finished
+      // cards no longer fit, preserving the owner's layout wherever there is still room.
+      for (const project of items.filter((i) => i.kind === 'project')) {
+        const kids = items.filter((i) => i.parent === project.id);
+        const overlaps = kids.some((chip) => {
+          if (shapeOf(chip) !== 'chip') return false;
+          const a = boundsOf(chip, kids);
+          return kids.some((other) => {
+            if (other.id === chip.id) return false;
+            const b = boundsOf(other, kids);
+            return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+          });
+        });
+        if (!overlaps) continue;
+        const at = arrangeWorkstreams(kids);
+        for (const kid of kids) {
+          Object.assign(kid, at.get(kid.id)!);
+          this.store.update(kid.id, { x: kid.x, y: kid.y });
+        }
+        const others = items.filter((i) => !i.parent && i.id !== project.id).map((i) => boundsOf(i, items));
+        const place = freeSpotNear(project, projectSize(kids), others);
+        this.store.update(project.id, place);
+        Object.assign(project, place);
+      }
     }
     const manual = this.manualDependencies();
     if (manual.length) {
