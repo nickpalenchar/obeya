@@ -178,7 +178,9 @@ own under „Keinem Modell allein zugeordnet“, never counted for a model. Rows
 model and effort, never by score. Each says how many ratings it rests on, their average and
 comments; a row with fewer than five ratings is greyed and tagged „wenige“. The main view shows
 each row's ratings split by stars as one bar („Verteilung“); „Jede Bewertung“ draws each rating as a
-dot on the scale from 1 to 5 with the median as a line; „Im Zeitverlauf“ puts above the table each
+dot on the scale from 1 to 5 with the median as a line, the dots of one rating scattered in a cloud
+that grows with their number (the same at every render), each dot the larger the newer its rating, in
+five steps: up to three days, a week, a month, two months, older; „Im Zeitverlauf“ puts above the table each
 model and effort's average per month as a line (from the first month with a rating to the last), a
 month of fewer than five ratings a hollow point, work credited to no one model without a line. The
 view chosen is kept per browser. With

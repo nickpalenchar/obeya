@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { FEW, filterChoices, filterFeedback, performance, trend } from './performance';
+import { ageStep, FEW, filterChoices, filterFeedback, performance, scatter, trend } from './performance';
 import type { Feedback, WorkConfig } from './types';
 
 const opusHigh: WorkConfig = { harness: 'claude', model: 'claude-opus-5-5', effort: 'high', requested: 'opus' };
@@ -102,4 +102,21 @@ test('the trend is each row’s average per month, over every month from the fir
     { key: 'claude|claude-sonnet-5-5|medium', points: [{ month: '2026-10', mean: 2, n: 1 }] },
   ]);
   expect(trend([])).toEqual({ months: [], series: [] });
+});
+
+test('a response’s age is one of five steps, by when it was last given', () => {
+  const now = Date.parse('2026-11-03T12:00:00.000Z');
+  const aged = (days: number, more: Partial<Feedback> = {}) => ageStep(fb([opusHigh], { rating: 4 }, { at: new Date(now - days * 86_400_000).toISOString(), ...more }), now);
+  expect([0, 3, 3.5, 7, 8, 30, 45, 60, 61, 400].map((d) => aged(d))).toEqual([0, 0, 1, 1, 2, 2, 3, 3, 4, 4]);
+  expect(aged(200, { updatedAt: new Date(now - 86_400_000).toISOString() })).toBe(0);
+});
+
+test('a dot’s place in its cloud is within its bounds and the same for the same seed', () => {
+  for (let seed = 1; seed < 200; seed++) {
+    const [x, y] = scatter(seed);
+    expect(Math.abs(x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(y)).toBeLessThanOrEqual(1);
+    expect(scatter(seed)).toEqual([x, y]);
+  }
+  expect(scatter(1)).not.toEqual(scatter(2));
 });

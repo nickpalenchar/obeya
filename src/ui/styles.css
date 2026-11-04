@@ -2350,7 +2350,7 @@ button.link:hover { text-decoration: underline; }
 .perf-model { font: 13px var(--mono); }
 .perf-special { font-style: italic; }
 .perf-tag { display: inline-block; margin-left: 8px; padding: 0 7px; border: 1px solid var(--muted); border-radius: 9px; font-size: 11px; color: var(--muted); line-height: 16px; vertical-align: 1px; }
-.perf-spread { display: flex; width: 100%; min-width: 160px; height: 14px; border-radius: 2px; overflow: hidden; background: var(--line); }
+.perf-spread { display: flex; width: 100%; max-width: 260px; min-width: 120px; height: 14px; border-radius: 2px; overflow: hidden; background: var(--line); }
 .perf-spread > span { display: block; height: 100%; }
 .perf-row.few .perf-spread { opacity: .6; }
 .perf-r1 { --r: color-mix(in srgb, var(--error) 85%, var(--panel)); } .perf-r2 { --r: color-mix(in srgb, var(--waiting) 70%, var(--panel)); }
@@ -2358,12 +2358,15 @@ button.link:hover { text-decoration: underline; }
 .perf-spread > span { background: var(--r); }
 .perf-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 0; font-size: 12px; color: var(--muted); }
 .perf-key::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--r); }
-.perf-dots { position: relative; display: block; min-width: 160px; height: 28px; margin: 0 14px; }
+.perf-dots { position: relative; display: block; min-width: 160px; height: 32px; margin: 0 26px; }
 .perf-dots .perf-axis { position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed var(--line); }
-.perf-dots i { position: absolute; z-index: 1; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: var(--working); opacity: .75; }
+.perf-dots i { position: absolute; z-index: 1; border-radius: 50%; background: var(--working); opacity: .7; }
+.perf-sizes { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.perf-sizes > span { display: inline-flex; align-items: center; gap: 4px; }
+.perf-sizes i { display: inline-block; border-radius: 50%; background: var(--working); opacity: .7; }
 .perf-dots b { position: absolute; top: 1px; bottom: 1px; width: 2px; margin-left: -1px; background: var(--ink); opacity: .55; }
 .perf-row.few .perf-dots i { background: var(--muted); }
-.perf-scale { position: relative; display: block; height: 1.2em; margin: 0 14px; font-weight: 400; }
+.perf-scale { position: relative; display: block; height: 1.2em; margin: 0 26px; font-weight: 400; }
 .perf-scale span { position: absolute; transform: translateX(-50%); }
 .perf-detail > td { background: color-mix(in srgb, var(--chip) 35%, transparent); padding: 4px 8px 10px 28px; }
 .perf-responses { list-style: none; margin: 0; padding: 0; }

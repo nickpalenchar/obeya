@@ -155,3 +155,26 @@ export function trend(rows: PerformanceRow[]): { months: string[]; series: { key
   }
   return { months, series: series.filter((s) => s.points.length) };
 }
+
+const DAY = 86_400_000;
+/** The upper bounds in days of the ages a dot's size tells apart, the newest first; older than the last is the smallest. */
+export const AGES = [3, 7, 30, 60] as const;
+
+/** How old a response is, as one of five steps: 0 up to 3 days, 1 up to a week, 2 up to a month, 3 up to two months, 4 older. */
+export function ageStep(f: Feedback, now: number): number {
+  const days = (now - Date.parse(f.updatedAt ?? f.at)) / DAY;
+  const k = AGES.findIndex((d) => days <= d);
+  return k === -1 ? AGES.length : k;
+}
+
+/** Two numbers in [-1, 1] that stay the same for the same seed: where a dot lies in its cloud, the same at every render. */
+export function scatter(seed: number): [number, number] {
+  let s = (seed * 0x9e3779b1) >>> 0;
+  const next = () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let x = Math.imul(s ^ (s >>> 15), 1 | s);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return (((x ^ (x >>> 14)) >>> 0) / 4294967296) * 2 - 1;
+  };
+  return [next(), next()];
+}

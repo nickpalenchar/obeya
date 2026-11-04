@@ -5,7 +5,7 @@
 // averages. A row opens to its responses, each linking back to its card.
 
 import { createContext, Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { FEW, filterChoices, filterFeedback, performance, type PerformanceFilter, type PerformanceRow, stars, trend } from '../core/performance';
+import { ageStep, FEW, filterChoices, filterFeedback, performance, type PerformanceFilter, type PerformanceRow, scatter, stars, trend } from '../core/performance';
 import type { CanvasInfo, Feedback, WorkConfig } from '../core/types';
 import { cardPath } from './address';
 import { api } from './api';
@@ -206,6 +206,7 @@ export function PerformanceDialog({ on, onClose, canvases, here, onOpenCard }: P
         ) : (
           <p className="perf-legend">
             <span>{p.dotsHint}</span>
+            <DotSizes />
             <span>{p.fewHint(FEW)}</span>
           </p>
         )}
@@ -316,23 +317,49 @@ function Spread({ r }: { r: PerformanceRow }) {
 }
 
 /** Each of the row's ratings as a dot on the scale from 1 to 5 stars, the median as a line. */
+/** The diameter of a dot by its age step (`ageStep`), the newest largest. */
+const DOT_SIZE = [10, 8, 6, 4, 2.5];
+
+/**
+ * Each of the row's ratings as a dot on the scale from 1 to 5 stars, the median as a line. The dots
+ * of one rating scatter in a cloud around its point that grows with their number, and the newer a
+ * rating, the larger its dot.
+ */
 function Dots({ r }: { r: PerformanceRow }) {
   const label = t.performance.dotsLabel(r.ratings, r.median);
   if (!r.ratings.length) return <span className="hint">{t.performance.noRatings}</span>;
-  const seen = [0, 0, 0, 0, 0];
+  const now = Date.now();
   const at = (v: number) => `${((v - 1) / 4) * 100}%`;
+  const rated = r.responses.flatMap((f) => {
+    const v = stars(f.answer.rating);
+    return v === null ? [] : [{ f, v }];
+  });
+  // the oldest first, so newer dots lie on top
+  rated.sort((a, b) => (a.f.updatedAt ?? a.f.at).localeCompare(b.f.updatedAt ?? b.f.at));
   return (
     <span className="perf-dots" role="img" aria-label={label} title={label}>
       <span className="perf-axis" />
-      {r.ratings.map((v, k) => {
-        // the dots of one rating stand in columns of three around its point, each of them seen
-        const m = seen[v - 1]!++;
-        const cols = Math.ceil(r.counts[v - 1]! / 3);
-        const dx = (Math.floor(m / 3) - (cols - 1) / 2) * 7;
-        const dy = ((m % 3) - (Math.min(3, r.counts[v - 1]!) - 1) / 2) * 7;
-        return <i key={k} style={{ left: `calc(${at(v)} + ${dx}px)`, top: `calc(50% + ${dy}px)` }} />;
-      })}
       {r.median !== null && <b style={{ left: at(r.median) }} />}
+      {rated.map(({ f, v }) => {
+        const [jx, jy] = scatter(f.id);
+        const wide = Math.min(24, 7 + r.counts[v - 1]! * 2);
+        const size = DOT_SIZE[ageStep(f, now)]!;
+        return <i key={f.id} style={{ left: `calc(${at(v)} + ${(jx * wide).toFixed(1)}px)`, top: `calc(50% + ${(jy * 10).toFixed(1)}px)`, width: size, height: size, margin: -size / 2 }} />;
+      })}
+    </span>
+  );
+}
+
+/** The dots' sizes by age, for the legend. */
+function DotSizes() {
+  return (
+    <span className="perf-sizes">
+      {DOT_SIZE.map((size, k) => (
+        <span key={k}>
+          <i style={{ width: size, height: size }} />
+          {t.performance.ages[k]}
+        </span>
+      ))}
     </span>
   );
 }
