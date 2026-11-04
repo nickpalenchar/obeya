@@ -93,6 +93,13 @@ describe('.obeya/settings.json', () => {
     expect(parseShared('[]').problems).toEqual(['.obeya/settings.json holds no JSON object']);
   });
 
+  test('demo.artifacts names what a handover may bring; a list with neither video nor html does not count', () => {
+    expect(parseShared(JSON.stringify({ demo: { artifacts: ['html', 'schema'] } }))).toMatchObject({ settings: { demo: { artifacts: ['html', 'schema'] } }, problems: [] });
+    const none = parseShared(JSON.stringify({ demo: { artifacts: ['schema'] } }));
+    expect(none.settings).toEqual({});
+    expect(none.problems).toHaveLength(1);
+  });
+
   test('holds the app, the demo site and language; a field misspelt in them is named and the whole field does not count', () => {
     const app = { run: 'Start it with `bun dev`; the URL is in `.env` under URL.', stop: 'pkill -F .pid', keep: 'test -f .keep' };
     const site = { title: 'Demos', url: 'https://demos.example.dev', deploy: 'bunx wrangler pages deploy {dir}', env: 'sites/demos.env', headers: { 'X-Key': '${KEY}' } };

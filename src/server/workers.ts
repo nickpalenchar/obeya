@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { basename, isAbsolute } from 'node:path';
 import { type CardFile, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
 import { DEFAULT_DEMO_DIRECTORY, expandHome } from '../../plugin/skills/demo/lib/settings.ts';
+import { HANDOVER_ARTIFACTS, type HandoverArtifact } from '../../plugin/skills/demo/lib/artifacts.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { AGENT_DEFAULTS, type AgentSetting, answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, ownWords, pickedAnswer, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, SNOOZE_LIMIT, type Spot, type Superseded, type SpotInput, started } from '../core/types';
 import { BadRequest, type Board, replyNote, type Retracted, type StoredDemo, titleKey } from './board';
@@ -118,6 +119,8 @@ export interface WorkerOptions {
   env?: Record<string, string>;
   /** The narration language of the demo settings, for a repository that names none for its demos; the conversation language when left out. */
   demoLanguage?: () => Language;
+  /** The artifacts a handover may bring where the repository names none (the demo settings'); all when left out. */
+  demoArtifacts?: () => HandoverArtifact[] | undefined;
   /** The `Bash` rules of the allow list the owner confirmed for the repository `cwd` lies in: what a Codex worker's `obeya_run` runs without asking. None when left out. */
   allowRules?: (cwd: string) => string[];
   /**
@@ -4611,9 +4614,9 @@ export class Workers {
             .max(MAX_RESULT_FILES)
             .optional()
             .describe(
-              `the files ${this.folder ? 'in the folder' : 'of your branch'} that are the result for the owner (a document, a report, a spreadsheet, a page; not the code or configuration behind it), each with its path and a one-line caption in ${language}. The card shows them beside the demo: Markdown formatted, a PDF in the browser's viewer, any other file to open on the owner's computer. A page you rendered for review only lies in your demo's directory instead, named by its absolute path there.${this.folder || review ? '' : ' With data_models changed, the first file is the schema-change page the demo skill renders, with a caption.'} Without them, the ones named at your last handover stand.`,
+              `the files ${this.folder ? 'in the folder' : 'of your branch'} that are the result for the owner (a document, a report, a spreadsheet, a page; not the code or configuration behind it), each with its path and a one-line caption in ${language}. The card shows them beside the demo: Markdown formatted, a PDF in the browser's viewer, any other file to open on the owner's computer. A page you rendered for review only lies in your demo's directory instead, named by its absolute path there.${this.folder || review || !this.artifacts().includes('schema') ? '' : ' With data_models changed, the first file is the schema-change page the demo skill renders, with a caption.'} Without them, the ones named at your last handover stand.`,
             ),
-          ...(this.folder || review
+          ...(this.folder || review || !this.artifacts().includes('schema')
             ? {}
             : {
                 data_models: z
@@ -4646,7 +4649,7 @@ export class Workers {
                     undefined,
                     work && !this.folder ? await this.o.workspaces.changedFiles(cardId) : undefined,
                     // what the branch shows of a data-model change, unless the worker says it has one
-                    work && !this.folder && declared !== 'changed' ? dataModelSignals((await this.o.workspaces.diff(cardId, true))?.patch ?? '') : [],
+                    work && !this.folder && declared !== 'changed' && this.artifacts().includes('schema') ? dataModelSignals((await this.o.workspaces.diff(cardId, true))?.patch ?? '') : [],
                   ),
                 );
           const handOverNow = (
@@ -4683,11 +4686,13 @@ export class Workers {
             // in a folder without git the card's change list shows what changed, where often nothing can be shown on screen
             if (!d && !kept && !approved && !this.folder)
               return `Not handed over: every handover brings a demo${row.demo ? ' (the one you showed with your question is not one)' : ''}. Record it with ${this.demoSkill(cardId)}, or make an HTML artifact when the result is something to look at, then call ready_for_review again with it.`;
-            const models = review || this.folder || approved ? undefined : this.dataModels(cardId, declared, why, named, signals);
+            const models = review || this.folder || approved || !this.artifacts().includes('schema') ? undefined : this.dataModels(cardId, declared, why, named, signals);
             if (models && 'refused' in models) return models.refused;
             let demoJson: string | undefined;
             if (d) {
-              const kind = d.kind ?? 'video';
+              const allowed = this.artifacts();
+              const kind = d.kind ?? (allowed.includes('video') ? 'video' : 'html');
+              if (!allowed.includes(kind)) return `Not handed over: this repository's settings do not allow a ${kind === 'video' ? 'video' : 'HTML artifact'} as a demo here. Hand over ${kind === 'video' ? "an HTML artifact (kind 'html')" : 'a video'} instead, then call ready_for_review again.`;
               // what the worker says of it beside the demo before, for the owner's buttons when the page shows that one
               const report = { ...(d.question?.text.trim() ? demoQuestion(d.question) : {}), ...(row.demo && (d.follows === 'replaces' || d.follows === 'supplements') ? { follows: d.follows } : {}) };
               const tags = vocabulary.length && d.page?.tags && typeof d.page.tags === 'object' ? (d.page.tags as PageTags) : undefined;
@@ -5095,6 +5100,11 @@ export class Workers {
 
   // ---------------------------------------------------------------- prompts
 
+  /** What a handover on this repository may bring (design: Handover artifacts): its settings', else the demo settings', else everything. */
+  private artifacts(): readonly HandoverArtifact[] {
+    return this.o.adapter.demo?.artifacts ?? this.o.demoArtifacts?.() ?? HANDOVER_ARTIFACTS;
+  }
+
   /** The language of the card's demos (design: Language): the repository's, else the demo settings' narration language. */
   private demoLanguage(): Language {
     return this.o.adapter.demo?.language ?? this.o.demoLanguage?.() ?? this.o.board.conversation();
@@ -5233,6 +5243,7 @@ ${idea.idea.brief}` : '',
         `The agent harnesses that can work on this machine, for the allow list the skill \`obeya:settings\` drafts: ${harnesses.join(', ')}.${harnesses.length > 1 ? ' Ask the owner which of them to set it up for, with each one as an option, in the question the skill has you ask.' : ''}`,
       );
     }
+    const allowed = this.artifacts();
     const { run, stop } = this.o.adapter.app ?? {};
     const parking = stop ? ' While the card waits for the owner, Obeya stops the app in your workspace; your next message then says so.' : '';
     const far = hostName(this.o.board.row(card.id).workspace) ? " (this workspace is on another machine: Obeya forwards that address's port, and only that one, to the owner's)" : '';
@@ -5243,11 +5254,23 @@ ${idea.idea.brief}` : '',
     parts.push(
       [
         `Then show the owner the result with a demo, so they can judge at a glance whether the work is done, and hand it over with ready_for_review.`,
-        `Usually that is a video of the change, recorded with ${this.demoSkill(card.id)} as its instructions say (directory, chapter titles). Its length follows the size of the change, never padded: 30–60 s for a small one (a fix: the broken behaviour, then the fixed one), 1½–3 min for a larger one. Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card.${this.shares ? ` The owner may share the demo, a video or an HTML artifact, with colleagues of the team on a page of its own: hand it over with that page (title, text${dimensions(this.o.adapter.demo?.site?.tags).length ? ', tags' : ''}), written for them.` : ''} ${run?.trim() ? 'Run the app for it as the recipe above says.' : "The repository's settings say nothing yet about how to run the app: find it out from the repository (README, scripts, configuration) and say in your summary how you ran it."}`,
-        `When the result is something to look at rather than something that happens (drafts of a logo or a layout side by side, a comparison of variants, an analysis, an answer), make an HTML artifact instead: an index.html in a new directory under ${this.demosDir(card.id)} (never in git), self-contained or with the files it loads beside it, made for the owner to decide on, and hand it over with kind 'html' (drafts the owner is to choose from before you go on come with ask's demo instead). It shows in a sandboxed frame on the card, about 800 px wide, without Obeya's API.`,
-        'Where either would do, record the video: watching the work happen is what the owner enjoys most.',
+        ...(allowed.includes('video')
+          ? [
+              `${allowed.includes('html') ? 'Usually that is a video' : 'That is a video'} of the change, recorded with ${this.demoSkill(card.id)} as its instructions say (directory, chapter titles). Its length follows the size of the change, never padded: 30–60 s for a small one (a fix: the broken behaviour, then the fixed one), 1½–3 min for a larger one. Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card.${this.shares ? ` The owner may share the demo, a video or an HTML artifact, with colleagues of the team on a page of its own: hand it over with that page (title, text${dimensions(this.o.adapter.demo?.site?.tags).length ? ', tags' : ''}), written for them.` : ''} ${run?.trim() ? 'Run the app for it as the recipe above says.' : "The repository's settings say nothing yet about how to run the app: find it out from the repository (README, scripts, configuration) and say in your summary how you ran it."}`,
+            ]
+          : [`This repository's settings allow no video as a demo: make an HTML artifact${this.shares ? ', and hand it over with the page (title, text) the owner may share with colleagues of the team, written for them' : ''}. ${run?.trim() ? 'Run the app as the recipe above says, where the artifact shows it.' : "The repository's settings say nothing yet about how to run the app: find it out from the repository (README, scripts, configuration) and say in your summary how you ran it."}`]),
+        ...(allowed.includes('html')
+          ? [
+              `${allowed.includes('video') ? 'When the result is something to look at rather than something that happens (drafts of a logo or a layout side by side, a comparison of variants, an analysis, an answer), make an HTML artifact instead' : 'The artifact is a page to look at (screenshots of the change among them), also for drafts, comparisons, an analysis or an answer'}: an index.html in a new directory under ${this.demosDir(card.id)} (never in git), self-contained or with the files it loads beside it, made for the owner to decide on, and hand it over with kind 'html' (drafts the owner is to choose from before you go on come with ask's demo instead). It shows in a sandboxed frame on the card, about 800 px wide, without Obeya's API.`,
+            ]
+          : []),
+        ...(allowed.includes('video') && allowed.includes('html') ? ['Where either would do, record the video: watching the work happen is what the owner enjoys most.'] : []),
         "Where the work itself is a file for the owner (a document, a report, a spreadsheet in the repository), name it in ready_for_review's files: the card shows it beside the demo.",
-        `Where your change alters the data the app persists (tables, columns, indexes, relations, migrations, ORM models; not API types or config schemas), the owner also gets a schema-change page beside the demo, a video or an HTML artifact alike: render it as ${this.demoSkill(card.id)}'s section "A change to persisted data models" says, and name it first in ready_for_review's files, with data_models 'changed'.`,
+        ...(allowed.includes('schema')
+          ? [
+              `Where your change alters the data the app persists (tables, columns, indexes, relations, migrations, ORM models; not API types or config schemas), the owner also gets a schema-change page beside the demo, a video or an HTML artifact alike: render it as ${this.demoSkill(card.id)}'s section "A change to persisted data models" says, and name it first in ready_for_review's files, with data_models 'changed'.`,
+            ]
+          : []),
       ].join(' '),
     );
     return parts.join('\n\n');

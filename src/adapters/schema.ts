@@ -7,6 +7,7 @@
 import { z } from 'zod';
 import { serverExtensions as extensions } from '../extensions/server';
 import { LANGUAGES } from '../core/locale';
+import { allowsDemo, HANDOVER_ARTIFACTS } from '../../plugin/skills/demo/lib/artifacts.ts';
 import type { SharedSettings } from '../core/types';
 
 const strings = z.array(z.string());
@@ -32,7 +33,9 @@ const site = z
     tags: z.record(z.string().trim().min(1), z.array(z.string().trim().min(1))).optional(),
   })
   .strict();
-const demo = z.object({ site: site.optional(), language: z.enum(LANGUAGES).optional() }).strict();
+// a handover brings a demo, a video or an HTML artifact: a list with neither would allow none
+const artifacts = z.array(z.enum(HANDOVER_ARTIFACTS)).refine(allowsDemo, 'at least video or html');
+const demo = z.object({ site: site.optional(), language: z.enum(LANGUAGES).optional(), artifacts: artifacts.optional() }).strict();
 const app = z.object({ run: z.string().optional(), stop: z.string().optional(), keep: z.string().optional() }).strict();
 
 /** What a repository's settings for this machine may hold (`RepoSettings`): how it works, and its main branch. */

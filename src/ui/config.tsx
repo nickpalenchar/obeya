@@ -6,7 +6,8 @@
 
 import { type CSSProperties, Fragment, type ReactNode, useContext, useEffect, useId, useRef, useState } from 'react';
 import { OpenPerformance } from './performance';
-import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type CodexModel, type AgentsView, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type FeedbackPromptView, type NotificationsView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
+import { allowsDemo, HANDOVER_ARTIFACTS } from '../../plugin/skills/demo/lib/artifacts.ts';
+import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type CodexModel, type AgentsView, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type HandoverArtifact, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type FeedbackPromptView, type NotificationsView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
 import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { LANGUAGES } from '../core/locale';
@@ -1000,6 +1001,26 @@ function AgentsBlock({ on }: { on: boolean }) {
   );
 }
 
+/** The checkboxes for what a handover may bring; the last of video and HTML stays on, since every handover brings a demo. */
+function ArtifactChecks({ value, onChange }: { value: HandoverArtifact[]; onChange: (v: HandoverArtifact[]) => void }) {
+  const names = t.config.demo.artifactNames;
+  return (
+    <div className="cfg-sub">
+      {HANDOVER_ARTIFACTS.map((a) => (
+        <label key={a} className="check">
+          <input
+            type="checkbox"
+            checked={value.includes(a)}
+            disabled={value.includes(a) && value.length - 1 > 0 && !allowsDemo(value.filter((x) => x !== a))}
+            onChange={(e) => onChange(HANDOVER_ARTIFACTS.filter((x) => (x === a ? e.target.checked : value.includes(x))))}
+          />{' '}
+          {names[a]}
+        </label>
+      ))}
+    </div>
+  );
+}
+
 /** How demos are narrated: saved on their own, read by the next render, so nothing restarts. */
 function DemoBlock({ on }: { on: boolean }) {
   const [view, setView] = useState<DemoSettingsView | null>(null);
@@ -1117,13 +1138,16 @@ function DemoBlock({ on }: { on: boolean }) {
               ))}
             </select>
           </Field>
+          <Field label={d.artifactsLabel} hint={d.artifactsHint}>
+            <ArtifactChecks value={draft.artifacts ?? [...HANDOVER_ARTIFACTS]} onChange={(v) => set('artifacts', v.length === HANDOVER_ARTIFACTS.length ? undefined : v)} />
+          </Field>
           <Field label={d.voice} hint={d.about[draft.voice]}>
             <select
               aria-label={d.voice}
               value={draft.voice}
               // another voice starts with its own fields, and is nobody's own until ticked; directory and frames stay
               onChange={(e) =>
-                setDraft({ language: draft.language, voice: e.target.value as VoiceKind, ...(draft.directory ? { directory: draft.directory } : {}), ...(draft.keepFrames ? { keepFrames: draft.keepFrames } : {}) })
+                setDraft({ language: draft.language, voice: e.target.value as VoiceKind, ...(draft.directory ? { directory: draft.directory } : {}), ...(draft.keepFrames ? { keepFrames: draft.keepFrames } : {}), ...(draft.artifacts ? { artifacts: draft.artifacts } : {}) })
               }
             >
               {VOICE_GROUPS.map(({ group, voices }) => (
@@ -1929,11 +1953,12 @@ function RepoRow({ repo, home, resolved, canvasId, problems, focus, where, ask, 
  * The settings of a repository, set on this machine (`RepoSettings`); those of `app` and `demo` each
  * on its own, `demo.language` as `demoLanguage` beside the repository's own `language`.
  */
-type SettingKey = Exclude<keyof RepoSettings, NestedSetting> | 'run' | 'stop' | 'keep' | 'site' | 'demoLanguage';
+type SettingKey = Exclude<keyof RepoSettings, NestedSetting> | 'run' | 'stop' | 'keep' | 'site' | 'demoLanguage' | 'artifacts';
 
 /** The setting of `app` or `demo` that holds `k`, and its field there, if one does. */
 function nestedOf(k: SettingKey): [NestedSetting, string] | undefined {
   if (k === 'demoLanguage') return ['demo', 'language'];
+  if (k === 'artifacts') return ['demo', 'artifacts'];
   if (k === 'language') return undefined;
   const n = (Object.keys(NESTED_SETTINGS) as NestedSetting[]).find((n) => (NESTED_SETTINGS[n] as readonly string[]).includes(k));
   return n && [n, k];
@@ -1980,7 +2005,7 @@ function RepoSettingsBlock({
   const c = t.config.settings;
   const s = repo.settings ?? {};
   const { app: _, demo: __, ...flat } = values;
-  const base: Record<SettingKey, SettingValue<unknown>> = { ...flat, ...values.app, site: values.demo.site, demoLanguage: values.demo.language };
+  const base: Record<SettingKey, SettingValue<unknown>> = { ...flat, ...values.app, site: values.demo.site, demoLanguage: values.demo.language, artifacts: values.demo.artifacts };
   const own = (k: SettingKey): unknown => {
     const n = nestedOf(k);
     return n ? (s[n[0]] as Record<string, unknown> | undefined)?.[n[1]] : s[k as keyof RepoSettings];
@@ -2026,6 +2051,7 @@ function RepoSettingsBlock({
   const planDocs = value<{ dir: string; exclude: string[] }>('planDocs');
   const language = value<Language>('language');
   const demoLanguage = value<NarrationLanguage | null>('demoLanguage');
+  const artifacts = value<HandoverArtifact[]>('artifacts');
   const site = value<DemoSite | null>('site') ?? { title: '', url: '', deploy: '' };
   const setSite = (patch: Partial<DemoSite>) => set('site', { ...site, ...patch });
   // a repository without a site: Obeya sets one up; the fields are for another host, entered by hand
@@ -2126,6 +2152,7 @@ function RepoSettingsBlock({
           </div>,
           c.demoLanguageHint,
         )}
+        {row('artifacts', c.artifacts, <ArtifactChecks value={artifacts} onChange={(v) => set('artifacts', v)} />, c.artifactsHint)}
         {row(
           'site',
           c.site,

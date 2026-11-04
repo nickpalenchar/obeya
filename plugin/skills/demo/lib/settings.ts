@@ -15,6 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { isMain } from './here.ts';
 import { conversationLanguageIn } from './language.ts';
+import { allowsDemo, HANDOVER_ARTIFACTS, type HandoverArtifact } from './artifacts.ts';
 import { type Language, LANGUAGE_NAMES, LANGUAGES } from './locale.ts';
 
 /** The language a demo is narrated in: one Obeya speaks. */
@@ -60,6 +61,11 @@ export interface DemoSettings {
    * which only re-voicing needs; `always` keeps them. Left out: Obeya's default (see `demo-space.ts`).
    */
   keepFrames?: number | 'always';
+  /**
+   * Which artifacts a handover may bring on this machine, for every repository that names none
+   * (`demo.artifacts` of its settings); all of `HANDOVER_ARTIFACTS` when left out.
+   */
+  artifacts?: HandoverArtifact[];
 }
 
 export const DEFAULT_DEMO_SETTINGS: DemoSettings = { language: 'de', voice: 'piper' };
@@ -102,7 +108,16 @@ export function tidyDemoSettings(input: unknown, fallbackLanguage: NarrationLang
   const references = Object.fromEntries(LANGUAGES.flatMap((l) => (str(given[l]) ? [[l, str(given[l])]] : [])));
   if (Object.keys(references).length) out.references = references;
   if (o.keepFrames === 'always' || (typeof o.keepFrames === 'number' && Number.isInteger(o.keepFrames) && o.keepFrames > 0)) out.keepFrames = o.keepFrames;
+  const artifacts = tidyArtifacts(o.artifacts);
+  if (artifacts) out.artifacts = artifacts;
   return out;
+}
+
+/** The artifacts of a list that are known, once each in their order; none where the list leaves no demo possible. */
+export function tidyArtifacts(v: unknown): HandoverArtifact[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const list = HANDOVER_ARTIFACTS.filter((a) => v.includes(a));
+  return allowsDemo(list) ? list : undefined;
 }
 
 /** The clip a Qwen3 voice clones for the narration language of these settings; none: a speaker. */

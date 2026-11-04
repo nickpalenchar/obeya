@@ -162,7 +162,7 @@ Each of the three is a setting of its own: this machine may set one and leave th
 repository. `stop` and `keep` from the file run only once you trusted them (see Commands you trust).
 Default: none.
 
-### `demo` — `{ language?, site? }`
+### `demo` — `{ language?, site?, artifacts? }`
 
 Demos: every handover brings one, a narrated video recorded with Obeya's demo skill or an HTML
 page for something to look at; the worker picks which, and runs the app for it as `app.run` says.
@@ -173,6 +173,11 @@ page for something to look at; the worker picks which, and runs the app for it a
   gives it to its workers as `DEMO_LANGUAGE`, which the demo skill reads; a session without Obeya
   finds it in the repository's `.obeya/settings.json`. A voice that clones a clip uses the clip of
   this language, so each machine's demo settings name one per language.
+
+- `artifacts`: which artifacts a handover may bring, a list of `"video"`, `"html"` (an HTML page,
+  screenshots included) and `"schema"` (the schema-change page for changes to persisted data). It
+  must hold `video` or `html`. It goes before the list in each machine's demo settings
+  (Konfiguration → Demos); without either, all three. Default: all.
 
 - `site`: a static site Obeya keeps and deploys itself, so that "Teilen" puts a demo on a page for
   colleagues, for a host that takes a directory (Cloudflare Pages, Netlify, an S3 bucket, a

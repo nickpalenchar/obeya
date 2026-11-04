@@ -519,6 +519,17 @@ they look at. A demo whose directory a later one reused, or whose files are gone
 comment on a place keeps its demo: a click shows that demo, and the worker hears it as about the
 earlier video.
 
+#### Handover artifacts
+
+What a handover may bring is configurable: `video` (a narrated demo), `html` (an HTML artifact,
+screenshots among them) and `schema` (the schema-change page below). `demo.artifacts` of a
+repository's settings lists the allowed ones; without it the list in the machine's demo settings
+(`demo.json`, „Übergabe-Ergebnisse“ in the Demos section) applies, and without that all three. A
+list must hold `video` or `html`, since every handover brings a demo; one that does not is a
+problem of the settings and does not count. The worker's brief, the `ready_for_review` tool and its
+checks follow the list: a kind not allowed is refused at the handover; without `schema` the brief
+names no schema page, the tool has no `data_models`, and the data-model tripwire does not run.
+
 #### A change to persisted data models
 
 A change that alters the data its project persists (tables, columns, indexes, relations,

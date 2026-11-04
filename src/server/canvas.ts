@@ -14,6 +14,7 @@ import { repoName } from '../adapters/generic';
 import type { DemoSite, RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
+import type { HandoverArtifact } from '../../plugin/skills/demo/lib/artifacts.ts';
 import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, type AgentSetting, buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, untouched, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, SNOOZE_LIMIT, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup } from '../core/types';
 import { startAgentSetting } from './settings';
 import { asksAhead, holdsNotes } from '../core/queue';
@@ -732,7 +733,7 @@ export class CanvasRuntime {
       if (read && !this.shared.has(path)) this.shared.set(path, read.shared);
       if (read) this.adapterModules.set(path, read.adapterModule);
       return read;
-    });
+    }, () => readDemoSettings(this.deps.home).artifacts);
   }
 
   /** Registers where the main branch the owner set for the repository is read, once per path. */
@@ -904,6 +905,7 @@ export class CanvasRuntime {
       ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
       ...(deps.workerEnv ? { env: deps.workerEnv } : {}),
       demoLanguage: () => readDemoSettings(deps.home).language,
+      demoArtifacts: () => readDemoSettings(deps.home).artifacts,
       demoDirectory: () => demoDirectory(readDemoSettings(deps.home)),
       ...(deps.parkGrace !== undefined ? { parkGrace: deps.parkGrace } : {}),
     });
@@ -2970,6 +2972,8 @@ export function resolveCanvas(
   settings: (r: RepoConfig) => () => RepoSettings | undefined = (r) => () => r.settings,
   shared?: (path: string) => () => SharedSettings | undefined,
   read: (path: string, folder: boolean) => RepoRead | null = readRepo,
+  /** What a handover may bring where a repository names nothing: the demo settings' list. */
+  artifacts?: () => HandoverArtifact[] | undefined,
 ) {
   if (!config.repos.length) throw new ConfigError('noRepo', 'a canvas needs at least one repository');
   const reads = config.repos.map((r, i) => {
@@ -3008,7 +3012,7 @@ export function resolveCanvas(
     config: { ...config, repos: repos.map((x) => x.config) },
     id,
     name,
-    repos: repos.map((x, i) => ({ ...x, ref: refs[i]!, values: () => repoValues(x.read.info, namesClones(x.config, x.read.info, { land: x.adapter.land }), sharedOf(x.read.info.path)() ?? {}, x.read.detected) })),
+    repos: repos.map((x, i) => ({ ...x, ref: refs[i]!, values: () => repoValues(x.read.info, namesClones(x.config, x.read.info, { land: x.adapter.land }), sharedOf(x.read.info.path)() ?? {}, x.read.detected, artifacts?.()) })),
     stored,
   };
 }

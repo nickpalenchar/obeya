@@ -1,6 +1,7 @@
 // Shapes shared by the server and the UI.
 
 import type { DemoSettings, NarrationLanguage, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
+import type { HandoverArtifact } from '../../plugin/skills/demo/lib/artifacts.ts';
 import type { SetupId, SetupItem } from '../../plugin/skills/demo/lib/setup.ts';
 import type { CardFile } from './files';
 import type { Category, Complexity, Label, Priority, Subcategory } from './labels';
@@ -11,6 +12,7 @@ import type { NotAProject } from './plan-doc';
 import type { Wish } from './wish';
 
 export type { DemoSettings, NarrationLanguage, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
+export type { HandoverArtifact } from '../../plugin/skills/demo/lib/artifacts.ts';
 export type { Language } from './locale';
 export { PRIORITIES, type Priority } from './labels';
 export type { SetupCheck, SetupId, SetupItem } from '../../plugin/skills/demo/lib/setup.ts';
@@ -2109,9 +2111,10 @@ export interface RepoSettings {
    * `site`: the static site Obeya keeps and deploys itself to share demos on (`src/server/site.ts`);
    * without one, "Teilen" exports a demo as a file. `language`: the language of the repository's
    * demos (narration, captions, report, shared pages) and of its site's overview, over the one of
-   * the demo settings (`demo.json`), which applies without it.
+   * the demo settings (`demo.json`), which applies without it. `artifacts`: what a handover on this
+   * repository may bring (`HANDOVER_ARTIFACTS`), over the demo settings' list, which applies without it.
    */
-  demo?: { site?: DemoSite; language?: NarrationLanguage };
+  demo?: { site?: DemoSite; language?: NarrationLanguage; artifacts?: HandoverArtifact[] };
 }
 
 /**
@@ -2128,7 +2131,7 @@ export type CardLanding = Partial<Pick<RepoSettings, 'land' | 'direct'>>;
 export const SHARED_FIELDS = ['land', 'direct', 'autoMerge', 'checks', 'setup', 'planDocs', 'softPaths', 'workspaces', 'prNoise', 'language', 'app', 'demo'] as const satisfies readonly (keyof SharedSettings)[];
 
 /** The settings made of fields that are each set, layered and taken over on their own, and their fields. */
-export const NESTED_SETTINGS = { app: ['run', 'stop', 'keep'], demo: ['site', 'language'] } as const satisfies { [K in keyof RepoSettings]?: readonly (keyof NonNullable<RepoSettings[K]>)[] };
+export const NESTED_SETTINGS = { app: ['run', 'stop', 'keep'], demo: ['site', 'language', 'artifacts'] } as const satisfies { [K in keyof RepoSettings]?: readonly (keyof NonNullable<RepoSettings[K]>)[] };
 export type NestedSetting = keyof typeof NESTED_SETTINGS;
 export const isNested = (field: string): field is NestedSetting => field in NESTED_SETTINGS;
 
@@ -2212,7 +2215,7 @@ export interface RepoValues {
   prNoise: SettingValue<string[]>;
   language: SettingValue<Language>;
   app: { run: SettingValue<string>; stop: SettingValue<string>; keep: SettingValue<string> };
-  demo: { site: SettingValue<DemoSite | null>; language: SettingValue<NarrationLanguage | null> };
+  demo: { site: SettingValue<DemoSite | null>; language: SettingValue<NarrationLanguage | null>; artifacts: SettingValue<HandoverArtifact[]> };
 }
 
 /**

@@ -231,7 +231,7 @@ the configuration dialog, which also holds the main branch. The reference for ev
 
 The fields: `land`, `direct`, `autoMerge`, `checks`, `setup`, `planDocs`, `softPaths`, `workspaces`,
 `prNoise`, `language` (see Language), `app` (`run`, `stop`, `keep`) and `demo` (`language`, `site`:
-see Static sites). Only what Obeya itself acts on is a command: `stop` and `keep` park a waiting card
+see Static sites; `artifacts`: see Handover artifacts). Only what Obeya itself acts on is a command: `stop` and `keep` park a waiting card
 (see Parking). `run` is prose, for any kind of app (a web app, a CLI, a desktop or mobile app):
 every worker's brief has it word for word. Obeya neither starts the app nor looks for its address;
 the agents do, and a worker reports the address once the app runs (see Trying the app by hand). Each

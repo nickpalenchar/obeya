@@ -1,7 +1,8 @@
 import { serverExtensions as extensions } from '../extensions/server';
 import { defaultBranchCommit } from '../server/read-tree';
 import { onGitHub } from '../server/repo';
-import { type ClaudeFile, isNested, SHARED_FIELDS, type NESTED_SETTINGS, type NestedSetting, type RepoSettings, type RepoValues, type SharedSettings } from '../core/types';
+import { HANDOVER_ARTIFACTS } from '../../plugin/skills/demo/lib/artifacts.ts';
+import { type ClaudeFile, type HandoverArtifact, isNested, SHARED_FIELDS, type NESTED_SETTINGS, type NestedSetting, type RepoSettings, type RepoValues, type SharedSettings } from '../core/types';
 import { detectedBranch, type GitSteps, gitStepsSync, isFolder } from '../server/workspaces';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -53,7 +54,7 @@ export function withSettings(a: RepoAdapter, settings: () => RepoSettings | unde
  * The repository's settings as they stand without this machine's, with where each comes from: its
  * `.obeya/settings.json` (`shared`), the clones the configuration names, detection, the defaults.
  */
-export function repoValues(repo: RepoInfo, clones = false, shared: SharedSettings = {}, detected = detectedBranch(repo.path)): RepoValues {
+export function repoValues(repo: RepoInfo, clones = false, shared: SharedSettings = {}, detected = detectedBranch(repo.path), artifacts: HandoverArtifact[] = [...HANDOVER_ARTIFACTS]): RepoValues {
   const a = defaultsFor(repo);
   const value = <K extends Exclude<keyof SharedSettings, NestedSetting>, T>(v: T, field: K) =>
     shared[field] !== undefined ? { value: shared[field] as T, source: 'repository' as const } : { value: v, source: field === 'land' ? ('detected' as const) : ('default' as const) };
@@ -80,7 +81,7 @@ export function repoValues(repo: RepoInfo, clones = false, shared: SharedSetting
     prNoise: value(a.prNoise ?? [], 'prNoise'),
     language: value(a.language, 'language'),
     app: { run: nested('app', 'run', ''), stop: nested('app', 'stop', ''), keep: nested('app', 'keep', '') },
-    demo: { site: nested('demo', 'site', null), language: nested('demo', 'language', null) },
+    demo: { site: nested('demo', 'site', null), language: nested('demo', 'language', null), artifacts: nested('demo', 'artifacts', artifacts) },
   };
 }
 

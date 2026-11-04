@@ -293,6 +293,30 @@ describe('handing over with a demo', () => {
     expect(runtime.last.inbox[0]).toContain('an index.html in a new directory under /opt/work/demos (never in git)');
   });
 
+  test('the artifacts a handover may bring: the repository\'s list, else the demo settings\', else all; the brief and the handover follow', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    expect(runtime.last.inbox[0]).toContain('schema-change page');
+    rmSync(dir, { recursive: true, force: true });
+    // the demo settings allow HTML and nothing else
+    setup({ ...generic, land: 'main', workspaces: 'clones' });
+    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, demoArtifacts: () => ['html'] }));
+    const h = manual();
+    await workers.start(h.id);
+    const brief = runtime.last.inbox[0]!;
+    expect(brief).toContain('allow no video as a demo');
+    expect(brief).not.toContain('schema-change page');
+    expect(await runtime.last.call('ready_for_review', { summary: 'S', demo: { ...artifact(), kind: 'video' } })).toContain('do not allow a video');
+    expect(await runtime.last.call('ready_for_review', { summary: 'S', demo: { ...artifact(), kind: 'html' } })).toContain('Recorded');
+    rmSync(dir, { recursive: true, force: true });
+    // the repository's own list goes before the machine's
+    setup({ ...generic, land: 'main', workspaces: 'clones' });
+    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones', demo: { artifacts: ['video'] } }, demoArtifacts: () => ['html'] }));
+    await workers.start(manual().id);
+    expect(runtime.last.inbox[0]).not.toContain('make an HTML artifact instead');
+    expect(await runtime.last.call('ready_for_review', { summary: 'S', demo: { ...artifact(), kind: 'html' } })).toContain('do not allow a HTML artifact'.replace('a HTML', 'an HTML'));
+  });
+
   test('the card waits with the demo; its files are found; words under it answer its question and leave the demo', async () => {
     const c = manual();
     await workers.start(c.id);
