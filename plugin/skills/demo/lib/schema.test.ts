@@ -106,11 +106,14 @@ describe('the schema-change page', () => {
     // references run from left to right: the referring entities in the first column
     expect(columns(cut(diffModels(change.before, change.after))).map((c) => c.map((s) => s.entity.name))).toEqual([['sessions'], ['cards', 'users']]);
     // an affected entity with many unchanged fields shows its keys, references and changes, the rest counted
-    const wide: Entity = { name: 'wide', fields: [{ name: 'id', type: 'TEXT', pk: true }, ...Array.from({ length: 20 }, (_, i) => ({ name: `c${i}`, type: 'TEXT' }))] };
+    const wide: Entity = { name: 'wide', fields: [{ name: 'id', type: 'TEXT', pk: true }, { name: 'parent_id', type: 'TEXT', ref: 'wide.id' }, ...Array.from({ length: 19 }, (_, i) => ({ name: `c${i}`, type: 'TEXT' }))] };
     const page = renderSchemaPage({ sources: [], before: { entities: [wide] }, after: { entities: [{ ...wide, fields: [...wide.fields, { name: 'extra', type: 'TEXT' }] }] } });
     expect(page).toContain('data-field="extra"');
     expect(page).not.toContain('data-field="c5"');
     expect(page).toContain('20 more fields unchanged');
+    // nor does a reference to itself the change leaves alone get a line
+    expect(page).not.toContain('data-field="parent_id"');
+    expect(page).toContain('<script type="application/json" id="relations">[]</script>');
   });
 
   test('without a change to the models, the page says so', () => {

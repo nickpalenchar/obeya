@@ -220,10 +220,11 @@ function fieldRow(entity: string, f: FieldDiff): string {
   return `<li class="field ${f.status}" data-entity="${esc(entity)}" data-field="${esc(f.name)}"${title}><span class="sign">${SIGN[f.status]}</span><span class="fname mono">${f.was ? `<s>${esc(f.was)}</s> ` : ''}${esc(f.name)}</span><span class="ftype mono">${ty}</span>${badges}${ref}</li>`;
 }
 
-function entityBox(e: EntityDiff, neighbour: boolean, focus: Set<string>): string {
+function entityBox(e: EntityDiff, neighbour: boolean, focus: Set<string>, drawn: Set<string>): string {
   let fields = e.fields;
   let hidden = 0;
-  const kept = (f: FieldDiff) => f.status !== 'same' || f.field.pk || (f.field.ref && (!neighbour || focus.has(refEntity(f.field.ref))));
+  // of a wide entity: its keys, what changed, and references to another entity drawn
+  const kept = (f: FieldDiff) => f.status !== 'same' || f.field.pk || (f.field.ref && refEntity(f.field.ref) !== e.name && drawn.has(refEntity(f.field.ref)));
   if (neighbour) {
     fields = e.fields.filter((f) => f.field.pk || (f.field.ref && focus.has(refEntity(f.field.ref))));
     hidden = e.fields.length - fields.length;
@@ -286,6 +287,8 @@ function relations(shown: EntityDiff[]): { from: [string, string]; to: [string, 
       if (!ref) continue;
       const [target, field] = [refEntity(ref), ref.includes('.') ? ref.slice(ref.indexOf('.') + 1) : null];
       if (!names.has(target)) continue;
+      // a reference of the entity to itself that the change leaves alone says nothing about it
+      if (target === e.name && f.status === 'same' && f.before?.ref === ref) continue;
       const status: Status = f.status === 'added' || f.status === 'removed' ? f.status : f.before?.ref !== ref ? 'added' : e.status === 'removed' ? 'removed' : 'same';
       out.push({ from: [e.name, f.name], to: [target, field], status });
     }
@@ -423,7 +426,7 @@ export function renderSchemaPage(input: SchemaChange): string {
     ? `<p class="sub">${touched} ${touched === 1 ? 'entity' : 'entities'} changed${neighbours ? ` · ${neighbours} related ${neighbours === 1 ? 'entity' : 'entities'} shown for context` : ''}</p>
 <div class="legend"><span class="added">added</span><span class="changed">changed</span><span class="removed">removed</span>${neighbours ? '<span class="same">related, unchanged</span>' : ''}</div>
 <div class="diagram"><svg aria-hidden="true"><defs>${marker('added', 'var(--add)')}${marker('removed', 'var(--del)')}${marker('same', 'var(--muted)')}${marker('changed', 'var(--chg)')}</defs></svg>
-${columns(shown).map((col) => `<div class="column">${col.map((s) => entityBox(s.entity, s.neighbour, focus)).join('\n')}</div>`).join('\n')}
+${columns(shown).map((col) => `<div class="column">${col.map((s) => entityBox(s.entity, s.neighbour, focus, new Set(shown.map((x) => x.entity.name)))).join('\n')}</div>`).join('\n')}
 </div>
 <h2>Changes</h2>
 <ul class="changes">${changes.map((c) => `<li class="${c.status}">${c.html}</li>`).join('')}</ul>`
