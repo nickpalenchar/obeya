@@ -19,7 +19,7 @@ import { Branch } from './diff';
 import { ResultFiles } from './files';
 import { DiscardChanges, FolderBox, FolderLine, useFolderDiff } from './folder';
 import { PriorityMark, PriorityPick } from './priority';
-import { CardFace, cardClass, landedRef, PauseMark, PlayMark, shownTitle } from './parts';
+import { asksYou, CardFace, cardClass, landedRef, PauseMark, PlayMark, QuestionMark, shownTitle } from './parts';
 import { asksAhead, holdsNotes } from '../core/queue';
 import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitText, type Behind } from './queue';
 import { dimensions, shownTags } from '../core/page-tags';
@@ -450,7 +450,7 @@ export function Detail(p: Props) {
       <KindLine kind={kind} item={item} />
       {editable ? <ManualTitle item={item} onEdit={p.onEdit} /> : <div className="p-title">{shownTitle(item)}</div>}
       <div className={['p-state', finishingUp(item) && 'finishing', (item.paused || item.snoozed) && 'paused'].filter(Boolean).join(' ')}>
-        ● {stateLabel(item)}
+        {asksYou(item) ? <QuestionMark /> : '●'} {stateLabel(item)}
         {item.snoozed ? (
           <span className="p-status"> · {snoozeWho(item.snoozed)}</span>
         ) : (

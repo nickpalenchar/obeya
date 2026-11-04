@@ -289,7 +289,10 @@ Index cards pinned to a wall, so that nobody takes Obeya for the stock AI-genera
   the text above it. Under the pointer a
   card lifts; dragged, it tilts as if held. "At work" is a pencil stroke drawn again and again.
 - *Inks*: planned pencil grey, working clear blue, waiting for the owner strong orange (also every
-  count of what waits), approved yellow-green, in PR petrol, proposal violet, idea madder red, live
+  count of what waits; a card whose agent asks the owner a question keeps the orange frame and pin,
+  but its state line, on the canvas and in the open card, reads „Frage an dich“ in dark yellow after
+  a question-mark icon, so a question stands out from a demo or review to approve, owner
+  2026-11-03), approved yellow-green, in PR petrol, proposal violet, idea madder red, live
   and done faded. Dark mode is black stock and white pencil with inks as far apart: blue and green
   never confusable, orange the loudest.
 - *Light or dark*: as the system until the owner picks Hell or Dunkel (or the system again) in Konfiguration (`theme` in

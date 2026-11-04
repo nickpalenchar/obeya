@@ -26,7 +26,19 @@ const firstLine = (md: string) =>
 /** What of a workstream planned again has landed: its pull request, else its commit. */
 /** The state whose colour an open card wears: a demo whose worker takes in the owner's answer is at work. */
 /** The colour a card's state gives its unfolded sheet: a snoozed card's is pencil grey, as on the canvas. */
-export const shownState = (i: Item) => (i.snoozed ? 'muted' : i.kind === 'question' ? 'question' : answering(i) ? 'working' : i.state);
+export const shownState = (i: Item) => (i.snoozed ? 'muted' : i.kind === 'question' ? 'question' : answering(i) ? 'working' : asksYou(i) ? 'asking' : i.state);
+
+/** Whether the card's state reads "Question for you": its agent asks and waits for the answer. */
+export const asksYou = (i: Item) => i.state === 'waiting' && i.need === 'question' && !i.answering && !i.answered && !i.paused && !i.pausing && !i.snoozed;
+
+/** The mark before a state that is a question for the owner. */
+export const QuestionMark = () => (
+  <svg className="question-mark" viewBox="0 0 12 12" width="11" height="11" aria-hidden>
+    <circle cx="6" cy="6" r="4.9" fill="none" stroke="currentColor" strokeWidth="1.3" />
+    <path d="M4.6 4.7a1.45 1.45 0 1 1 2 1.35c-.4.18-.6.5-.6.9v.25" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    <circle cx="6" cy="8.7" r=".7" fill="currentColor" />
+  </svg>
+);
 
 /** A card's pull requests still open as far as Obeya knows: its own and those in other repositories. */
 export const openPrs = (item: Item): PullRequest[] => [...(item.pr ? [item.pr] : []), ...(item.morePrs ?? [])].filter((p) => !p.merged && !p.closed);
@@ -151,6 +163,7 @@ export const cardClass = (item: Item, underway?: string) =>
     item.idea && needsYou(item) && 'your-turn',
     underway && 'underway',
     answering(item) && 'answering',
+    asksYou(item) && 'asking',
     finishingUp(item) && 'finishing',
     item.paused && 'paused',
     item.snoozed && 'snoozed',
@@ -213,6 +226,7 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
       {meta && <div className="meta">{meta}</div>}
       <div className={doingNow(item) && !underway ? 'state doing-now' : 'state'}>
         {item.snoozed && !underway && <ClockMark />}
+        {asksYou(item) && !underway && !revising && <QuestionMark />}
         {/* one line on the card, cut short rather than running into the text above it */}
         <span className="state-text">
           {underway ?? (revising ? t.revisingShort : stateLabel(item))}

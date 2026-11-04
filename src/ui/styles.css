@@ -22,7 +22,7 @@
   --lift: 0 1px 0 rgba(95,75,35,.18), 3px 6px 0 rgba(95,75,35,.12), 0 16px 26px -10px rgba(60,45,20,.35);
   --serif: Newsreader, "Iowan Old Style", Georgia, serif; --cond: "Plex Condensed", "Arial Narrow", sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --planned: #a0978a; --working: #1d5fe0; --waiting: #f27405; --approved: #3d9a1f; --inPr: #08888e; --live: #b4ab98; --proposal: #7b4fd6; --idea: #dc2f5e; --question: #4f7896;
+  --planned: #a0978a; --working: #1d5fe0; --waiting: #f27405; --approved: #3d9a1f; --inPr: #08888e; --live: #b4ab98; --proposal: #7b4fd6; --idea: #dc2f5e; --question: #4f7896; --asking: #a88400;
   --waiting-rgb: 242,116,5; --on-ink: #fff; --error: #c42b1c; --warn: #a3520a;
   --dep-line: #aaa190; --container: rgba(255,252,242,.45); --container-line: rgba(120,105,75,.22);
   --dim: rgba(40,32,18,.34); --panel: #fdfbf5; --chip: #f0ebdf;
@@ -35,7 +35,7 @@
   --bg: #121110; --dot: #26231f; --card: #23211d; --ink: #efe9dc; --muted: #a69e8e; --line: #36322b;
   --shadow: inset 0 1px 0 rgba(255,250,235,.05), 0 1px 0 rgba(0,0,0,.7), 1px 3px 0 rgba(0,0,0,.45);
   --lift: inset 0 1px 0 rgba(255,250,235,.06), 0 1px 0 rgba(0,0,0,.7), 3px 7px 0 rgba(0,0,0,.45), 0 18px 30px -10px rgba(0,0,0,.7);
-  --planned: #8a8274; --working: #5b95ff; --waiting: #ff8a1c; --approved: #78c448; --inPr: #27b9b6; --live: #5f594e; --proposal: #a587ff; --idea: #ff6289; --question: #8db3cf;
+  --planned: #8a8274; --working: #5b95ff; --waiting: #ff8a1c; --approved: #78c448; --inPr: #27b9b6; --live: #5f594e; --proposal: #a587ff; --idea: #ff6289; --question: #8db3cf; --asking: #e0b62e;
   --waiting-rgb: 255,138,28; --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a;
   --dep-line: #5c564c; --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
   --dim: rgba(0,0,0,.55); --panel: #1f1d1a; --chip: #2c2925;
@@ -45,7 +45,7 @@
   --bg: #121110; --dot: #26231f; --card: #23211d; --ink: #efe9dc; --muted: #a69e8e; --line: #36322b;
   --shadow: inset 0 1px 0 rgba(255,250,235,.05), 0 1px 0 rgba(0,0,0,.7), 1px 3px 0 rgba(0,0,0,.45);
   --lift: inset 0 1px 0 rgba(255,250,235,.06), 0 1px 0 rgba(0,0,0,.7), 3px 7px 0 rgba(0,0,0,.45), 0 18px 30px -10px rgba(0,0,0,.7);
-  --planned: #8a8274; --working: #5b95ff; --waiting: #ff8a1c; --approved: #78c448; --inPr: #27b9b6; --live: #5f594e; --proposal: #a587ff; --idea: #ff6289; --question: #8db3cf;
+  --planned: #8a8274; --working: #5b95ff; --waiting: #ff8a1c; --approved: #78c448; --inPr: #27b9b6; --live: #5f594e; --proposal: #a587ff; --idea: #ff6289; --question: #8db3cf; --asking: #e0b62e;
   --waiting-rgb: 255,138,28; --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a;
   --dep-line: #5c564c; --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
   --dim: rgba(0,0,0,.55); --panel: #1f1d1a; --chip: #2c2925;
@@ -199,8 +199,10 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .card.snoozed:hover, .card.snoozed.s-waiting:hover, .card.snoozed.s-idea.your-turn:hover { box-shadow: var(--lift); }
 .card.snoozed .state { --c: var(--muted); }
 .card.snoozed .state::after { display: none; }
-.card .state .clock-mark { flex: none; margin-right: -2px; }
-.ph-card .state .clock-mark { margin-right: 5px; vertical-align: -1px; }
+.card .state .clock-mark, .card .state .question-mark { flex: none; margin-right: -2px; }
+.card.asking .state { --c: var(--asking); }
+.p-state .question-mark { vertical-align: -1px; }
+.ph-card .state :is(.clock-mark, .question-mark) { margin-right: 5px; vertical-align: -1px; }
 @keyframes flow { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 
 /* the pin that holds a card needing the owner: its disc (::before) and its pulse (::after) lie under
