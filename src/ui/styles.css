@@ -25,7 +25,7 @@
   --planned: #a0978a; --working: #1d5fe0; --waiting: #f27405; --approved: #3d9a1f; --inPr: #08888e; --live: #b4ab98; --proposal: #7b4fd6; --idea: #dc2f5e; --question: #4f7896; --asking: #a88400;
   --waiting-rgb: 242,116,5; --on-ink: #fff; --error: #c42b1c; --warn: #a3520a;
   --dep-line: #aaa190; --unlock: #8ea6d4; --unlock-lit: #2f63d0; --done-dep: #a3c48f; --container: rgba(255,252,242,.45); --container-line: rgba(120,105,75,.22);
-  --dim: rgba(40,32,18,.34); --panel: #fdfbf5; --chip: #f0ebdf; --suggest: #b42fbd;
+  --dim: rgba(40,32,18,.34); --panel: #fdfbf5; --chip: #f0ebdf;
   --s: 1;
   /* native controls, and the pages in a frame (prefers-color-scheme), take the look chosen */
   color-scheme: light;
@@ -38,7 +38,7 @@
   --planned: #8a8274; --working: #5b95ff; --waiting: #ff8a1c; --approved: #78c448; --inPr: #27b9b6; --live: #5f594e; --proposal: #a587ff; --idea: #ff6289; --question: #8db3cf; --asking: #e0b62e;
   --waiting-rgb: 255,138,28; --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a;
   --dep-line: #5c564c; --unlock: #4a6290; --unlock-lit: #6f9fff; --done-dep: #4d7239; --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
-  --dim: rgba(0,0,0,.55); --panel: #1f1d1a; --chip: #2c2925; --suggest: #e46ff0;
+  --dim: rgba(0,0,0,.55); --panel: #1f1d1a; --chip: #2c2925;
   color-scheme: dark;
 } }
 :root[data-theme="dark"] {
@@ -48,7 +48,7 @@
   --planned: #8a8274; --working: #5b95ff; --waiting: #ff8a1c; --approved: #78c448; --inPr: #27b9b6; --live: #5f594e; --proposal: #a587ff; --idea: #ff6289; --question: #8db3cf; --asking: #e0b62e;
   --waiting-rgb: 255,138,28; --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a;
   --dep-line: #5c564c; --unlock: #4a6290; --unlock-lit: #6f9fff; --done-dep: #4d7239; --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
-  --dim: rgba(0,0,0,.55); --panel: #1f1d1a; --chip: #2c2925; --suggest: #e46ff0;
+  --dim: rgba(0,0,0,.55); --panel: #1f1d1a; --chip: #2c2925;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -2511,25 +2511,21 @@ a.link.perf-to-log, a.link.flog-back { color: var(--working); text-decoration: u
 .prio-menu button:hover { background: var(--chip); }
 .prio-menu button.on { box-shadow: inset 2px 0 0 var(--ink); background: var(--chip); }
 .prio-menu button.none { color: var(--muted); border-top: 1px solid var(--line); border-radius: 0 0 3px 3px; margin-top: 2px; }
-/* a card's other labels: compact chips after the priority's flag; one Obeya suggested is framed in a magenta purple, a hue
-   well apart from a proposal's violet, and only the chip, never the card's frame or fill */
+/* A suggested label carries the same dashed border and colour as a proposal card. */
 .lchip { display: inline-flex; align-items: center; gap: 3px; flex: none; padding: 0 5px; border: 1px solid var(--line); border-radius: 3px;
   line-height: 15px; font-size: .92em; font-weight: 500; color: var(--muted); background: var(--chip); text-transform: none; letter-spacing: .01em; }
 .lchip svg { display: block; flex: none; }
-.lchip.sugg { border-color: var(--suggest); }
-.prio.sugg { border: 1px solid var(--suggest); border-radius: 3px; padding: 0 5px 0 4px; line-height: 15px; }
-.prio-critical.sugg { border-color: var(--card); box-shadow: 0 0 0 1px var(--suggest); }
+.lchip.sugg { border-color: var(--proposal); border-style: dashed; }
+.prio.sugg { border: 1px dashed var(--proposal); border-radius: 3px; padding: 0 5px 0 4px; line-height: 15px; }
 .label-picks { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .lchip-none { display: inline-flex; align-items: center; gap: 3px; font-weight: 500; color: var(--muted); text-transform: none; letter-spacing: .01em; }
 .lchip-none svg { display: block; flex: none; opacity: .7; }
 .prio-btn.set:has(.lchip, .prio.sugg) { padding: 1px; }
 .prio-btn .lchip { font-size: 12px; line-height: 16px; }
 .prio-btn .prio.sugg { line-height: 16px; }
-.lmenu-complexity { min-width: min(330px, calc(100vw - 16px)); }
 .lopt { display: flex; align-items: center; gap: 6px; color: var(--ink); }
 .lopt svg { flex: none; color: var(--ink); }
-.lopt b { width: 1ch; font-weight: 600; }
-.lopt span { color: var(--muted); }
+.lopt b { font-weight: 600; }
 .project > .head .prio, .project > .head .lchip { font-size: 11px; }
 /* Labels have their own line in the existing space above the workstreams, leaving the title and actions their room. */
 .project > .head:has(.head-labels) .kind { display: none; }

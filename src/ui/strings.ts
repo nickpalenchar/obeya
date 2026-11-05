@@ -6,7 +6,7 @@ import { clientExtensions as extensions } from '../extensions/client';
 import { ApiError } from './api';
 import type { DiffFile } from '../core/diff';
 import { type Language, languageOf } from '../core/locale';
-import { type Complexity, COMPLEXITY_DESCRIPTIONS, LABEL_NAMES } from '../core/labels';
+import { type Complexity, LABEL_NAMES } from '../core/labels';
 import { MESSAGES } from '../core/messages';
 import type { OutdatedBy } from '../core/page-changes';
 import type { NotAProject } from '../core/plan-doc';
@@ -25,15 +25,6 @@ function cloneGroups(leaving: LeavingClone[]): { host?: string; numbers?: number
   }
   return groups;
 }
-
-/** The complexity scale in German, step for step the same as `COMPLEXITY_DESCRIPTIONS`, which the suggestion reads. */
-const complexityDe: Record<Complexity, string> = {
-  1: 'Eine Korrektur in einer Zeile oder am Wortlaut.',
-  2: 'Eine kleine Änderung an einer Stelle.',
-  3: 'Eine Änderung über einige Dateien, mit Tests.',
-  5: 'Ein Feature, das Server und UI berührt.',
-  8: 'Eine Änderung über mehrere Bereiche, oder eine, die ein Plan-Dokument braucht.',
-};
 
 const de = {
   extensionActions: 'Weitere Aktionen',
@@ -598,7 +589,7 @@ const de = {
   },
   /** A card's other labels (`core/labels.ts`), beside its priority. */
   labels: {
-    /** On a label Obeya suggested and the owner has not touched since (its chip has a purple border). */
+    /** On a label Obeya suggested and the owner has not touched since (its chip has the same dashed border as a proposal). */
     suggested: 'Von Obeya vorgeschlagen. Wähl selbst, um ihn zu übernehmen oder zu ändern.',
     category: {
       label: 'Kategorie',
@@ -610,8 +601,7 @@ const de = {
     },
     complexity: {
       label: 'Komplexität',
-      step: (n: Complexity) => `Komplexität ${n}: ${complexityDe[n]}`,
-      descriptions: complexityDe,
+      step: (n: Complexity) => `Komplexität ${n}`,
     },
   },
   deps: {
@@ -2788,8 +2778,7 @@ const en: Strings = {
     },
     complexity: {
       label: 'Complexity',
-      step: (n: Complexity) => `Complexity ${n}: ${COMPLEXITY_DESCRIPTIONS[n]}`,
-      descriptions: COMPLEXITY_DESCRIPTIONS,
+      step: (n: Complexity) => `Complexity ${n}`,
     },
   },
   deps: {

@@ -124,6 +124,10 @@ describe('plan docs', () => {
     expect(() => board.patch(c.id, { subcategory: 'chore' as never })).toThrow(BadRequest);
     expect(() => board.patch(c.id, { complexity: 4 as never })).toThrow(BadRequest);
     expect(() => board.patch(c.id, { complexity: '3' as never })).toThrow(BadRequest);
+    for (const complexity of [13, 21] as const) {
+      board.patch(c.id, { complexity });
+      expect(at(c.id).complexity).toBe(complexity);
+    }
     board.patch(c.id, { category: null, complexity: null });
     expect(at(c.id).category).toBeUndefined();
     expect(at(c.id).complexity).toBeUndefined();

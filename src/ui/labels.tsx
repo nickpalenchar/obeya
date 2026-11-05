@@ -1,6 +1,6 @@
 // A card's labels (`core/labels.ts`): on its face, the priority's flag and compact chips after it;
 // on the unfolded card, a picker for each. A label Obeya suggested and the owner has not touched is
-// drawn with a purple border, which stays clear of a proposal's violet; any pick makes it theirs.
+// drawn with the same dashed border as a proposal; any pick makes it theirs.
 
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { COMPLEXITIES, type Complexity, type Label, type Labels, LABEL_VALUES, PRIORITIES, type Priority } from '../core/labels';
@@ -16,13 +16,13 @@ const Flag = () => (
   </svg>
 );
 
-/** Five rising bars, as many filled as the complexity's step in the scale. */
+/** Rising bars, as many filled as the complexity's step in the scale. */
 const Bars = ({ complexity }: { complexity: Complexity }) => {
   const filled = COMPLEXITIES.indexOf(complexity) + 1;
   return (
-    <svg width="11" height="10" viewBox="0 0 11 10" aria-hidden>
+    <svg width="15" height="10" viewBox="0 0 15 10" aria-hidden>
       {COMPLEXITIES.map((_, i) => (
-        <rect key={i} x={i * 2.25} y={8 - i * 2} width="1.5" height={2 + i * 2} rx=".4" fill="currentColor" opacity={i < filled ? 1 : 0.28} />
+        <rect key={i} x={i * 2.25} y={10 - (i + 1) * 10 / COMPLEXITIES.length} width="1.5" height={(i + 1) * 10 / COMPLEXITIES.length} rx=".4" fill="currentColor" opacity={i < filled ? 1 : 0.28} />
       ))}
     </svg>
   );
@@ -44,7 +44,7 @@ function chipText(label: Exclude<Label, 'priority'>, v: NonNullable<Labels[typeo
   return label === 'category' ? t.labels.category.names[v as keyof typeof t.labels.category.names] : t.labels.subcategory.names[v as keyof typeof t.labels.subcategory.names];
 }
 
-/** What a chip says on hover: the label's name and, for complexity, its step's description. */
+/** What a chip says on hover: the label's name and value. */
 function chipTitle(label: Exclude<Label, 'priority'>, v: NonNullable<Labels[typeof label]>) {
   return label === 'complexity' ? t.labels.complexity.step(v as Complexity) : `${t.labels[label].label}: ${chipText(label, v)}`;
 }
@@ -161,7 +161,6 @@ export function LabelPicks({ item }: { item: Item }) {
               <span className="lopt">
                 <Bars complexity={v as Complexity} />
                 <b>{v}</b>
-                <span>{t.labels.complexity.descriptions[v as Complexity]}</span>
               </span>
             ) : (
               chipText(l, v)

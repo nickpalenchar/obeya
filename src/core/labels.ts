@@ -14,7 +14,7 @@ export const SUBCATEGORIES = ['refactor', 'newFeature', 'bugFix', 'configuration
 export type Subcategory = (typeof SUBCATEGORIES)[number];
 
 /** How big a card's work is, on Fibonacci steps. */
-export const COMPLEXITIES = [1, 2, 3, 5, 8] as const;
+export const COMPLEXITIES = [1, 2, 3, 5, 8, 13, 21] as const;
 export type Complexity = (typeof COMPLEXITIES)[number];
 
 /** The names of the categories and sub-categories, as the suggestion's model reads them. */
@@ -30,17 +30,8 @@ export const LABEL_NAMES: Record<Category | Subcategory, string> = {
   configuration: 'Configuration',
 };
 
-/** Each complexity step in a line: the picker's tooltip and the suggestion read the same scale. */
-export const COMPLEXITY_DESCRIPTIONS: Record<Complexity, string> = {
-  1: 'A one-line or wording fix.',
-  2: 'A small change in one place.',
-  3: 'A change across a few files, with tests.',
-  5: 'A feature that touches both server and UI.',
-  8: 'A change that spans several areas or wants a plan doc.',
-};
-
-/** The complexity scale as a list, for a prompt. */
-export const complexityScale = () => COMPLEXITIES.map((c) => `- ${c}: ${COMPLEXITY_DESCRIPTIONS[c]}`).join('\n');
+/** The numeric complexity scale, for a prompt. */
+export const complexityScale = () => COMPLEXITIES.join(', ');
 
 /** A card's labels, each empty until the owner or Obeya's suggestion sets it. */
 export interface Labels {
