@@ -72,7 +72,7 @@ export function writeWish(runtime: AgentRuntime, w: WishInput, footer: string, i
         system: SYSTEM,
         // the owner is waiting for the draft: their words stand in it, and the draft says when the job can write it
         onLimit: (until) => {
-          if (until !== undefined) end({ ...fallback(), limitedUntil: new Date(until).toISOString() });
+          if (until != null) end({ ...fallback(), limitedUntil: new Date(until).toISOString() });
         },
         tools: [
           {

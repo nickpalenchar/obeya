@@ -673,7 +673,7 @@ export class Koordinator {
     }
     let scope: Scope;
     try {
-      scope = await this.estimate(card, active, ahead, pending, (until) => this.o.board.waitsForLimit({ card: cardId }, until));
+      scope = await this.estimate(card, active, ahead, pending, (until, retry) => this.o.board.waitsForLimit({ card: cardId }, until, retry));
     } catch (e) {
       this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.koordinator.estimateFailed(messageOf(e)));
       scope = { files: [], conflictsWith: [], buildsOn: [], reason: '' };
@@ -990,7 +990,7 @@ export class Koordinator {
       // a title reads as well from the home repository while the card's does not run
       cwd: card.repoDown ? this.o.home() : this.o.repoFor(card).path,
       role: 'chores',
-      onLimit: (until) => this.o.board.waitsForLimit({ card: card.id }, until),
+      onLimit: (until, retry) => this.o.board.waitsForLimit({ card: card.id }, until, retry),
       system: NAME_SYSTEM(this.language, asked),
       tools: (finish) => [
         {
@@ -1065,7 +1065,7 @@ export class Koordinator {
   // ---------------------------------------------------------------- the estimate
 
   /** `onLimit`: where the estimate shows that it waits for the usage limit. */
-  private async estimate(card: Item, active: Item[], ahead: Item[], pending: Item[], onLimit: (until: number | undefined) => void): Promise<Scope> {
+  private async estimate(card: Item, active: Item[], ahead: Item[], pending: Item[], onLimit: (until: number | null | undefined, retry?: () => void) => void): Promise<Scope> {
     let scope: Scope | undefined;
     const tags = new Map([...active, ...ahead, ...pending].map((a, n) => [`K${n + 1}`, a.id]));
     // a conflict only with what runs or goes first; building on only a workstream of its project
@@ -1114,8 +1114,8 @@ export class Koordinator {
       cwd: hands.path,
       role: 'koordinator',
       // the cards the owner started wait with it
-      onLimit: (until) => {
-        for (const w of batch) this.o.board.waitsForLimit({ card: w.id }, until);
+      onLimit: (until, retry) => {
+        for (const w of batch) this.o.board.waitsForLimit({ card: w.id }, until, retry);
       },
       system: (hands.folder ? FOLDER_SCHEDULE_SYSTEM : SCHEDULE_SYSTEM)(this.language, !project),
       tools: (finish) => [
@@ -1485,7 +1485,7 @@ export function readSession(
     /** Where it shows at work (`AgentSpec.at`). */
     at?: AgentAt;
     images?: string[];
-    onLimit?: (until: number | undefined) => void;
+    onLimit?: (until: number | null | undefined, retry?: () => void) => void;
   },
 ): Promise<string | undefined> {
   return new Promise((resolve) => {

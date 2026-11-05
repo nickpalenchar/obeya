@@ -104,6 +104,25 @@ export const PlayMark = () => (
   </svg>
 );
 
+export const HourglassMark = () => (
+  <svg className="hourglass-mark" viewBox="0 0 16 20" width="14" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+    <path d="M2 1h12M2 19h12M3 1v4c0 2 3 3 5 5-2 2-5 3-5 5v4M13 1v4c0 2-3 3-5 5 2 2 5 3 5 5v4" />
+    <path d="m5 5 3 3 3-3M5 16l3-3 3 3" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+/** The same limit pause and manual retry on every card's conversation. */
+export function LimitNotice({ item }: { item: Item }) {
+  if (!item.limitPaused && !item.limitedUntil) return null;
+  return <div className="limit-notice">
+    <HourglassMark />
+    <div>{item.limitPaused ? t.limitPaused : t.limitedUntil(clock(item.limitedUntil!))}
+      {item.limitPaused && item.limitedUntil && <div className="limit-reset">{t.limitedUntil(clock(item.limitedUntil))}</div>}
+    </div>
+    <button onClick={() => void api.act(item.id, { action: 'resume' }).catch(console.error)}><PlayMark /> {t.limitTryAgain}</button>
+  </div>;
+}
+
 /**
  * On a card on the canvas, the pause of its agent at work, at a safe point, or the resume of its
  * paused one (or of one about to pause, which then works on): where a card's play and archive
@@ -194,6 +213,7 @@ export const cardClass = (item: Item, underway?: string) =>
     asksYou(item) && 'asking',
     finishingUp(item) && 'finishing',
     item.paused && 'paused',
+    (item.limitPaused || item.limitedUntil) && 'limit-paused',
     item.snoozed && 'snoozed',
     item.queue && 'queued',
   ]
@@ -231,6 +251,7 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
     (item.repoDown ? t.repoDown.short : undefined) ??
     (item.snoozed ? snoozeWho(item.snoozed) : undefined) ??
     (item.superseded ? (item.superseded.by ? t.superseded.byShort(plain(item.superseded.title ?? '')) : t.superseded.withdrawnShort) : undefined) ??
+    (item.limitPaused ? t.limitPaused : undefined) ??
     (item.limitedUntil ? t.limitedUntil(clock(item.limitedUntil)) : undefined) ??
     (item.kind === 'question' && item.thread ? t.question.count(item.thread.answers, item.thread.files) : undefined) ??
     (asked === undefined ? undefined : excerpt(asked)) ??
@@ -253,6 +274,7 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
       </div>
       {meta && <div className="meta">{meta}</div>}
       <div className={doingNow(item) && !underway ? 'state doing-now' : 'state'}>
+        {(item.limitPaused || item.limitedUntil) && !underway && <HourglassMark />}
         {item.snoozed && !underway && <ClockMark />}
         {asksYou(item) && !underway && !revising && !item.proposal?.merge && <QuestionMark />}
         {/* one line on the card, cut short rather than running into the text above it */}

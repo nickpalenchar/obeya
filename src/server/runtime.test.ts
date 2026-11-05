@@ -144,7 +144,7 @@ test('an agent with onLimit waits for the usage limit and goes on where it stopp
   const fake = new FakeRuntime();
   const runtime = withLimitWait(fake, 10);
   const events: AgentEvent[] = [];
-  const waits: (number | undefined)[] = [];
+  const waits: (number | null | undefined)[] = [];
   const session = runtime.start({ cwd: '/r', system: '', tools: [], onLimit: (until) => waits.push(until), onEvent: (e) => events.push(e) }, 'Los.');
   const s = fake.last;
   const limit = (ms: number) => {
@@ -178,6 +178,35 @@ test('an agent with onLimit waits for the usage limit and goes on where it stopp
   runtime.start({ cwd: '/r', system: '', tools: [], onEvent: (e) => plain.push(e) }, 'Los.');
   fake.last.emit({ type: 'error', message: 'limit', limit: {} });
   expect(plain).toEqual([{ type: 'error', message: 'limit', limit: {} }]);
+});
+
+test('three consecutive limit failures exhaust retries, including after a manual retry', () => {
+  const fake = new FakeRuntime();
+  const states: (number | null | undefined)[] = [];
+  let retry: (() => void) | undefined;
+  const session = withLimitWait(fake).start({ cwd: '/r', system: '', tools: [], onLimit: (at, again) => { states.push(at); retry = again; }, onEvent: () => {} }, 'Go.');
+  const fail = () => {
+    fake.last.emit({ type: 'error', message: 'Session limit', limit: {} });
+    // duplicate errors in a single refused turn do not use up the budget
+    fake.last.emit({ type: 'error', message: 'Session limit', limit: {} });
+    fake.last.emit({ type: 'idle' });
+  };
+  fail();
+  expect(states).toHaveLength(1);
+  retry!();
+  fail();
+  expect(states.at(-1)).toBeNumber();
+  retry!();
+  fail();
+  expect(states.at(-1)).toBeNull();
+  retry!();
+  fail();
+  expect(states.at(-1)).toBeNull();
+  session.send('Try again');
+  fake.last.emit({ type: 'text', text: 'Working again' });
+  fail();
+  expect(states.at(-1)).toBeNumber();
+  session.close();
 });
 
 test("agents run the Agent SDK's Claude Code from the checkout, the machine's own from the binary", () => {

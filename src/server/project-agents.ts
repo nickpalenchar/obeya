@@ -35,7 +35,7 @@ export class ProjectAgents {
   inform(
     project: Item,
     message: string,
-    onLimit: (until: number | undefined) => void,
+    onLimit: (until: number | null | undefined, retry?: () => void) => void,
     onTool?: (name: string, input: Record<string, unknown>) => void,
     dir?: string,
     signal?: AbortSignal,

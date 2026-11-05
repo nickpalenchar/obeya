@@ -1,3 +1,4 @@
+import { LimitAttempts, limitWatch } from './limit-watch';
 // Workers: one agent session per card, in a leased clone. Obeya is the mailbox between the
 // worker and the owner; every exchange lands in the card's conversation.
 
@@ -23,7 +24,7 @@ import { artifactFiles } from './demo-page';
 import { imageNote } from './images';
 import { outsidePlanDir, remoteHost } from './repo';
 import type { InputContext } from './koordinator';
-import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, BACKGROUND_GRACE, BACKGROUND_LIMIT, failureReason, LIMIT_LIFTED, limitLifts, type PermissionAnswer, type PermissionRequest } from './runtime';
+import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, BACKGROUND_GRACE, BACKGROUND_LIMIT, failureReason, LIMIT_LIFTED, type PermissionAnswer, type PermissionRequest } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { EXEC_LANE_NOTE, execTools } from './exec-tools';
 import { type Forward, HOST_DIR, hostName, remote } from './hosts';
@@ -316,6 +317,8 @@ function pageHeardOf(share: Share | undefined): PageHeard {
 
 /** What is stored while the owner has paused the card's worker (`CardRow.paused`). */
 interface PausedState {
+  /** A subscription limit pause survives restart, including its reset and retry budget. */
+  limit?: { attempts: number; until?: string; statusBefore?: string | null };
   /** What Obeya had for the worker meanwhile (its pull request's review, the landing), and a message it had not taken in yet: it hears them once it goes on. */
   held?: { text: string; images: string[] }[];
 }
@@ -390,7 +393,8 @@ interface Live {
   /** Set while an ended turn waits for the worker's background work to wake it. */
   waiting?: ReturnType<typeof setTimeout>;
   /** Set while the worker waits for a usage limit to lift: it then goes on where it stopped. */
-  lifts?: ReturnType<typeof setTimeout>;
+  limitHit?: boolean;
+  limitReset?: number;
   /** How many of the worker's background tasks run, as the session last said. */
   background: number;
   /** Those tasks by the session's id, as the agent described them and since when Obeya saw them run, the oldest first: on the card while they run. */
@@ -632,6 +636,7 @@ const EVICT_SESSION_WAIT = 30_000;
 
 export class Workers {
   private live = new Map<string, Live>();
+  private limitAttempts = new Map<string, LimitAttempts>();
   /** Turns a script plays for cards without a session in a scratch Obeya (`standIn` steps), shown as their workers'. */
   private standIns = new Map<string, Live>();
   /** Cards whose approved work is landing: the server answers meanwhile, but approving again is refused, and a restart waits. */
@@ -719,6 +724,7 @@ export class Workers {
    */
   start(cardId: string, selected?: AgentSetting): Promise<void> {
     const card = this.card(cardId);
+    this.limitAttempts.delete(cardId);
     if (card.kind === 'project') throw new BadRequest('project', 'a project is worked on through its workstreams');
     if (card.state !== 'planned') throw new BadRequest('notPlanned', 'only a planned card can be started');
     if (this.evicting.has(card.id)) throw new BadRequest('evicting', 'its workspace is being given to another card');
@@ -2879,8 +2885,20 @@ export class Workers {
       this.live.get(cardId)?.session.send(PAUSE_TAKEN_BACK);
       return;
     }
+    const live = this.live.get(cardId);
+    if (live?.limited) {
+      this.deliver(cardId, LIMIT_LIFTED, [], true);
+      return;
+    }
     if (!card.paused) throw new BadRequest('notPaused', 'the agent is not paused');
     this.deliver(cardId, '', [], true);
+  }
+
+  /** The coordinator's clock wakes a limit pause only at its recorded reset. */
+  wakeLimit(cardId: string, now = Date.now()) {
+    const paused = this.pausedOf(cardId);
+    if (!paused?.limit?.until || Date.parse(paused.limit.until) > now) return;
+    this.deliver(cardId, LIMIT_LIFTED, [], true);
   }
 
   /** The owner lets the worker about to pause at a safe point go on after all (`resume`, or their words to it). */
@@ -3419,7 +3437,7 @@ export class Workers {
   private deliver(cardId: string, text: string, images: string[] = [], owner = false, said: number[] = [], timeUp = false, met?: Awaited) {
     const paused = this.pausedOf(cardId);
     if (paused && !owner) {
-      this.o.board.work(cardId, { paused: JSON.stringify({ held: [...(paused.held ?? []), { text, images }] } satisfies PausedState) });
+      this.o.board.work(cardId, { paused: JSON.stringify({ ...paused, held: [...(paused.held ?? []), { text, images }] } satisfies PausedState) });
       return;
     }
     // a snoozed worker wakes: at its time, by the owner's words, or (snoozed by itself) by whatever Obeya has for it
@@ -3440,6 +3458,12 @@ export class Workers {
       text = [PAUSE_TAKEN_BACK, text].filter(Boolean).join('\n\n');
     }
     if (paused) {
+      if (paused.limit) {
+        const attempts = new LimitAttempts();
+        attempts.count = paused.limit.attempts;
+        this.limitAttempts.set(cardId, attempts);
+        this.o.board.work(cardId, { status_line: paused.limit.statusBefore ?? null });
+      }
       this.o.board.work(cardId, { paused: null });
       if (!woke) this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.resumedByOwner);
       const held = paused.held ?? [];
@@ -3471,8 +3495,8 @@ export class Workers {
     if (live) {
       // the turn this starts reports the background work that is still running
       this.stopWaiting(live);
-      clearTimeout(live.lifts);
-      live.lifts = undefined;
+      limitWatch.cancel(live);
+      live.limitHit = false;
       this.setBusy(live, true);
       ({ text, images } = this.withUnheard(cardId, text, images));
       const message = this.withRestart(cardId, live, this.withPageNews(cardId, text));
@@ -3632,7 +3656,8 @@ export class Workers {
     const live = this.live.get(cardId);
     this.live.delete(cardId);
     clearTimeout(live?.waiting);
-    clearTimeout(live?.lifts);
+    if (live) limitWatch.cancel(live);
+    this.o.board.waitsForLimit({ card: cardId }, undefined);
     clearTimeout(live?.quiet);
     live?.session.close();
     // its slot is free again
@@ -3685,8 +3710,7 @@ export class Workers {
     // a turn may also start without a message from Obeya (a finished background command)
     this.setBusy(live, e.type !== 'idle');
     this.stopWaiting(live);
-    clearTimeout(live.lifts);
-    live.lifts = undefined;
+    limitWatch.cancel(live);
     if (e.type === 'text' || e.type === 'tool') {
       // a turn of its own (a finished background command woke it) after it answered the owner's
       // words on its handover: it works on towards what it told them, so the card is at work again
@@ -3737,8 +3761,31 @@ export class Workers {
           if (this.o.board.item(cardId)?.app) this.o.board.work(cardId, { app: null });
         }
         if (e.limit) {
-          live.limited = limitLifts(e.limit, this.o.limitMargin ?? 10_000);
+          if (live.limitHit) break;
+          live.limitHit = true;
+          const attempts = this.limitAttempts.get(cardId) ?? new LimitAttempts();
+          this.limitAttempts.set(cardId, attempts);
+          const at = attempts.hit(e.limit, this.o.limitMargin ?? 10_000);
+          live.limitReset = e.limit.resetsAt && e.limit.resetsAt > Date.now() ? at ?? undefined : undefined;
           const t = this.o.board.t;
+          if (attempts.count >= 3) {
+            const before = live.statusBefore !== undefined ? live.statusBefore : this.o.board.row(cardId).status_line;
+            const pending = live.pending;
+            this.end(cardId);
+            this.o.board.work(cardId, {
+              paused: JSON.stringify({
+                limit: { attempts: attempts.count, ...(live.limitReset ? { until: new Date(live.limitReset).toISOString() } : {}), statusBefore: before },
+                ...(pending ? { held: [pending] } : {}),
+              } satisfies PausedState),
+              pausing: null,
+              status_line: t.worker.limitPaused,
+            });
+            this.o.board.log(cardId, 'state', 'obeya', `${e.message.replace(/\.?\s*$/, '.')} ${t.worker.limitPaused}`);
+            this.parkLater(cardId);
+            break;
+          }
+          live.limited = at!;
+          this.o.board.waitsForLimit({ card: cardId }, live.limited);
           this.o.board.log(cardId, 'state', 'obeya', `${e.message.replace(/\.?\s*$/, '.')} ${e.limit.resetsAt ? t.worker.limitResumes(t.when(live.limited)) : t.worker.limitRetries(t.when(live.limited))}`);
           break;
         }
@@ -4121,7 +4168,7 @@ export class Workers {
     if (!there) return;
     this.live.delete(cardId);
     clearTimeout(live.waiting);
-    clearTimeout(live.lifts);
+    limitWatch.cancel(live);
     const pending = live.pending;
     // in a turn, or its ended turn waiting for background work that woke it: that work went with the session
     const busy = live.busy;
@@ -4207,13 +4254,11 @@ export class Workers {
       live.statusBefore = line && limitLine(line) ? null : line;
     }
     this.o.board.work(cardId, { status_line: this.o.board.t.worker.limitStatusUntil(this.o.board.t.when(at)) });
-    clearTimeout(live.lifts);
-    // a timer runs at most about 24 days
-    live.lifts = setTimeout(() => {
-      live.lifts = undefined;
+    limitWatch.cancel(live);
+    limitWatch.wait(live, at, () => {
       if (this.live.get(cardId) !== live || !this.goesOnAfterLimit(cardId)) return;
       this.deliver(cardId, LIMIT_LIFTED);
-    }, Math.min(Math.max(0, at - Date.now()), 2 ** 31 - 1));
+    });
   }
 
   /** Whether the card's worker goes on by itself once the usage limit lifts: it is at work on the card, not waiting for the owner. */
@@ -4227,6 +4272,9 @@ export class Workers {
   /** A worker that waited for the usage limit works again: its status line is back. */
   private unlimited(cardId: string, live: Live) {
     live.limited = undefined;
+    live.limitHit = false;
+    this.limitAttempts.delete(cardId);
+    this.o.board.waitsForLimit({ card: cardId }, undefined);
     const before = live.statusBefore;
     live.statusBefore = undefined;
     if (before !== undefined) this.o.board.work(cardId, { status_line: before });

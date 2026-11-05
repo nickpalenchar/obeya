@@ -1865,6 +1865,14 @@ export class Board {
       // but a card that waits for the owner then has nobody at work on it: only that work runs
       return turn.over && needsYou(i) ? { ...i, ...background } : { ...i, inTurn: true, ...(turn.doing ? { doing: turn.doing } : {}), ...background };
     });
+    const limitPauses = new Map(rows.filter((r) => r.paused).flatMap((r) => {
+      const p = JSON.parse(r.paused!) as { limit?: { until?: string } };
+      return p.limit ? [[r.id, p.limit] as const] : [];
+    }));
+    if (limitPauses.size) items = items.map((i) => {
+      const p = limitPauses.get(i.id);
+      return p ? { ...i, limitPaused: true, ...(p.until ? { limitedUntil: p.until } : {}) } : i;
+    });
     items = this.withoutStaleSnoozes(items, rows);
     items = this.withWaitingSince(items);
     items = this.withRate(items);
@@ -1894,9 +1902,9 @@ export class Board {
   }
 
   /** Until when the usage limit holds back what goes by this key (`card:<id>`, `talk:<id>`). */
-  private limited(key: string): { limitedUntil?: string } {
+  private limited(key: string): { limitedUntil?: string; limitPaused?: true } {
     const until = this.limits.get(key);
-    return until ? { limitedUntil: until } : {};
+    return until === null ? { limitPaused: true } : until ? { limitedUntil: until } : {};
   }
 
   /** Cards that come from a card on another canvas name it, with that canvas. */
@@ -2045,17 +2053,27 @@ export class Board {
    * When the agents that wait for the account's usage limit go on by themselves (ISO time), by
    * `card:<id>` and `talk:<id>`. Held in memory: after a restart they run into the limit again.
    */
-  private limits = new Map<string, string>();
+  private limits = new Map<string, string | null>();
+  private limitRetries = new Map<string, () => void>();
+
+  retryLimit(card: string): boolean {
+    const retry = this.limitRetries.get(`card:${card}`);
+    if (!retry) return false;
+    retry();
+    return true;
+  }
 
   /**
    * The agent of a card (other than its worker), or the one looking up the question of an exchange
    * in the sheet, waits for the usage limit until `until`; nothing once it goes on.
    */
-  waitsForLimit(at: { card: string } | { talk: number }, until: number | undefined) {
+  waitsForLimit(at: { card: string } | { talk: number }, until: number | null | undefined, retry?: () => void) {
     const key = 'card' in at ? `card:${at.card}` : `talk:${at.talk}`;
-    const iso = until === undefined ? undefined : new Date(until).toISOString();
+    if (retry) this.limitRetries.set(key, retry);
+    else this.limitRetries.delete(key);
+    const iso = until === undefined ? undefined : until === null ? null : new Date(until).toISOString();
     if (this.limits.get(key) === iso) return;
-    if (iso) this.limits.set(key, iso);
+    if (iso !== undefined) this.limits.set(key, iso);
     else this.limits.delete(key);
     this.changed();
   }

@@ -41,7 +41,7 @@ export interface Briefing {
   /** Ends the turn at once, its session with it (the owner paused the agent): the answer fails with `Interrupted`. */
   signal?: AbortSignal;
   /** Where the answer shows that it waits for the account's usage limit, until when; nothing once it goes on (`AgentSpec.onLimit`). */
-  onLimit: (until: number | undefined) => void;
+  onLimit: (until: number | null | undefined, retry?: () => void) => void;
   /** Where the answering agent shows at work (`AgentSpec.at`). */
   at?: AgentAt;
   /** How long a turn waits for background work that has ended to wake it, and for work that still runs (ms). */

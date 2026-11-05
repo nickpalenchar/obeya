@@ -488,6 +488,8 @@ export interface Item {
    * the Koordinator naming or checking it) waits for the account's usage limit: it goes on by itself then (ISO time).
    */
   limitedUntil?: string;
+  /** Three consecutive usage-limit refusals: paused until a known reset or a manual attempt. */
+  limitPaused?: true;
   /** Since when it waits for the owner (`needsYou`), for the phone view's „Braucht dich“. */
   waitingSince?: string;
   /**
@@ -1421,6 +1423,8 @@ export interface Talk {
   heldUntil?: string;
   /** The usage limit stopped the agent that looks the question up: it goes on by itself then (ISO time), the answer follows. */
   limitedUntil?: string;
+  /** Three consecutive usage-limit refusals: paused until a known reset or a manual attempt. */
+  limitPaused?: true;
   /** The harness and model of the agent looking the question up now, as far as known. */
   lookUpAgent?: AgentIdentity;
   /** Cards the Koordinator waits on, as its reply said, to take a step once each gets there (`wait_for`). */

@@ -110,9 +110,9 @@ export class Answers {
         onTool,
         onSession: (id) => this.o.board.talkSession(talkId, id),
         // under the question in the sheet, and in the conversation of the card it was asked on
-        onLimit: (until) => {
-          this.o.board.waitsForLimit({ talk: talkId }, until);
-          if (reading && until !== undefined) this.o.board.log(reading, 'state', 'obeya', this.o.board.t.answer.limited(this.o.board.t.when(until)));
+        onLimit: (until, retry) => {
+          this.o.board.waitsForLimit({ talk: talkId }, until, retry);
+          if (reading && until != null) this.o.board.log(reading, 'state', 'obeya', this.o.board.t.answer.limited(this.o.board.t.when(until)));
         },
         at: { talk: talkId },
         ...(follow
@@ -325,7 +325,7 @@ export class Answers {
           if (!name.startsWith('mcp__')) this.o.board.log(cardId, 'activity', by, describeTool(name, input, this.o.board.t));
         },
         onSession: (id) => this.o.board.work(cardId, { session_id: id }),
-        onLimit: (until) => this.o.board.waitsForLimit({ card: cardId }, until),
+        onLimit: (until, retry) => this.o.board.waitsForLimit({ card: cardId }, until, retry),
         at: { card: cardId },
         resume: this.o.board.row(cardId).session_id ?? undefined,
         message: `${resumed}${followUp(words, undefined, true)}`,
@@ -395,7 +395,7 @@ export class Answers {
     onTool: (name: string, input: Record<string, unknown>) => void;
     onSession: (id: string) => void;
     /** Where it shows that it waits for the usage limit. */
-    onLimit: (until: number | undefined) => void;
+    onLimit: (until: number | null | undefined, retry?: () => void) => void;
     /** Where it shows at work. */
     at: AgentAt;
   }): Promise<OwnerAnswer> {

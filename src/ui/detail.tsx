@@ -21,7 +21,7 @@ import { Branch } from './diff';
 import { ResultFiles } from './files';
 import { DiscardChanges, FolderBox, FolderLine, useFolderDiff } from './folder';
 import { LabelMarks, LabelPicks } from './labels';
-import { asksYou, CardFace, cardClass, landedRef, PauseMark, PlayMark, QuestionMark, shownTitle } from './parts';
+import { asksYou, CardFace, cardClass, landedRef, LimitNotice, PauseMark, PlayMark, QuestionMark, shownTitle } from './parts';
 import { asksAhead, holdsNotes } from '../core/queue';
 import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitText, type Behind } from './queue';
 import { dimensions, shownTags } from '../core/page-tags';
@@ -1445,7 +1445,7 @@ function Conversation({
       }
     >
       {pending.at(-1) && <Gist text={pending.at(-1)!.text} />}
-      {!paused && item.limitedUntil && <div className="hint">{t.limitedUntil(time(item.limitedUntil))}</div>}
+
       {!paused && <Background tasks={item.background} />}
       <Steps steps={pending} />
     </Msg>
@@ -1472,6 +1472,7 @@ function Conversation({
       <h4 className="p-h">{t.talk.heading}</h4>
       <div className="talk conv" ref={box} onScroll={onScroll}>
         {turns.shown.length === 0 && !turns.unread.length && !working && !turns.asked.length && !seed && <div className="hint">{idea ? t.idea.talkEmpty : question ? t.question.empty : proposal ? t.reviseHint : t.talk.empty}</div>}
+        <LimitNotice item={item} />
         {turns.shown.slice(0, seedAt).map(line)}
         {seed}
         {turns.shown.slice(seedAt, stillAt).map(line)}

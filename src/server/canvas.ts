@@ -499,6 +499,9 @@ export class CanvasRuntime {
     // and the Koordinator takes up the steps it waited on cards for
     this.commander.due(items);
     for (const i of items) {
+      if (i.limitPaused && i.paused && !i.repoDown && !this.board.canvas.paused) {
+        this.repoOf(i.id).workers.wakeLimit(i.id, now);
+      }
       // one whose repository does not run wakes once it is back
       if (!i.snoozed || i.repoDown) continue;
       const on = i.snoozed.on;
@@ -1764,6 +1767,7 @@ export class CanvasRuntime {
       case 'pause':
         return a.safePoint ? this.agentOf(cardId).pauseAtSafePoint(cardId) : this.agentOf(cardId).pause(cardId);
       case 'resume':
+        if (this.board.retryLimit(cardId)) return;
         return this.agentOf(cardId).resume(cardId);
       case 'snooze':
         return this.snooze(cardId, a.until);

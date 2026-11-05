@@ -69,22 +69,31 @@ SDK's `rate_limit_event` says `rejected` and when the limit resets (API error `r
 the event, the message's „resets 7:20pm (Europe/Berlin)“ says when. A Codex turn fails with
 `usageLimitExceeded`; the reset is the latest one of the windows its `account/rateLimits/updated`
 reports used up, else the time its message names („try again at 10:41 PM.“, on the machine's
-clock). The card's status line reads
-„Nutzungslimit · weiter um 14:40“, and ten seconds after the reset Obeya tells the worker to go on
-where it stopped (a limit that still holds is retried after a minute; one without a reset time
-every 15 minutes). Meanwhile the worker is not busy: a restart need not wait for it, and a note
-reaches it at once. Then its earlier status line is back. The conversation shows the limit as a line
-where it happened, not folded into the next message. A worker stopped while taking in the owner's
-words on its handover is still at them: the card does not wait for the owner. One whose background
-work runs on stays busy and goes on at the reset without waiting for that work.
+clock). Obeya waits for a future reset, with a ten-second clock margin. Without a reset it
+tries again after fifteen minutes, or after a minute if the reported reset has passed. Three
+consecutive refused turns exhaust this retry budget: a worker's session closes and releases its
+slot, while its card and workspace stay. A failed manual attempt pauses it immediately again;
+actual text or a tool step clears the budget. Duplicate errors from one refused turn count once.
+A light-blue bar and an hourglass mark the usage pause, with a visible way to try again now.
+
+The server watches reset times centrally without asking an agent. Its coordinator periodically
+wakes all limit-paused workers whose recorded reset has passed, including after a server restart
+or the machine waking from sleep. Pauses with no known future reset stay paused until the owner
+tries again; a failed attempt cannot turn an old reset into a new retry loop. A canvas paused by
+the owner stays paused. A worker's limit pause stores the retry count, known reset and earlier
+status line with its existing pause record. On successful work its earlier status is restored.
+The conversation shows the limit where it happened. A worker stopped while taking in the owner's
+words on its handover is still at them: the card does not wait for the owner. Background work
+continues during the first two waits; reaching the retry cap ends the worker's session and its
+background work as a normal immediate pause does.
 
 Every other agent waits the same way: look-ups, project agents, Question cards' and ideas' agents,
 the reviser of a proposal, and the Koordinator's small jobs (naming and checking cards, the learner,
 the Rückschau, the Arbeitsrückschau). The stopped turn is neither an error nor over; the owner's
 words meanwhile wait for its next turn. Where the agent waits says until when: under a looked-up
 question „Nutzungslimit · schlägt das um 19:20 von selbst nach“, on a card's face and in its bubble
-„Nutzungslimit · weiter um 19:20“. After a restart they resume their work and wait anew; ending the
-session (pausing the agent, parking the idea) ends the wait. Two do not wait: a demo page shared
+„Nutzungslimit · weiter um 19:20“. These agents share the retry budget and central reset watcher; their in-memory wait is
+re-established after a restart. Ending the session (pausing the agent, parking the idea) ends the wait. Two do not wait: a demo page shared
 without the worker's text (it takes the card's title and the summary's start) and the draft of a
 wish, whose owner waits in the dialog (see Wishes for Obeya's makers). Obeya's chat: see
 Confirmation and undo.

@@ -384,6 +384,8 @@ const de = {
     accept: 'Übernommen wird die Karte eingeplant und bis dahin zurückgestellt; dann startet sie von selbst.',
   },
   /** A card whose agent (not its worker) waits for the account's usage limit: when it goes on by itself. */
+  limitPaused: 'Nutzungslimit · nach 3 Versuchen pausiert',
+  limitTryAgain: 'Jetzt erneut versuchen',
   limitedUntil: (time: string) => `Nutzungslimit · weiter um ${time}`,
   revising: 'Wird nach deinen Worten überarbeitet …',
   /** "Übernehmen und starten" during a revision: the line above the buttons before and after the click, the button while it waits, taking it back, and the same short on the canvas card. */
@@ -2591,6 +2593,8 @@ const en: Strings = {
     noneHint: 'The proposal then starts as soon as you accept it.',
     accept: 'Accepted, the card is planned and snoozed until then; then it starts by itself.',
   },
+  limitPaused: 'Usage limit · paused after 3 attempts',
+  limitTryAgain: 'Try again now',
   limitedUntil: (time: string) => `Usage limit · continues at ${time}`,
   revising: 'Being reworked by what you said …',
   acceptWaitsFor: (button: string) => `The new text is coming. “${button}” waits for it and is dropped if it still has questions.`,

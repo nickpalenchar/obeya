@@ -56,7 +56,7 @@ export class Merges {
       cwd: this.o.pathFor(other),
       role: 'koordinator',
       at: { card: card.id },
-      onLimit: (until) => this.o.board.waitsForLimit({ card: card.id }, until),
+      onLimit: (until, retry) => this.o.board.waitsForLimit({ card: card.id }, until, retry),
       system: [SYSTEM, this.o.preferences?.() ?? ''].filter(Boolean).join('\n\n'),
       tools: (finish) => [
         {

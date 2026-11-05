@@ -2585,3 +2585,16 @@ a.link.perf-to-log, a.link.flog-back { color: var(--working); text-decoration: u
   .merge-result { padding: 14px; }
 }
 .btn > .merge-mark { vertical-align: -2px; margin-right: 2px; }
+
+/* A subscription pause waits on the account clock, with a visible manual retry. */
+.card.limit-paused::before { background: #a9d8ec; }
+.card.limit-paused .state { --c: #56859d; }
+.card.limit-paused .state::after { display: none; }
+.hourglass-mark { flex: 0 0 auto; vertical-align: middle; }
+.limit-notice { display: flex; align-items: center; gap: 12px; padding: 12px 16px; margin: 12px 0;
+  color: #28536a; background: #dceff8; border-left: 4px solid #a9d8ec; border-radius: 3px; font: 15px/1.4 var(--sans); }
+.limit-notice > div { flex: 1; }
+.limit-reset { margin-top: 3px; font-size: 13px; }
+.limit-notice button { flex: 0 0 auto; color: #28536a; border: 1px solid #a2c8da; border-radius: 3px; background: #f3faff; padding: 6px 10px; cursor: pointer; font: inherit; }
+.limit-notice button:hover { background: white; }
+@media (max-width: 600px) { .limit-notice { flex-wrap: wrap; } .limit-notice button { margin-left: 26px; } }

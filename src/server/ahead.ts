@@ -221,7 +221,7 @@ export class Ahead {
           if (!name.startsWith('mcp__')) this.o.board.log(card.id, 'activity', 'koordinator', describeTool(name, input, this.o.board.t));
         },
         onSession: (id) => this.sessions.set(card.id, id),
-        onLimit: (until) => this.o.board.waitsForLimit({ card: card.id }, until),
+        onLimit: (until, retry) => this.o.board.waitsForLimit({ card: card.id }, until, retry),
         at: { card: card.id },
         language: this.o.board.conversation(),
         signal,

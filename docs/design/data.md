@@ -30,6 +30,8 @@ Persistent (SQLite):
 - each session that worked on a card, with the harness, resolved model and effort it ran on (see
   Models and effort in Agents and workspaces), and the owner's responses on approved work: the
   handover each is about, whom it credits, the card's context as it was, the answer and facets;
+- a worker paused by the usage limit keeps its consecutive refusal count, optional future reset,
+  and previous status line in the card’s existing pause JSON (`limit`); old pause records remain valid;
 - card events (the conversation log, with the owner's screenshots and agents' mocks, and the
   producing agent's harness and model when known); the Koordinator's replies and looked-up answers
   each retain their own producing identity, never inferred for old messages; workspaces

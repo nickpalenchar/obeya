@@ -1,3 +1,4 @@
+import { LimitAttempts, limitWatch } from './limit-watch';
 // Agent sessions behind a small interface, so the orchestration can be tested without a model.
 
 import {
@@ -162,7 +163,7 @@ export interface AgentSpec {
    * the limit stops is neither an error nor over, and this hears when the agent goes on by itself,
    * and nothing once it does or its session ends. Without it, the turn fails with the error's `limit`.
    */
-  onLimit?: (until: number | undefined) => void;
+  onLimit?: (until: number | null | undefined, retry?: () => void) => void;
   onEvent: (e: AgentEvent) => void;
 }
 
@@ -381,7 +382,9 @@ export function withLimitWait(runtime: AgentRuntime, margin = 10_000): AgentRunt
     start(spec, firstMessage, images) {
       const onLimit = spec.onLimit;
       if (!onLimit) return runtime.start(spec, firstMessage, images);
-      let lifts: ReturnType<typeof setTimeout> | undefined;
+      const key = {};
+      const attempts = new LimitAttempts();
+      let waiting = false;
       // the end of the turn the limit stopped is not the end of its work
       let stopped = false;
       let closed = false;
@@ -389,35 +392,51 @@ export function withLimitWait(runtime: AgentRuntime, margin = 10_000): AgentRunt
         {
           ...spec,
           onEvent: (e) => {
+            if (closed) return;
             if (e.type === 'error' && e.limit) {
+              if (stopped) return;
               stopped = true;
-              if (closed) return;
-              const until = limitLifts(e.limit, margin);
-              clearTimeout(lifts);
-              // a timer runs at most about 24 days
-              lifts = setTimeout(
-                () => {
-                  lifts = undefined;
-                  onLimit(undefined);
-                  session.send(LIMIT_LIFTED);
-                },
-                Math.min(Math.max(0, until - Date.now()), 2 ** 31 - 1),
-              );
-              onLimit(until);
+              const until = attempts.hit(e.limit, margin);
+              limitWatch.cancel(key);
+              waiting = true;
+              if (until !== null) limitWatch.wait(key, until, () => {
+                waiting = false;
+                onLimit(undefined);
+                session.send(LIMIT_LIFTED);
+              });
+              onLimit(until, () => {
+                limitWatch.cancel(key);
+                waiting = false;
+                onLimit(undefined);
+                session.send(LIMIT_LIFTED);
+              });
             } else if (e.type === 'idle' && stopped) stopped = false;
-            else spec.onEvent(e);
+            else {
+              if (e.type === 'text' || e.type === 'tool') {
+                attempts.count = 0;
+                limitWatch.cancel(key);
+                if (waiting) onLimit(undefined);
+                waiting = false;
+              }
+              spec.onEvent(e);
+            }
           },
         },
         firstMessage,
         images,
       );
       return {
-        send: (text, images) => session.send(text, images),
+        send: (text, images) => {
+          limitWatch.cancel(key);
+          if (waiting) onLimit(undefined);
+          waiting = false;
+          session.send(text, images);
+        },
         close: () => {
           closed = true;
-          if (lifts) onLimit(undefined);
-          clearTimeout(lifts);
-          lifts = undefined;
+          if (waiting) onLimit(undefined);
+          limitWatch.cancel(key);
+          waiting = false;
           session.close();
         },
         done: session.done,

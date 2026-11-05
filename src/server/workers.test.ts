@@ -653,6 +653,62 @@ describe('workers', () => {
     expect(errors.map((e) => e.token)).toEqual([true, undefined]);
   });
 
+  test('three refused turns pause, survive restart, and a manual failed attempt pauses immediately', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    const fail = () => {
+      runtime.last.emit({ type: 'error', message: 'Session limit', limit: {} });
+      runtime.last.emit({ type: 'idle' });
+    };
+    fail();
+    expect(board.item(c.id)!.limitedUntil).toBeDefined();
+    workers.resume(c.id);
+    fail();
+    expect(board.item(c.id)!.paused).toBeUndefined();
+    workers.resume(c.id);
+    fail();
+    expect(board.item(c.id)).toMatchObject({ paused: true, limitPaused: true });
+    expect(board.item(c.id)!.limitedUntil).toBeUndefined();
+    expect(workers.busyCards()).toEqual([]);
+    expect(runtime.last.closed).toBe(true);
+    const before = runtime.sessions.length;
+    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' } }));
+    workers.resumeAll();
+    expect(runtime.sessions.length).toBe(before);
+    workers.resume(c.id);
+    await until(() => runtime.sessions.length > before);
+    fail();
+    expect(board.item(c.id)).toMatchObject({ paused: true, limitPaused: true });
+    expect(JSON.parse(board.row(c.id).paused!).limit.attempts).toBe(4);
+  });
+
+  test('a known reset wakes a capped worker only once; successful work clears the retry budget', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    runtime.last.call('report', { status: 'Exporting' });
+    const reset = Date.now() + 60_000;
+    for (let n = 0; n < 3; n++) {
+      if (n) workers.resume(c.id);
+      runtime.last.emit({ type: 'error', message: 'Session limit', limit: { resetsAt: reset } });
+      runtime.last.emit({ type: 'idle' });
+    }
+    expect(board.item(c.id)).toMatchObject({ paused: true, limitPaused: true });
+    const before = runtime.sessions.length;
+    workers.wakeLimit(c.id, reset - 1);
+    expect(runtime.sessions.length).toBe(before);
+    workers.wakeLimit(c.id, reset + 11_000);
+    await until(() => runtime.sessions.length > before);
+    expect(board.item(c.id)!.paused).toBeUndefined();
+    workers.wakeLimit(c.id, reset + 11_000);
+    expect(runtime.sessions.length).toBe(before + 1);
+    runtime.last.emit({ type: 'text', text: 'Continuing the export.' });
+    expect(board.item(c.id)!.limitPaused).toBeUndefined();
+    expect(board.item(c.id)!.statusLine).toBe('Exporting');
+    runtime.last.emit({ type: 'error', message: 'Session limit', limit: {} });
+    runtime.last.emit({ type: 'idle' });
+    expect(board.item(c.id)!.paused).toBeUndefined();
+  });
+
   test('a worker the usage limit stopped goes on by itself once the limit lifts', async () => {
     setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, limitMargin: 30 }));
     const c = manual();

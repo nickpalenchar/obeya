@@ -132,7 +132,7 @@ export class Revisions {
       role: 'koordinator',
       at: { card: card.id },
       // the proposal waits on, and shows until when
-      onLimit: (until) => this.o.board.waitsForLimit({ card: card.id }, until),
+      onLimit: (until, retry) => this.o.board.waitsForLimit({ card: card.id }, until, retry),
       system: [SYSTEM, this.o.toObeya ? TO_OBEYA : '', this.o.preferences?.() ?? ''].filter(Boolean).join('\n\n'),
       tools: (finish) => [
         {
