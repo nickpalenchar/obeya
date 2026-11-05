@@ -324,7 +324,7 @@ Index cards pinned to a wall, so that nobody takes Obeya for the stock AI-genera
   fading, changes nothing but size and opacity: an animation the browser has to repaint makes the
   whole card under it shimmer on a zoomed-out canvas, 2026-10-30); an idea is on rose stock; a
   proposal only pencilled in (dashed, no stock); a queued card's rule dashed; done and live cards
-  fade and yellow slightly (not while their agent still works after landing: then only their state line is in the working ink, with the moving line). The state line at the
+  are on muted green stock, in a project or outside one (a Question card keeps its own; while their agent still works after landing, only their state line is in the working ink, with the moving line). The state line at the
   card's foot stays one line, cut short with an ellipsis when it is longer, so it never runs into
   the text above it. Under the pointer a
   card lifts; dragged, it tilts as if held. "At work" is a pencil stroke drawn again and again.

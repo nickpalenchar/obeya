@@ -162,8 +162,6 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .card.chip .meta, .card.chip .state, .card.chip .kind { display: none; }
 .card.chip .ttl { -webkit-line-clamp: 3; font-weight: 500; }
 /* a delivered workstream keeps its label (W3) before its title, in the face of the kind line it no longer has */
-/* done in its project: muted green stock rather than the yellowed grey of other finished cards */
-.card.chip:is(.s-live, .s-done) { --c: color-mix(in srgb, var(--approved) 60%, var(--card)); opacity: 1; background-color: color-mix(in srgb, var(--approved) 13%, var(--card)); }
 .card.chip .ws-no { font-family: var(--cond); font-size: 12.5px; font-weight: 600; letter-spacing: .01em; color: var(--muted); margin-right: 6px; }
 
 .s-planned { --c: var(--planned); } .s-working { --c: var(--working); } .s-waiting { --c: var(--waiting); }
@@ -186,8 +184,8 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
     color-mix(in srgb, var(--c) 22%, transparent);
   animation: draw 1.6s cubic-bezier(.5,0,.3,1) infinite; }
 @keyframes draw { 0% { background-position: 100% 0; } 55% { background-position: 0 0; } 100% { background-position: -100% 0; } }
-/* done: the card has gone a little yellow and been pushed back */
-.card.s-live, .card.s-done { opacity: .74; background-color: color-mix(in srgb, var(--live) 14%, var(--card)); }
+/* done: muted green stock, in a project and outside one alike */
+.card.s-live, .card.s-done { --c: color-mix(in srgb, var(--approved) 60%, var(--card)); opacity: 1; background-color: color-mix(in srgb, var(--approved) 13%, var(--card)); }
 /* its agent still at work after the landing: the yellowed stock, but awake, its state line in the working colour */
 .card.finishing { opacity: 1; }
 .card.finishing .state, .p-state.finishing { --c: var(--working); }
