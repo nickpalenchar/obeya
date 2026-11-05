@@ -56,8 +56,8 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
   itself.
 - The owner works in Obeya at the level of requirements, feature and bug descriptions and specs,
   and checks results in demos and result artifacts. Source code and diffs stay in the background:
-  on a card with a demo or artifact, its changed files are optional and stay collapsed until
-  opened, never shown up front.
+  on a card with a demo or artifact, its changed files are optional and stay in their own Diff tab,
+  never shown up front.
 - Obeya's UI never sends the owner to the command line: when a message suggests a step (pushing
   `main` first, say), Obeya offers it as an action right there, or the message doesn't mention it.
 - UI strings live in one place, `src/ui/strings.ts`, in German and English (two tables of one shape).

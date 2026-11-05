@@ -232,29 +232,26 @@ another machine). The owner rarely reads code, so it stays a quiet line.
 #### The files beside the demo
 
 What a card's work made or changed is its result, shown on the left for folder and git cards alike.
-The change list at the top of the column is also its row of tabs, so each file shows once: a line
-per file with its sign (＋ added, ✎ changed, ↪ moved or renamed, ✕ deleted), its path cut at the
-front so the name stays, its lines added and removed, and on a folder card what discarding would
-leave. The demo comes first, named by its kind („Demo-Video“, „Demo-Artefakt“; „Demo“ where the
-card's demos are of both) and without a play mark: it is a tab, not a player, and a ▶ there made
-it read as a button that ought to start a video (a colleague's report, 2026-11-02). Then the files the worker named at its handover (`ready_for_review`'s
-`files`, the caption under the path), then other changed files that can be shown, documents first;
-last, greyed and not to be picked, deleted files, directories and files that are neither documents
-nor text (their line counts still open their diff). The line picked is marked like a tab; a click on
-a line shows its file below, a click on its line counts its changes there. Where what a click picked
-(the line marked already too) lies out of sight, below the column's visible part or under the card's
-buttons in a low window, the click scrolls it into view: otherwise it seemed to do nothing. Beside a demo, and while
-the agent is at work (working, stopped, or asking), the list shows the demo and the named files
-only, the other changed files folded under „N geänderte Dateien ▾“ (or „und N weitere ▾“ below named
-files), and no file is picked until the owner picks one; handed over without a demo, the list is
-open and its first file shows, so there is always a result to see. Unfolded, past eight lines „und
-N weitere ▾“ unfolds the rest. The file picked stays in view when folded. Beside the toggle stands
-the size of the whole change („+120 −30“), which shows the whole diff over the page. On a git card the lines are
-the branch's files, on a folder card its change list. The phone shows the same list with lines tall
-enough to tap. Markdown shows formatted (with its images), a PDF in the browser's
+The top of the column has a row of tabs: „Video“ first where there is a video, „Dokument“ for an
+HTML artifact or named HTML result, „Schema-Änderung“ for a named schema-change page, and „Diff“
+for the underlying change list. Other named result files have tabs named after their files. Only
+available results have tabs; the first opens by default. The demo and named results show without
+the change list above them. Named files show their contents first, with the caption above the view.
+
+The Diff tab contains the change list: a line per file with its sign (＋ added, ✎ changed, ↪ moved
+or renamed, ✕ deleted), its path cut at the front so the name stays, its lines added and removed,
+and on a folder card what discarding would leave. The files named at handover come first, then
+other changed files that can be shown, documents first; last, greyed and not to be picked, deleted
+files, directories and files that are neither documents nor text (their line counts still open
+their diff). A click on a line shows its file below, a click on its line counts its changes there.
+Where that view lies out of sight, the click scrolls it into view. Past eight lines „und N weitere ▾“
+unfolds the rest. The file picked stays in view when folded. Beside the toggle stands the size of
+the whole change („+120 −30“), which shows the whole diff over the page. On a git card the lines
+are the branch's files, on a folder card its change list. The phone has the same tabs and list,
+with controls tall enough to tap. Markdown shows formatted (with its images), a PDF in the browser's
 viewer (on a phone, and where the browser has none, its pages drawn by pdf.js one under the other
 as wide as the column), an image as is, an HTML page as an HTML artifact, text and code as text; anything else as a
-tile with „Auf dem Rechner öffnen“. A changed file first shows „Änderungen“, with „Formatiert“ or
+tile with „Auf dem Rechner öffnen“. In Diff, a changed file first shows „Änderungen“, with „Formatiert“ or
 „Ganze Datei“ beside. „Auf dem Rechner öffnen“ and „Im Ordner zeigen“ act on the machine Obeya runs
 on (a non-document only in its folder, since opening would run it), and only for a request from that
 machine; from another device the file downloads and „Im Ordner zeigen“ says it works only there.
@@ -513,16 +510,9 @@ image.
   Rejected: a tile that opens the file in the phone's PDF app (the result to judge would be one tap
   and an app away, unlike every other kind of file) and drawing pages on the server (no tool that
   runs on every platform). The desktop keeps the browser's viewer, which searches and selects text.
-- **The change list is the row of tabs** (owner, 2026-10-21): files showed twice before, as a list
-  across the card and as tabs below it. Rejected: tabs alone with the list folded away (what stays
-  before „Änderungen verwerfen“ would no longer show at a glance, files without a view would be
-  hidden) and tabs down the side of the file (they take the document's width).
-- **Beside a demo and during the work, the changed files start folded** (owner, 2026-10-21): the
-  owner works on requirements and judges the result by its demo and the files named as the result,
-  not by reading the code; a dozen changed files above the video put the code in front, on the
-  phone above all. The named files stay in view, being results themselves; a handover without demo
-  or named files shows its files open, since some result must show. The size of the change moved
-  from the branch line to the folded list, so count, size and files stand together.
+- **Deliverables and the diff have separate tabs** (owner, 2026-11-04): video first, HTML documents
+  and schema-change pages as results, with the underlying file list in Diff. The owner judges the
+  result from its deliverables; the code behind it stays a deliberate tab choice.
 - **Claude Code lists the skills, and the owner's `/name` reaches the agent unchanged** (2026-10-30,
   GitHub issue #27). Rejected: Obeya reading the skill directories itself (plugins, marketplaces,
   the account's and Claude Code's own skills: Claude Code's discovery to rebuild and keep up with);

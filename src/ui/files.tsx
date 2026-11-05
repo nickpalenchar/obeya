@@ -1,5 +1,4 @@
-// The files a card's work made or changed, as its result on the left beside the conversation: the
-// change list above the view, a line each (the demo first), which picks what the view shows;
+// Deliverables on the left beside the conversation, with the underlying change list in its own tab;
 // Markdown formatted, a PDF in the browser's viewer (drawn by pdf.js on a phone), an image, a page in the sandboxed frame of an
 // HTML artifact, text as it is, anything else as a tile; each to open on the computer, show in its
 // folder, or download. Folder and git cards alike.
@@ -7,7 +6,7 @@
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type CardDiff, diffSize, shownChanges, splitDiff } from '../core/diff';
 import { type ChangeRow, changeRows, imageAt, type ShownFile } from '../core/files';
-import type { DemoKind, Item } from '../core/types';
+import type { Item } from '../core/types';
 import { api, cardFile } from './api';
 import { ChangeNote, DiffView, FileDiff, Lines, MARK } from './diff';
 import { Doc, DocImages } from './markdown';
@@ -24,6 +23,7 @@ const TEXT_CAP = 400_000;
 const PAGE_CAP = 30000;
 
 const DEMO = '';
+const DIFF = '\0diff';
 
 /** The card's change, read as the work moves on; `given` where the card has read it already (a folder's change list). */
 function useChange(item: Item, given: CardDiff | null | undefined): CardDiff | null {
@@ -40,89 +40,100 @@ function useChange(item: Item, given: CardDiff | null | undefined): CardDiff | n
   return own ? diff : given;
 }
 
-/**
- * The card's left column with its files: the change list, the demo (`demo`) under its first line, a
- * file's view under each line that has one. Without a change it is the demo alone. `diff`: the
- * card's change where the card has read it already. `tab`: the path of the file picked (`''` the
- * demo); null for the first.
- */
+/** Deliverables in tabs, with the underlying change list in a separate Diff tab. */
 export function ResultFiles({ item, diff, demo, tab, onTab }: { item: Item; diff?: CardDiff | null; demo: ReactNode; tab: string | null; onTab: (path: string) => void }) {
   const change = useChange(item, diff);
-  // the demo's line says what it is, a video or an artifact; where the card's demos are of both kinds, only that it is the demo
-  const kinds = new Set([...(item.demos ?? []), item.demo].map((d) => d?.kind ?? 'video'));
-  const demoKind = demo ? (kinds.size === 1 ? [...kinds][0]! : 'any') : undefined;
-  // beside a demo, and while the agent is at work, the code behind the result waits folded
-  const fold = !!demo || atWork(item);
   const rows = changeRows(change, item.files);
   const files = rows.flatMap((r) => (r.file ? [r.file] : []));
-  // which files show their changes rather than themselves, where the owner chose; a changed one does at first
+  const named = files.filter((f) => f.caption !== undefined);
+  const schema = (f: ShownFile) => f.kind === 'page' && /(^|\/)[^/]*schema[^/]*\.html?$/i.test(f.path);
+  const label = (f: ShownFile) => schema(f) ? t.files.tabs.schema : f.kind === 'page' ? t.files.tabs.document : base(f.path);
+  const tabs = [
+    ...(demo ? [{ path: DEMO, label: item.demo?.kind === 'html' ? t.files.tabs.document : t.files.tabs.video }] : []),
+    ...named.filter((f) => !schema(f)).map((f) => ({ path: f.path, label: label(f), title: f.caption })),
+    ...named.filter(schema).map((f) => ({ path: f.path, label: label(f), title: f.caption })),
+    ...(rows.length ? [{ path: DIFF, label: t.files.tabs.diff }] : []),
+  ];
+  const current = tabs.some((t) => t.path === tab) ? tab : tabs[0]?.path;
+  const [pickedFile, setPickedFile] = useState<string | null>(null);
   const [asChanges, setAsChanges] = useState<Record<string, boolean>>({});
   const demoBox = useRef<HTMLDivElement>(null);
-  // what the shown files are as of now: the change read and the latest handover
   const rev = revision(`${item.state}:${item.need ?? ''}:${item.summary ?? ''}:${JSON.stringify(change?.files ?? [])}:${JSON.stringify(change?.folder?.changes ?? [])}`);
-  // the column keeps the height of its tallest view so far: the card does not shrink and move under the list
   const box = useRef<HTMLDivElement>(null);
   const [tallest, setTallest] = useState(0);
   useLayoutEffect(() => {
     const h = box.current?.offsetHeight ?? 0;
     if (h > tallest) setTallest(h);
   });
-  const first = demo ? DEMO : ((fold ? files.find((f) => f.caption !== undefined) : files[0])?.path ?? DEMO);
-  const current = tab !== null && (tab === DEMO ? !!demo : files.some((f) => f.path === tab)) ? tab : first;
-  // a video left playing under another file would go on talking
-  const shown = useRef(current);
+  // A video left playing under another tab would go on talking.
   useEffect(() => {
-    if (shown.current === current) return;
-    shown.current = current;
     if (current !== DEMO) demoBox.current?.querySelectorAll('video').forEach((v) => v.pause());
   }, [current]);
-  // a line picked brings its view into sight where it lies below the column's visible part, the line picked already too:
-  // the click would otherwise seem to do nothing
   const [picked, setPicked] = useState(0);
   useEffect(() => {
     if (!picked) return;
-    const view = current === DEMO ? (demoBox.current?.querySelector('video, iframe') ?? demoBox.current) : box.current?.querySelector('.r-file');
+    const view = box.current?.querySelector('.r-file');
     if (view && !seen(view)) view.scrollIntoView({ block: 'start', behavior: 'smooth' });
   }, [picked]);
-  if (!rows.length && !demo) return item.files && change ? <p className="hint">{t.files.none}</p> : null;
-  const file = files.find((f) => f.path === current);
-  // the size of the whole change stands with its files, not up in the card's branch line
+  if (!tabs.length) return item.files && change ? <p className="hint">{t.files.none}</p> : null;
+  const inDiff = current === DIFF;
+  const path = inDiff ? pickedFile : current;
+  const file = files.find((f) => f.path === path);
   const count = change?.folder ? shownChanges(change.folder.changes).length : (change?.files.length ?? 0);
-  // the demo keeps its place in the page once the change is read: moved, it would start afresh and no longer play on its own
   return (
     <div className="results" ref={box} style={tallest ? { minHeight: tallest } : undefined}>
-      {rows.length > 0 && (
-        <ChangeList
-          item={item}
-          rows={rows}
-          demo={demoKind}
-          fold={fold}
-          total={count ? { ...diffSize(change!.files), files: count } : undefined}
-          current={current}
-          onPick={(path, changes) => {
-            onTab(path);
-            setPicked(picked + 1);
-            if (changes !== undefined) setAsChanges({ ...asChanges, [path]: changes });
-          }}
-        />
-      )}
-      {demo && (
-        <div ref={demoBox} hidden={current !== DEMO}>
-          {demo}
+      <div className="result-tabs" role="tablist">
+        {tabs.map((entry) => (
+          <button key={entry.path} type="button" role="tab" aria-selected={current === entry.path} title={'title' in entry ? entry.title : undefined} onClick={() => onTab(entry.path)}>
+            {entry.label}
+          </button>
+        ))}
+      </div>
+      {demo && <div ref={demoBox} role="tabpanel" hidden={current !== DEMO}>{demo}</div>}
+      {inDiff && (
+        <div role="tabpanel">
+          <ChangeList
+            item={item}
+            rows={rows}
+            total={count ? { ...diffSize(change!.files), files: count } : undefined}
+            current={pickedFile ?? undefined}
+            onPick={(path, changes) => {
+              setPickedFile(path);
+              setPicked(picked + 1);
+              if (changes !== undefined) setAsChanges({ ...asChanges, [path]: changes });
+            }}
+          />
+          {file && (
+            <FileView
+              key={`${file.path}:${rev}`}
+              item={item}
+              file={file}
+              rev={rev}
+              changes={file.diff && (asChanges[file.path] ?? true)}
+              onChanges={(c) => setAsChanges({ ...asChanges, [file.path]: c })}
+            />
+          )}
         </div>
       )}
-      {/* a new handover (or the work going on) may change the file at the same path: its view is read afresh */}
-      {file && (
-        <FileView
-          key={`${file.path}:${rev}`}
-          item={item}
-          file={file}
-          rev={rev}
-          changes={file.diff && (asChanges[file.path] ?? true)}
-          onChanges={(c) => setAsChanges({ ...asChanges, [file.path]: c })}
-        />
+      {!inDiff && file && (
+        <div role="tabpanel">
+          <p className="hint result-caption">{file.caption}</p>
+          <FileView
+            key={`${file.path}:${rev}`}
+            item={item}
+            file={file}
+            rev={rev}
+            changes={false}
+            onChanges={(c) => {
+              if (!c) return;
+              setPickedFile(file.path);
+              setAsChanges({ ...asChanges, [file.path]: true });
+              setPicked(picked + 1);
+              onTab(DIFF);
+            }}
+          />
+        </div>
       )}
-      {!file && !demo && !fold && <p className="hint">{t.files.none}</p>}
     </div>
   );
 }
@@ -134,15 +145,14 @@ export const atWork = (item: Item) => item.state === 'working' || item.state ===
  * The card's change list, a line per file: its sign, its path (cut at the front, so its name stays),
  * its lines added and removed, and in a folder what discarding would leave. With `onPick` it picks
  * what the left column shows: the line `current` marked, a click on a line showing its file (on its
- * lines, its changes), the demo first where there is one (`demo`, named by its kind), lines without a view greyed. A
+ * lines, its changes), lines without a view greyed. A
  * line's lines open its diff over the page where it has no view, and without `onPick` its path does
- * too. With `fold`, only the demo and the files its worker named show, the rest a click away; without it,
+ * too. With `fold`, only the files its worker named show, the rest a click away; without it,
  * the lines past `FOLD`. `total`, the size of the whole change, stands below the list and opens its whole diff.
  */
 export function ChangeList({
   item,
   rows,
-  demo,
   fold,
   total,
   current,
@@ -150,7 +160,6 @@ export function ChangeList({
 }: {
   item: Item;
   rows: ChangeRow[];
-  demo?: DemoKind | 'any';
   fold?: boolean;
   total?: { added: number; removed: number; files: number };
   current?: string;
@@ -164,16 +173,16 @@ export function ChangeList({
     setMore(false);
     onPick(path, changes);
   });
-  const lines: (ChangeRow | typeof DEMO)[] = [...(demo ? ([DEMO] as const) : []), ...rows];
-  const at = (l: ChangeRow | typeof DEMO) => (l === DEMO ? DEMO : l.path);
-  // folded, the result is the demo and the files the worker named; otherwise a line or two past the fold are shown rather than folded
-  const kept = fold ? lines.filter((l) => l === DEMO || l.caption !== undefined) : lines.slice(0, FOLD);
+  const lines = rows;
+  const at = (l: ChangeRow) => l.path;
+  // folded, the result is the files the worker named; otherwise a line or two past the fold are shown rather than folded
+  const kept = fold ? lines.filter((l) => l.caption !== undefined) : lines.slice(0, FOLD);
   const folds = fold ? kept.length < lines.length : lines.length > FOLD + 2;
   const visible = folds && !more ? lines.filter((l) => kept.includes(l) || at(l) === current) : lines;
   const hidden = lines.length - visible.length;
   const toggle = folds && (more || hidden > 0);
-  // folded to the demo alone, the toggle counts the files, and the size beside it need not
-  const counted = toggle && !more && !visible.some((l) => l !== DEMO);
+  // folded completely, the toggle counts the files, and the size beside it need not
+  const counted = toggle && !more && !visible.length;
   return (
     <div className="cl-list" role={pick ? 'tablist' : undefined}>
       <table>
@@ -184,29 +193,16 @@ export function ChangeList({
           <col className="cl-n" />
         </colgroup>
         <tbody>
-          {visible.map((l) =>
-            l === DEMO ? (
-              <tr key="demo" className={current === DEMO ? 'cl-row on' : 'cl-row'} onClick={() => pick?.(DEMO)}>
-                <td />
-                <td className="cl-path">
-                  <button className="cl-name" role="tab" aria-selected={current === DEMO}>
-                    {t.files.demo[demo!]}
-                  </button>
-                </td>
-                <td />
-                <td />
-              </tr>
-            ) : (
-              <Line
-                key={`${l.kind ?? ''}:${l.from ?? ''}:${l.path}`}
-                row={l}
-                on={current === l.path}
-                onPick={pick && l.file ? (changes) => pick(l.path, changes) : undefined}
-                onDiff={l.added || l.removed ? () => setOpen(l.path) : undefined}
-                tabs={!!pick}
-              />
-            ),
-          )}
+          {visible.map((l) => (
+            <Line
+              key={`${l.kind ?? ''}:${l.from ?? ''}:${l.path}`}
+              row={l}
+              on={current === l.path}
+              onPick={pick && l.file ? (changes) => pick(l.path, changes) : undefined}
+              onDiff={l.added || l.removed ? () => setOpen(l.path) : undefined}
+              tabs={!!pick}
+            />
+          ))}
         </tbody>
       </table>
       {(toggle || total) && (

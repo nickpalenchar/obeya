@@ -1037,7 +1037,7 @@ const de = {
     download: 'Herunterladen',
   },
   files: {
-    demo: { video: 'Demo-Video', html: 'Demo-Artefakt', any: 'Demo' } satisfies Record<DemoKind | 'any', string>,
+    tabs: { video: 'Video', document: 'Dokument', schema: 'Schema-Änderung', diff: 'Diff' },
     more: (n: number) => `und ${n} weitere`,
     changed: (n: number) => (n === 1 ? '1 geänderte Datei' : `${n} geänderte Dateien`),
     less: 'weniger',
@@ -3194,7 +3194,7 @@ const en: Strings = {
     download: 'Download',
   },
   files: {
-    demo: { video: 'Demo video', html: 'Demo artifact', any: 'Demo' },
+    tabs: { video: 'Video', document: 'Document', schema: 'Schema change', diff: 'Diff' },
     more: (n: number) => `and ${n} more`,
     changed: (n: number) => (n === 1 ? '1 changed file' : `${n} changed files`),
     less: 'fewer',
