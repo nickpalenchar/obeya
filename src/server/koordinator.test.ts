@@ -643,7 +643,7 @@ describe('Koordinator suggests the labels the owner left empty', () => {
     const s = namings()[0]!;
     expect(params(s, 'title')).toEqual(['title', 'category', 'subcategory', 'complexity', 'priority']);
     expect(s.spec.system).toContain('Data Migration');
-    expect(s.spec.system).toContain('A one-line or wording fix.');
+    expect(s.spec.system).toContain('\n- 13\n- 21\n');
     s.call('title', { title: 'Export no longer crashes', category: 'Frontend', subcategory: 'Bug fix', complexity: 2, priority: 'very high' });
     s.emit({ type: 'idle' });
     await naming;

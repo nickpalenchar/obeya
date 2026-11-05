@@ -33,11 +33,13 @@ What kind of change the card asks for.
 
 How big the work is, on Fibonacci steps. Judge what the change needs, not how long the text is.
 
-- 1: A one-line or wording fix.
-- 2: A small change in one place.
-- 3: A change across a few files, with tests.
-- 5: A feature that touches both server and UI.
-- 8: A change that spans several areas or wants a plan doc.
+- 1
+- 2
+- 3
+- 5
+- 8
+- 13
+- 21
 
 ## Priority
 

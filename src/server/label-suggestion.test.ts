@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { CATEGORIES, COMPLEXITIES, COMPLEXITY_DESCRIPTIONS, LABEL_NAMES, PRIORITIES, PRIORITY_NAMES, SUBCATEGORIES } from '../core/labels';
+import { CATEGORIES, COMPLEXITIES, LABEL_NAMES, PRIORITIES, PRIORITY_NAMES, SUBCATEGORIES } from '../core/labels';
 import { LABELS_SKILL_FILE, labelsFrom, labelsGuide, labelWords } from './label-suggestion';
 
 describe('the labels skill', () => {
@@ -9,7 +9,8 @@ describe('the labels skill', () => {
     expect(skill).toMatch(/^---\nname: labels\ndescription: .+\n---\n/);
     for (const k of [...CATEGORIES, ...SUBCATEGORIES]) expect(skill).toContain(`- ${LABEL_NAMES[k]}: `);
     for (const p of PRIORITIES) expect(skill).toContain(`- ${PRIORITY_NAMES[p]}: `);
-    for (const c of COMPLEXITIES) expect(skill).toContain(`- ${c}: ${COMPLEXITY_DESCRIPTIONS[c]}`);
+    const complexity = skill.split('## Complexity\n')[1]!.split('## Priority')[0]!;
+    expect([...complexity.matchAll(/^- (\d+)$/gm)].map((m) => Number(m[1]))).toEqual([...COMPLEXITIES]);
     expect(labelsGuide()).toStartWith('# Judging a card');
   });
 
